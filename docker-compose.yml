@@ -45,6 +45,7 @@ services:
       - "traefik.http.middlewares.proregis-strip.stripprefix.prefixes=/api"
       - "traefik.http.routers.proregis-api.middlewares=proregis-strip"
       - "traefik.http.services.proregis-api.loadbalancer.server.port=3001"
+      - "traefik.docker.network=root_default"
     networks:
       - default
       - root_default
@@ -65,6 +66,7 @@ services:
       - "traefik.http.routers.proregis-web.tls=true"
       - "traefik.http.routers.proregis-web.tls.certresolver=myresolver"
       - "traefik.http.services.proregis-web.loadbalancer.server.port=3000"
+      - "traefik.docker.network=root_default"
     networks:
       - default
       - root_default
