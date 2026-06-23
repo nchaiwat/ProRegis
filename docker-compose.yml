@@ -1,4 +1,3 @@
-version: '3'
 
 services:
   # 1. PostgreSQL Database Container
@@ -77,4 +76,7 @@ networks:
   root_default:
     external: true
     name: root_default
+
+volumes:
+  pgdata:
 
