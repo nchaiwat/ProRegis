@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+
+<html class="light" lang="th"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
+<title>ลงทะเบียนสำเร็จ | ProRegis</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+    body {
+      font-family: 'Inter', sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+    }
+    .glass-effect {
+      background: rgba(255, 255, 255, 0.7);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+    @keyframes success-pop {
+      0% { transform: scale(0.8); opacity: 0; }
+      50% { transform: scale(1.1); }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    .animate-success {
+      animation: success-pop 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    }
+  </style>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          "colors": {
+                  "on-tertiary": "#ffffff",
+                  "surface-bright": "#f7f9fb",
+                  "inverse-on-surface": "#eff1f3",
+                  "on-error-container": "#93000a",
+                  "primary": "#000000",
+                  "on-background": "#191c1e",
+                  "error": "#ba1a1a",
+                  "outline": "#76777d",
+                  "on-error": "#ffffff",
+                  "on-tertiary-fixed-variant": "#38485d",
+                  "primary-container": "#131b2e",
+                  "surface": "#f7f9fb",
+                  "secondary-container": "#39b8fd",
+                  "on-primary": "#ffffff",
+                  "on-secondary-fixed": "#001e2f",
+                  "secondary-fixed-dim": "#89ceff",
+                  "on-tertiary-container": "#75859d",
+                  "tertiary-fixed-dim": "#b7c8e1",
+                  "tertiary-container": "#0b1c30",
+                  "on-tertiary-fixed": "#0b1c30",
+                  "primary-fixed-dim": "#bec6e0",
+                  "inverse-surface": "#2d3133",
+                  "on-secondary": "#ffffff",
+                  "secondary": "#006591",
+                  "surface-variant": "#e0e3e5",
+                  "on-secondary-container": "#004666",
+                  "on-primary-fixed": "#131b2e",
+                  "secondary-fixed": "#c9e6ff",
+                  "surface-container-lowest": "#ffffff",
+                  "on-surface": "#191c1e",
+                  "tertiary-fixed": "#d3e4fe",
+                  "surface-container-highest": "#e0e3e5",
+                  "surface-tint": "#565e74",
+                  "error-container": "#ffdad6",
+                  "primary-fixed": "#dae2fd",
+                  "surface-dim": "#d8dadc",
+                  "tertiary": "#000000",
+                  "on-primary-container": "#7c839b",
+                  "background": "#f7f9fb",
+                  "outline-variant": "#c6c6cd",
+                  "on-primary-fixed-variant": "#3f465c",
+                  "surface-container-low": "#f2f4f6",
+                  "on-surface-variant": "#45464d",
+                  "inverse-primary": "#bec6e0",
+                  "surface-container-high": "#e6e8ea",
+                  "surface-container": "#eceef0",
+                  "on-secondary-fixed-variant": "#004c6e"
+          },
+          "borderRadius": {
+                  "DEFAULT": "0.25rem",
+                  "lg": "0.5rem",
+                  "xl": "0.75rem",
+                  "full": "9999px"
+          },
+          "spacing": {
+                  "margin-mobile": "16px",
+                  "margin-desktop": "auto",
+                  "base": "4px",
+                  "gutter-desktop": "24px",
+                  "gutter-mobile": "16px",
+                  "container-max-width": "1200px"
+          },
+          "fontFamily": {
+                  "headline-lg-mobile": ["Inter"],
+                  "label-sm": ["Inter"],
+                  "label-md": ["Inter"],
+                  "headline-md": ["Inter"],
+                  "headline-lg": ["Inter"],
+                  "body-md": ["Inter"],
+                  "body-lg": ["Inter"]
+          },
+          "fontSize": {
+                  "headline-lg-mobile": ["26px", {"lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "700"}],
+                  "label-sm": ["12px", {"lineHeight": "16px", "fontWeight": "600"}],
+                  "label-md": ["14px", {"lineHeight": "20px", "letterSpacing": "0.01em", "fontWeight": "500"}],
+                  "headline-md": ["24px", {"lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                  "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                  "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                  "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}]
+          }
+        },
+      },
+    }
+  </script>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+</head>
+<body class="bg-surface-bright text-on-surface min-h-screen flex flex-col">
+<!-- TopAppBar -->
+<header class="fixed top-0 left-0 w-full z-50 flex justify-between items-center px-margin-mobile md:px-gutter-desktop h-16 bg-surface-bright dark:bg-inverse-surface border-b border-outline-variant dark:border-outline shadow-sm">
+<div class="flex items-center gap-4">
+<button class="material-symbols-outlined text-primary dark:text-inverse-primary hover:bg-surface-container-high transition-colors p-2 rounded-full active:scale-95 duration-100">qr_code_scanner</button>
+<h1 class="font-headline-md text-headline-md-mobile md:text-headline-md text-primary dark:text-inverse-primary font-bold tracking-tight">ProRegis</h1>
+</div>
+<button class="material-symbols-outlined text-primary dark:text-inverse-primary hover:bg-surface-container-high transition-colors p-2 rounded-full active:scale-95 duration-100">home</button>
+</header>
+<main class="flex-grow pt-24 pb-24 px-margin-mobile max-w-[1200px] mx-auto w-full">
+<!-- Success Celebration -->
+<section class="flex flex-col items-center text-center mb-10 animate-success">
+<div class="w-24 h-24 bg-secondary-container rounded-full flex items-center justify-center mb-6 shadow-lg shadow-secondary-container/20">
+<span class="material-symbols-outlined text-on-secondary-container !text-5xl" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+</div>
+<h2 class="font-headline-lg-mobile text-headline-lg-mobile md:text-headline-lg mb-2">ลงทะเบียนสำเร็จ!</h2>
+<p class="font-body-md text-body-md text-on-surface-variant max-w-md mx-auto">สินทรัพย์องค์กรประสิทธิภาพสูงของคุณได้รับการบันทึกและรักษาความปลอดภัยในระบบหลักของเราเรียบร้อยแล้ว</p>
+</section>
+<!-- Registration Info Bento -->
+<div class="grid grid-cols-1 md:grid-cols-12 gap-6 mb-10">
+<!-- Primary ID Card -->
+<div class="md:col-span-8 bg-surface-container-lowest rounded-xl p-6 border border-outline-variant shadow-[0px_4px_12px_rgba(15,23,42,0.05)] relative overflow-hidden">
+<div class="absolute top-0 right-0 p-4 opacity-10">
+<span class="material-symbols-outlined !text-9xl">verified</span>
+</div>
+<p class="font-label-sm text-label-sm text-secondary uppercase tracking-widest mb-2">รหัสอ้างอิง</p>
+<h3 class="font-headline-md text-headline-md text-primary tracking-mono mb-8 font-extrabold">REG-99283-001</h3>
+<div class="flex flex-wrap gap-4">
+<div class="flex items-center gap-2 bg-surface-container-low px-4 py-2 rounded-full">
+<span class="material-symbols-outlined text-secondary !text-lg">calendar_today</span>
+<span class="font-label-md text-label-md text-on-surface">24 ต.ค. 2024</span>
+</div>
+<div class="flex items-center gap-2 bg-surface-container-low px-4 py-2 rounded-full">
+<span class="material-symbols-outlined text-secondary !text-lg">language</span>
+<span class="font-label-md text-label-md text-on-surface">ทะเบียนสากล</span>
+</div>
+</div>
+</div>
+<!-- Action Card: Return Home -->
+<div class="md:col-span-4 bg-primary text-on-primary rounded-xl p-6 flex flex-col justify-between shadow-lg active:scale-95 transition-transform cursor-pointer group">
+<div>
+<h4 class="font-headline-md text-headline-md-mobile mb-2">กลับไปยังแดชบอร์ด</h4>
+<p class="font-body-md text-label-md opacity-80">ดูสินทรัพย์ที่ลงทะเบียนทั้งหมดและการรับประกันที่ใช้งานอยู่</p>
+</div>
+<div class="flex justify-end mt-6">
+<div class="w-12 h-12 rounded-full bg-on-primary text-primary flex items-center justify-center group-hover:translate-x-1 transition-transform">
+<span class="material-symbols-outlined">arrow_forward</span>
+</div>
+</div>
+</div>
+<!-- Benefits Summary Card -->
+<div class="md:col-span-12 bg-white rounded-xl p-8 border border-outline-variant shadow-[0px_4px_12px_rgba(15,23,42,0.05)]">
+<h4 class="font-headline-md text-headline-md mb-6">สิทธิประโยชน์ของคุณ</h4>
+<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+<div class="flex gap-4">
+<div class="flex-shrink-0 w-12 h-12 bg-surface-container-low rounded-lg flex items-center justify-center">
+<span class="material-symbols-outlined text-secondary">verified_user</span>
+</div>
+<div>
+<p class="font-label-md text-label-md font-bold text-on-surface">เปิดใช้งานการรับประกันแล้ว</p>
+<p class="font-body-md text-label-sm text-on-surface-variant">ความคุ้มครองเต็ม 24 เดือนเริ่มต้นตั้งแต่วันนี้</p>
+</div>
+</div>
+<div class="flex gap-4">
+<div class="flex-shrink-0 w-12 h-12 bg-surface-container-low rounded-lg flex items-center justify-center">
+<span class="material-symbols-outlined text-secondary">menu_book</span>
+</div>
+<div>
+<p class="font-label-md text-label-md font-bold text-on-surface">เข้าถึงคู่มือดิจิทัล</p>
+<p class="font-body-md text-label-sm text-on-surface-variant">ปลดล็อกการเข้าถึงเอกสารประกอบแบบโต้ตอบ</p>
+</div>
+</div>
+<div class="flex gap-4">
+<div class="flex-shrink-0 w-12 h-12 bg-surface-container-low rounded-lg flex items-center justify-center">
+<span class="material-symbols-outlined text-secondary">workspace_premium</span>
+</div>
+<div>
+<p class="font-label-md text-label-md font-bold text-on-surface">สถานะการสนับสนุน VIP</p>
+<p class="font-body-md text-label-sm text-on-surface-variant">ได้รับคิวลำดับความสำคัญสำหรับการสอบถามด้านเทคนิค</p>
+</div>
+</div>
+</div>
+</div>
+<!-- Customer Service Section -->
+<div class="md:col-span-12 bg-surface-container-high rounded-xl p-8">
+<div class="flex flex-col md:flex-row md:items-center justify-between gap-6">
+<div>
+<h4 class="font-headline-md text-headline-md mb-2">ฝ่ายบริการลูกค้า</h4>
+<p class="font-body-md text-label-md text-on-surface-variant">ต้องการความช่วยเหลือเกี่ยวกับการลงทะเบียนของคุณ? ผู้เชี่ยวชาญของเราพร้อมให้บริการออนไลน์</p>
+</div>
+<div class="flex flex-wrap gap-3">
+<button class="flex items-center gap-2 bg-on-tertiary border border-outline-variant px-5 py-3 rounded-lg font-label-md text-label-md hover:bg-surface-container-low transition-colors active:scale-95">
+<span class="material-symbols-outlined !text-xl">call</span>
+              โทรศัพท์
+            </button>
+<button class="flex items-center gap-2 bg-on-tertiary border border-outline-variant px-5 py-3 rounded-lg font-label-md text-label-md hover:bg-surface-container-low transition-colors active:scale-95">
+<span class="material-symbols-outlined !text-xl">mail</span>
+              อีเมล
+            </button>
+<button class="flex items-center gap-2 bg-secondary text-on-primary px-5 py-3 rounded-lg font-label-md text-label-md hover:opacity-90 transition-opacity active:scale-95 shadow-md">
+<span class="material-symbols-outlined !text-xl">chat</span>
+              แชทสด
+            </button>
+</div>
+</div>
+</div>
+</div>
+<!-- Image Visual Filler -->
+<div class="w-full h-48 md:h-64 rounded-xl overflow-hidden mb-10">
+<img class="w-full h-full object-cover grayscale opacity-50 hover:grayscale-0 transition-all duration-700" data-alt="โถงทางเข้าสำนักงานบริษัทที่สะอาดและเป็นมืออาชีพ พร้อมหน้าต่างบานใหญ่และสถาปัตยกรรมแบบมินิมอล ฉากอาบด้วยแสงแดดธรรมชาติ เน้นบรรยากาศที่สว่างและโปร่งสบาย วัสดุระดับไฮเอนด์ เช่น หินอ่อนและกระจก สร้างลุคที่ทันสมัยและหรูหราสอดคล้องกับแบรนด์ระดับพรีเมียม อารมณ์โดยรวมเงียบสงบ มีประสิทธิภาพ และประสบความสำเร็จ สะท้อนถึงความมั่นใจทางเทคนิคและการจัดระเบียบอย่างเป็นระบบ" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCru7Gr69U5uWHzdWJp3C-vxGtUHGQ1-5CZAk2MbsGrMEefIrjMjqYpmiJxDkoll-3YUQcrayStp40ZqAui6tNtqaVJM74d4bDlgM2gid0jaLNYLyi7wWfouyG5mA5qBCXaCoJjwEalGGQNN61bpQDW9-DemJsSSsrc2Xrn3WuNG1vbsphhpED1LDcoeG47M23LCJKzxh6QJ2NEuNS3MEPL9A0Z60VrVqzY1GUqRs7FSAG7tab97jcd1CkXMMHcY-_m0VgORl_a4zQ"/>
+</div>
+</main>
+<!-- Footer -->
+<footer class="w-full py-8 px-margin-mobile md:px-gutter-desktop flex flex-col md:flex-row justify-between items-center gap-4 bg-surface-container-low dark:bg-surface-container-highest border-t border-outline-variant">
+<div class="font-headline-md text-on-surface text-label-md">ProRegis Corporate</div>
+<div class="flex gap-6">
+<a class="font-body-md text-label-md text-on-surface-variant hover:text-secondary transition-colors cursor-pointer" href="#">ฝ่ายสนับสนุน</a>
+<a class="font-body-md text-label-md text-on-surface-variant hover:text-secondary transition-colors cursor-pointer" href="#">ข้อกำหนดการให้บริการ</a>
+<a class="font-body-md text-label-md text-on-surface-variant hover:text-secondary transition-colors cursor-pointer" href="#">นโยบายความเป็นส่วนตัว</a>
+</div>
+<p class="font-body-md text-label-md text-on-surface-variant">© 2024 ProRegis Corporate สงวนลิขสิทธิ์</p>
+</footer>
+<!-- BottomNavBar -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center h-16 pb-safe bg-surface dark:bg-surface-container-lowest border-t border-outline-variant dark:border-outline shadow-lg md:hidden">
+<div class="flex flex-col items-center justify-center text-outline dark:text-outline-variant hover:text-primary dark:hover:text-primary-fixed active:opacity-80 transition-opacity cursor-pointer">
+<span class="material-symbols-outlined">info</span>
+<span class="font-label-sm text-label-sm">ข้อมูล</span>
+</div>
+<div class="flex flex-col items-center justify-center text-outline dark:text-outline-variant hover:text-primary dark:hover:text-primary-fixed active:opacity-80 transition-opacity cursor-pointer">
+<span class="material-symbols-outlined">fact_check</span>
+<span class="font-label-sm text-label-sm">ความยินยอม</span>
+</div>
+<div class="flex flex-col items-center justify-center text-outline dark:text-outline-variant hover:text-primary dark:hover:text-primary-fixed active:opacity-80 transition-opacity cursor-pointer">
+<span class="material-symbols-outlined">app_registration</span>
+<span class="font-label-sm text-label-sm">ลงทะเบียน</span>
+</div>
+<div class="flex flex-col items-center justify-center text-secondary dark:text-secondary-container font-semibold active:opacity-80 transition-opacity cursor-pointer">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">check_circle</span>
+<span class="font-label-sm text-label-sm">สำเร็จ</span>
+</div>
+</nav>
+<script>
+    // Micro-interaction for feedback
+    document.querySelectorAll('button, a, .active\\:scale-95').forEach(el => {
+      el.addEventListener('touchstart', () => el.classList.add('scale-95'));
+      el.addEventListener('touchend', () => el.classList.remove('scale-95'));
+    });
+
+    // Simple toast for simulated actions
+    const showToast = (msg) => {
+      const toast = document.createElement('div');
+      toast.className = 'fixed top-20 left-1/2 -translate-x-1/2 bg-inverse-surface text-inverse-on-surface px-6 py-3 rounded-full shadow-lg z-[100] font-label-md text-label-md animate-success text-center min-w-[200px]';
+      toast.textContent = msg;
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    };
+
+    document.querySelectorAll('button').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const text = e.target.textContent.trim();
+        if (text === 'แชทสด' || text === 'Live Chat') showToast('กำลังเชื่อมต่อกับผู้เชี่ยวชาญ...');
+        if (text === 'อีเมล' || text === 'Email') showToast('กำลังเปิดโปรแกรมจัดการเมล...');
+      });
+    });
+  </script>
+</body></html>

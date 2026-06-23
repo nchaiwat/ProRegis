@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+
+<html class="light" lang="th"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
+<title>ProRegis - ลงทะเบียนลูกค้า</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        body { font-family: 'Inter', sans-serif; -webkit-tap-highlight-color: transparent; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+        .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom); }
+        .glass-card { background: rgba(255, 255, 255, 0.8); backdrop-filter: blur(8px); }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "on-tertiary": "#ffffff",
+                      "surface-bright": "#f7f9fb",
+                      "inverse-on-surface": "#eff1f3",
+                      "on-error-container": "#93000a",
+                      "primary": "#000000",
+                      "on-background": "#191c1e",
+                      "error": "#ba1a1a",
+                      "outline": "#76777d",
+                      "on-error": "#ffffff",
+                      "on-tertiary-fixed-variant": "#38485d",
+                      "primary-container": "#131b2e",
+                      "surface": "#f7f9fb",
+                      "secondary-container": "#39b8fd",
+                      "on-primary": "#ffffff",
+                      "on-secondary-fixed": "#001e2f",
+                      "secondary-fixed-dim": "#89ceff",
+                      "on-tertiary-container": "#75859d",
+                      "tertiary-fixed-dim": "#b7c8e1",
+                      "tertiary-container": "#0b1c30",
+                      "on-tertiary-fixed": "#0b1c30",
+                      "primary-fixed-dim": "#bec6e0",
+                      "inverse-surface": "#2d3133",
+                      "on-secondary": "#ffffff",
+                      "secondary": "#006591",
+                      "surface-variant": "#e0e3e5",
+                      "on-secondary-container": "#004666",
+                      "on-primary-fixed": "#131b2e",
+                      "secondary-fixed": "#c9e6ff",
+                      "surface-container-lowest": "#ffffff",
+                      "on-surface": "#191c1e",
+                      "tertiary-fixed": "#d3e4fe",
+                      "surface-container-highest": "#e0e3e5",
+                      "surface-tint": "#565e74",
+                      "error-container": "#ffdad6",
+                      "primary-fixed": "#dae2fd",
+                      "surface-dim": "#d8dadc",
+                      "tertiary": "#000000",
+                      "on-primary-container": "#7c839b",
+                      "background": "#f7f9fb",
+                      "outline-variant": "#c6c6cd",
+                      "on-primary-fixed-variant": "#3f465c",
+                      "surface-container-low": "#f2f4f6",
+                      "on-surface-variant": "#45464d",
+                      "inverse-primary": "#bec6e0",
+                      "surface-container-high": "#e6e8ea",
+                      "surface-container": "#eceef0",
+                      "on-secondary-fixed-variant": "#004c6e"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.25rem",
+                      "lg": "0.5rem",
+                      "xl": "0.75rem",
+                      "full": "9999px"
+              },
+              "spacing": {
+                      "margin-mobile": "16px",
+                      "margin-desktop": "auto",
+                      "base": "4px",
+                      "gutter-desktop": "24px",
+                      "gutter-mobile": "16px",
+                      "container-max-width": "1200px"
+              },
+              "fontFamily": {
+                      "headline-lg-mobile": ["Inter"],
+                      "label-sm": ["Inter"],
+                      "label-md": ["Inter"],
+                      "headline-md": ["Inter"],
+                      "headline-lg": ["Inter"],
+                      "body-md": ["Inter"],
+                      "body-lg": ["Inter"]
+              },
+              "fontSize": {
+                      "headline-lg-mobile": ["26px", {"lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "700"}],
+                      "label-sm": ["12px", {"lineHeight": "16px", "fontWeight": "600"}],
+                      "label-md": ["14px", {"lineHeight": "20px", "letterSpacing": "0.01em", "fontWeight": "500"}],
+                      "headline-md": ["24px", {"lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                      "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                      "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                      "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}]
+              }
+            },
+          },
+        }
+    </script>
+<style>
+        body {
+          min-height: max(884px, 100dvh);
+        }
+    </style>
+</head>
+<body class="bg-surface-bright text-on-surface min-h-screen pb-24">
+<!-- TopAppBar -->
+<header class="fixed top-0 left-0 w-full z-50 flex justify-between items-center px-margin-mobile md:px-gutter-desktop h-16 bg-surface-bright dark:bg-inverse-surface border-b border-outline-variant dark:border-outline shadow-sm">
+<div class="flex items-center gap-3">
+<span class="material-symbols-outlined text-primary dark:text-inverse-primary">qr_code_scanner</span>
+<h1 class="font-headline-md text-headline-md-mobile md:text-headline-md text-primary dark:text-inverse-primary">ProRegis</h1>
+</div>
+<button class="w-10 h-10 flex items-center justify-center rounded-full hover:bg-surface-container-high dark:hover:bg-surface-container-highest transition-colors active:scale-95 duration-100">
+<span class="material-symbols-outlined text-on-surface-variant dark:text-surface-variant">home</span>
+</button>
+</header>
+<main class="pt-24 pb-12 px-margin-mobile md:px-margin-desktop max-w-[1200px] mx-auto">
+<!-- Progress Header -->
+<div class="mb-8 flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+<div>
+<span class="font-label-md text-label-md text-secondary uppercase tracking-wider">ขั้นตอนที่ 3 จาก 4</span>
+<h2 class="font-headline-lg-mobile md:font-headline-lg text-headline-lg-mobile md:text-headline-lg mt-1">ลงทะเบียนลูกค้า</h2>
+<p class="font-body-md text-body-md text-on-surface-variant mt-2">โปรดระบุข้อมูลส่วนตัวและข้อมูลการติดต่อสำหรับโปรไฟล์อย่างเป็นทางการของคุณ</p>
+</div>
+<div class="hidden md:flex gap-2 h-1 bg-surface-container rounded-full w-48 overflow-hidden">
+<div class="bg-secondary-container w-3/4 h-full rounded-full"></div>
+</div>
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+<!-- Main Form Card -->
+<div class="lg:col-span-8 bg-surface-container-lowest border border-outline-variant rounded-xl p-6 md:p-10 shadow-[0px_4px_12px_rgba(15,23,42,0.05)]">
+<form class="space-y-6" id="registration-form">
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<!-- First Name -->
+<div class="flex flex-col gap-2">
+<label class="font-label-md text-label-md text-on-surface" for="first_name">ชื่อ</label>
+<div class="relative">
+<input class="w-full h-12 px-4 bg-surface-container-low border-b-2 border-transparent focus:border-secondary focus:ring-0 rounded-t transition-all outline-none text-body-md font-body-md" id="first_name" name="first_name" placeholder="สมชาย" required="" type="text"/>
+<span class="validation-icon absolute right-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-on-tertiary-container opacity-0 transition-opacity">check_circle</span>
+</div>
+</div>
+<!-- Last Name -->
+<div class="flex flex-col gap-2">
+<label class="font-label-md text-label-md text-on-surface" for="last_name">นามสกุล</label>
+<div class="relative">
+<input class="w-full h-12 px-4 bg-surface-container-low border-b-2 border-transparent focus:border-secondary focus:ring-0 rounded-t transition-all outline-none text-body-md font-body-md" id="last_name" name="last_name" placeholder="ดีใจ" required="" type="text"/>
+<span class="validation-icon absolute right-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-on-tertiary-container opacity-0 transition-opacity">check_circle</span>
+</div>
+</div>
+</div>
+<!-- Address -->
+<div class="flex flex-col gap-2">
+<label class="font-label-md text-label-md text-on-surface" for="address">ที่อยู่ปัจจุบัน</label>
+<div class="relative">
+<textarea class="w-full p-4 bg-surface-container-low border-b-2 border-transparent focus:border-secondary focus:ring-0 rounded-t transition-all outline-none text-body-md font-body-md resize-none" id="address" name="address" placeholder="ระบุที่อยู่ปัจจุบันของคุณโดยละเอียด..." required="" rows="3"></textarea>
+<span class="validation-icon absolute right-3 top-4 material-symbols-outlined text-on-tertiary-container opacity-0 transition-opacity">check_circle</span>
+</div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<!-- Province -->
+<div class="flex flex-col gap-2">
+<label class="font-label-md text-label-md text-on-surface" for="province">จังหวัด</label>
+<div class="relative">
+<select class="w-full h-12 px-4 bg-surface-container-low border-b-2 border-transparent focus:border-secondary focus:ring-0 rounded-t transition-all outline-none text-body-md font-body-md appearance-none" id="province" name="province" required="">
+<option disabled="" selected="" value="">เลือกจังหวัด</option>
+<option value="BKK">กรุงเทพมหานคร</option>
+<option value="CN">เชียงใหม่</option>
+<option value="PK">ภูเก็ต</option>
+<option value="KK">ขอนแก่น</option>
+</select>
+<span class="absolute right-3 top-1/2 -translate-y-1/2 material-symbols-outlined pointer-events-none text-outline">expand_more</span>
+</div>
+</div>
+<!-- Postal Code -->
+<div class="flex flex-col gap-2">
+<label class="font-label-md text-label-md text-on-surface" for="postal_code">รหัสไปรษณีย์</label>
+<div class="relative">
+<input class="w-full h-12 px-4 bg-surface-container-low border-b-2 border-transparent focus:border-secondary focus:ring-0 rounded-t transition-all outline-none text-body-md font-body-md" id="postal_code" name="postal_code" placeholder="10100" required="" type="text"/>
+<span class="validation-icon absolute right-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-on-tertiary-container opacity-0 transition-opacity">check_circle</span>
+</div>
+</div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<!-- Mobile Phone -->
+<div class="flex flex-col gap-2">
+<label class="font-label-md text-label-md text-on-surface" for="phone">เบอร์โทรศัพท์มือถือ</label>
+<div class="flex h-12 bg-surface-container-low border-b-2 border-transparent focus-within:border-secondary transition-all rounded-t">
+<div class="px-4 flex items-center border-r border-outline-variant text-on-surface-variant font-label-md">
+                                    +66
+                                </div>
+<div class="relative flex-1">
+<input class="w-full h-full px-4 bg-transparent border-none focus:ring-0 outline-none text-body-md font-body-md" id="phone" name="phone" placeholder="08x-xxx-xxxx" required="" type="tel"/>
+<span class="validation-icon absolute right-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-on-tertiary-container opacity-0 transition-opacity">check_circle</span>
+</div>
+</div>
+</div>
+<!-- Email -->
+<div class="flex flex-col gap-2">
+<label class="font-label-md text-label-md text-on-surface" for="email">อีเมล</label>
+<div class="relative">
+<input class="w-full h-12 px-4 bg-surface-container-low border-b-2 border-transparent focus:border-secondary focus:ring-0 rounded-t transition-all outline-none text-body-md font-body-md" id="email" name="email" placeholder="john.doe@example.com" required="" type="email"/>
+<span class="validation-icon absolute right-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-on-tertiary-container opacity-0 transition-opacity">check_circle</span>
+</div>
+</div>
+</div>
+<!-- Action Buttons -->
+<div class="pt-8 flex flex-col md:flex-row-reverse gap-4">
+<button class="flex-1 h-14 bg-secondary text-on-secondary rounded-lg font-label-md text-label-md shadow-md hover:bg-on-secondary-container transition-all active:scale-[0.98] flex items-center justify-center gap-2" type="submit">
+                            ส่งข้อมูลลงทะเบียน
+                            <span class="material-symbols-outlined text-[20px]">arrow_forward</span>
+</button>
+<button class="flex-1 h-14 border border-outline text-secondary rounded-lg font-label-md text-label-md hover:bg-surface-container transition-all active:scale-[0.98] flex items-center justify-center gap-2" type="button">
+<span class="material-symbols-outlined text-[20px]">arrow_back</span>
+                            ย้อนกลับ
+                        </button>
+</div>
+</form>
+</div>
+<!-- Contextual Info / Bento Items -->
+<div class="lg:col-span-4 space-y-6">
+<!-- Data Security Badge -->
+<div class="p-6 bg-surface-container border border-outline-variant rounded-xl flex flex-col items-center text-center">
+<div class="w-12 h-12 rounded-full bg-secondary-container flex items-center justify-center mb-4">
+<span class="material-symbols-outlined text-on-secondary-container">verified_user</span>
+</div>
+<h3 class="font-label-md text-label-md text-on-surface mb-2">ลงทะเบียนอย่างปลอดภัย</h3>
+<p class="font-body-md text-label-sm text-on-surface-variant">ข้อมูลของคุณได้รับการเข้ารหัสด้วยโปรโตคอล SSL 256 บิต เราให้ความสำคัญกับความเป็นส่วนตัวของคุณเป็นอันดับแรก</p>
+</div>
+<!-- Registration Summary Card -->
+<div class="p-6 bg-surface-container-lowest border border-outline-variant rounded-xl shadow-sm">
+<h3 class="font-label-md text-label-md text-on-surface mb-4">ขั้นตอนที่เหลือ</h3>
+<ul class="space-y-4">
+<li class="flex items-start gap-3 text-on-surface-variant">
+<span class="material-symbols-outlined text-secondary text-[20px]">check_circle</span>
+<span class="font-body-md text-label-md">ข้อมูลและคุณสมบัติ</span>
+</li>
+<li class="flex items-start gap-3 text-on-surface-variant">
+<span class="material-symbols-outlined text-secondary text-[20px]">check_circle</span>
+<span class="font-body-md text-label-md">ข้อตกลงและความยินยอม</span>
+</li>
+<li class="flex items-start gap-3">
+<div class="w-5 h-5 rounded-full border-2 border-secondary flex items-center justify-center">
+<div class="w-2 h-2 rounded-full bg-secondary"></div>
+</div>
+<span class="font-label-md text-label-md text-on-surface">รายละเอียดการลงทะเบียน</span>
+</li>
+<li class="flex items-start gap-3 text-outline">
+<span class="material-symbols-outlined text-[20px]">radio_button_unchecked</span>
+<span class="font-body-md text-label-md">ยืนยันผลการลงทะเบียน</span>
+</li>
+</ul>
+</div>
+<!-- Visual Asset -->
+<div class="relative aspect-square rounded-xl overflow-hidden shadow-sm group">
+<img alt="Professional workplace setup" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAcRWDFtalcBpD8Q-i1kHOI_2ETXjOpgB3wmuxLiEwFKinbnwioctWP39OGnCAI82XBCB7qp-wIleTcFjp7rwVbJjbWFMm6ezHny3789sZUYSIErx4ikxHVE8qWMlFaFrKxaF_p9p7Xxr8acyHk1cJc20X14OgdwdhuJXYA0Lvruj90pJpMbXxXfcKpDLsdUo8KXrKLzFk60Fadzi8taxCRXd2mk7kzUCBG3KFVEd-lh8kiZVjWHc4TVc-s4bZ72Mkn9RWkjzHDjO8"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-6">
+<p class="text-white font-label-md text-label-sm italic opacity-90">"เส้นทางที่เร็วที่สุดสู่มาตรฐานองค์กร"</p>
+</div>
+</div>
+</div>
+</div>
+</main>
+<!-- Footer -->
+<footer class="w-full py-8 px-margin-mobile md:px-gutter-desktop flex flex-col md:flex-row justify-between items-center gap-4 bg-surface-container-low dark:bg-surface-container-highest border-t border-outline-variant">
+<div class="font-headline-md text-on-surface">ProRegis</div>
+<p class="font-body-md text-label-md text-on-surface-variant dark:text-surface-variant text-center md:text-left">© 2024 ProRegis Corporate. สงวนลิขสิทธิ์ทั้งหมด</p>
+<div class="flex gap-6">
+<a class="text-on-surface-variant font-label-md text-label-md hover:text-secondary transition-colors" href="#">ช่วยเหลือ</a>
+<a class="text-on-surface-variant font-label-md text-label-md hover:text-secondary transition-colors" href="#">ข้อกำหนดการให้บริการ</a>
+<a class="text-on-surface-variant font-label-md text-label-md hover:text-secondary transition-colors" href="#">นโยบายความเป็นส่วนตัว</a>
+</div>
+</footer>
+<!-- BottomNavBar -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center h-16 pb-safe bg-surface dark:bg-surface-container-lowest border-t border-outline-variant dark:border-outline shadow-lg md:hidden">
+<div class="flex flex-col items-center justify-center text-outline dark:text-outline-variant hover:text-primary transition-opacity active:opacity-80">
+<span class="material-symbols-outlined">info</span>
+<span class="font-label-sm text-label-sm">ข้อมูล</span>
+</div>
+<div class="flex flex-col items-center justify-center text-outline dark:text-outline-variant hover:text-primary transition-opacity active:opacity-80">
+<span class="material-symbols-outlined">fact_check</span>
+<span class="font-label-sm text-label-sm">ความยินยอม</span>
+</div>
+<div class="flex flex-col items-center justify-center text-secondary dark:text-secondary-container font-semibold transition-opacity active:opacity-80">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">app_registration</span>
+<span class="font-label-sm text-label-sm">ลงทะเบียน</span>
+</div>
+<div class="flex flex-col items-center justify-center text-outline dark:text-outline-variant hover:text-primary transition-opacity active:opacity-80">
+<span class="material-symbols-outlined">check_circle</span>
+<span class="font-label-sm text-label-sm">สำเร็จ</span>
+</div>
+</nav>
+<script>
+        // Simple Real-time Validation Simulation
+        const formInputs = document.querySelectorAll('input, textarea, select');
+        
+        formInputs.forEach(input => {
+            input.addEventListener('input', (e) => {
+                const parent = input.closest('.relative');
+                if (!parent) return;
+                
+                const icon = parent.querySelector('.validation-icon');
+                
+                if (input.checkValidity() && input.value.trim() !== "") {
+                    input.classList.remove('border-transparent');
+                    input.classList.add('border-on-tertiary-container');
+                    if (icon) icon.classList.replace('opacity-0', 'opacity-100');
+                } else {
+                    input.classList.remove('border-on-tertiary-container');
+                    input.classList.add('border-transparent');
+                    if (icon) icon.classList.replace('opacity-100', 'opacity-0');
+                }
+            });
+        });
+
+        // Form Submit Handler
+        document.getElementById('registration-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            // In a real app, this would trigger navigation or an API call
+            alert('ข้อมูลการลงทะเบียนได้รับการตรวจสอบแล้ว กำลังไปยังขั้นตอนถัดไป...');
+        });
+    </script>
+</body></html>

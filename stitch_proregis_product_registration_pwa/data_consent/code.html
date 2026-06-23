@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, viewport-fit=cover" name="viewport"/>
+<title>ProRegis - PDPA Consent</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .safe-area-inset-bottom {
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+        .transition-all-200 {
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        /* Hide scrollbar for Chrome, Safari and Opera */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        /* Hide scrollbar for IE, Edge and Firefox */
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "on-tertiary": "#ffffff",
+                      "surface-bright": "#f7f9fb",
+                      "inverse-on-surface": "#eff1f3",
+                      "on-error-container": "#93000a",
+                      "primary": "#000000",
+                      "on-background": "#191c1e",
+                      "error": "#ba1a1a",
+                      "outline": "#76777d",
+                      "on-error": "#ffffff",
+                      "on-tertiary-fixed-variant": "#38485d",
+                      "primary-container": "#131b2e",
+                      "surface": "#f7f9fb",
+                      "secondary-container": "#39b8fd",
+                      "on-primary": "#ffffff",
+                      "on-secondary-fixed": "#001e2f",
+                      "secondary-fixed-dim": "#89ceff",
+                      "on-tertiary-container": "#75859d",
+                      "tertiary-fixed-dim": "#b7c8e1",
+                      "tertiary-container": "#0b1c30",
+                      "on-tertiary-fixed": "#0b1c30",
+                      "primary-fixed-dim": "#bec6e0",
+                      "inverse-surface": "#2d3133",
+                      "on-secondary": "#ffffff",
+                      "secondary": "#006591",
+                      "surface-variant": "#e0e3e5",
+                      "on-secondary-container": "#004666",
+                      "on-primary-fixed": "#131b2e",
+                      "secondary-fixed": "#c9e6ff",
+                      "surface-container-lowest": "#ffffff",
+                      "on-surface": "#191c1e",
+                      "tertiary-fixed": "#d3e4fe",
+                      "surface-container-highest": "#e0e3e5",
+                      "surface-tint": "#565e74",
+                      "error-container": "#ffdad6",
+                      "primary-fixed": "#dae2fd",
+                      "surface-dim": "#d8dadc",
+                      "tertiary": "#000000",
+                      "on-primary-container": "#7c839b",
+                      "background": "#f7f9fb",
+                      "outline-variant": "#c6c6cd",
+                      "on-primary-fixed-variant": "#3f465c",
+                      "surface-container-low": "#f2f4f6",
+                      "on-surface-variant": "#45464d",
+                      "inverse-primary": "#bec6e0",
+                      "surface-container-high": "#e6e8ea",
+                      "surface-container": "#eceef0",
+                      "on-secondary-fixed-variant": "#004c6e"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.25rem",
+                      "lg": "0.5rem",
+                      "xl": "0.75rem",
+                      "full": "9999px"
+              },
+              "spacing": {
+                      "margin-mobile": "16px",
+                      "margin-desktop": "auto",
+                      "base": "4px",
+                      "gutter-desktop": "24px",
+                      "gutter-mobile": "16px",
+                      "container-max-width": "1200px"
+              },
+              "fontFamily": {
+                      "headline-lg-mobile": ["Inter"],
+                      "label-sm": ["Inter"],
+                      "label-md": ["Inter"],
+                      "headline-md": ["Inter"],
+                      "headline-lg": ["Inter"],
+                      "body-md": ["Inter"],
+                      "body-lg": ["Inter"]
+              },
+              "fontSize": {
+                      "headline-lg-mobile": ["26px", {"lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "700"}],
+                      "label-sm": ["12px", {"lineHeight": "16px", "fontWeight": "600"}],
+                      "label-md": ["14px", {"lineHeight": "20px", "letterSpacing": "0.01em", "fontWeight": "500"}],
+                      "headline-md": ["24px", {"lineHeight": "32px", "letterSpacing": "-0.01em", "fontWeight": "600"}],
+                      "headline-lg": ["32px", {"lineHeight": "40px", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                      "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                      "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}]
+              }
+            },
+          },
+        }
+    </script>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-background min-h-screen flex flex-col">
+<!-- TopAppBar -->
+<header class="fixed top-0 left-0 w-full z-50 flex justify-between items-center px-margin-mobile md:px-gutter-desktop h-16 bg-surface-bright dark:bg-inverse-surface border-b border-outline-variant dark:border-outline shadow-sm">
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-primary dark:text-inverse-primary cursor-pointer active:scale-95 duration-100" data-icon="qr_code_scanner">qr_code_scanner</span>
+<h1 class="font-headline-md text-headline-md-mobile md:text-headline-md text-primary dark:text-inverse-primary">ProRegis</h1>
+</div>
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-on-surface-variant dark:text-surface-variant hover:bg-surface-container-high dark:hover:bg-surface-container-highest transition-colors p-2 rounded-full cursor-pointer active:scale-95 duration-100" data-icon="home">home</span>
+</div>
+</header>
+<!-- Main Content Canvas -->
+<main class="flex-grow pt-24 pb-32 px-margin-mobile md:px-gutter-desktop max-w-[1200px] mx-auto w-full">
+<!-- Step Indicator -->
+<div class="mb-8 flex items-center justify-center gap-2">
+<div class="h-1.5 w-12 rounded-full bg-secondary-container"></div>
+<div class="h-1.5 w-12 rounded-full bg-secondary"></div>
+<div class="h-1.5 w-12 rounded-full bg-surface-variant"></div>
+<div class="h-1.5 w-12 rounded-full bg-surface-variant"></div>
+</div>
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+<!-- Content Section -->
+<div class="lg:col-span-7 space-y-6">
+<section>
+<h2 class="font-headline-lg-mobile text-headline-lg-mobile md:font-headline-lg md:text-headline-lg text-on-surface mb-4">Privacy &amp; Consent</h2>
+<p class="font-body-lg text-body-lg text-on-surface-variant leading-relaxed">
+                        Your trust is our priority. At ProRegis, we implement enterprise-grade security measures to ensure your personal data is handled with the highest level of protection and in strict compliance with global PDPA standards.
+                    </p>
+</section>
+<!-- High-Trust Visual Card -->
+<div class="bg-surface-container-low rounded-xl p-6 border border-outline-variant flex gap-4 items-start">
+<span class="material-symbols-outlined text-secondary text-3xl" data-icon="security" style="font-variation-settings: 'FILL' 1;">security</span>
+<div>
+<h3 class="font-label-md text-label-md text-on-surface font-bold uppercase tracking-wider mb-1">Data Sovereignty</h3>
+<p class="font-body-md text-body-md text-on-surface-variant">
+                            We use end-to-end encryption for all stored data. Your information is only accessible by authorized personnel for the purpose of maintaining your professional registration.
+                        </p>
+</div>
+</div>
+<!-- Featured Image - Professional Trust Setting -->
+<div class="relative h-64 w-full rounded-2xl overflow-hidden shadow-sm group">
+<img alt="Cybersecurity and trust" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" data-alt="A clean, high-tech corporate office environment with a focus on a sleek glass partition displaying abstract digital security patterns and shield icons. The lighting is bright and professional, utilizing a palette of soft blues, whites, and deep blacks. The scene conveys a sense of modern data protection, transparency, and technical competence within a high-trust enterprise setting." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBLBVvHhfWpAO1bolHwTLE_q5k9VeR3lsUq72YND7xgcc_TXJnlmNeM2uqZ4pDrYwJUevs0139udJJzNYfgBiB2UOJQrU2gtLNoukbNQOEPUJghxaXkDurCyPULPMwlx6fhJKjw36yV8O6zo_MIJZPOPdNlY2m_-UoE4x1BovONtcIWwgb0eJV230kfL_sAb3WIgmIeOwBNNqnY0XaiGY8RyASfUffD_KTYXM_6eQVuKqUOUTw9QAb7WHng5JBSHUrAhbSXyokTyzg"/>
+<div class="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent"></div>
+</div>
+</div>
+<!-- Interaction Section (Sticky for Desktop) -->
+<div class="lg:col-span-5 lg:sticky lg:top-28">
+<div class="bg-surface-container-lowest rounded-xl p-8 border border-outline-variant shadow-[0px_4px_12px_rgba(15,23,42,0.05)] space-y-8">
+<div class="space-y-6">
+<!-- Mandatory Consent -->
+<label class="flex items-start gap-4 cursor-pointer group">
+<div class="relative flex items-center mt-1">
+<input class="peer h-6 w-6 rounded border-outline text-secondary focus:ring-secondary cursor-pointer transition-all" id="mandatory-consent" type="checkbox"/>
+<div class="absolute inset-0 bg-secondary rounded opacity-0 peer-checked:opacity-10 scale-0 peer-checked:scale-150 transition-all"></div>
+</div>
+<span class="font-body-md text-body-md text-on-surface leading-snug">
+                                I agree to the collection and processing of my personal data for product registration. <span class="text-error font-bold">*</span>
+</span>
+</label>
+<!-- Optional Consent -->
+<label class="flex items-start gap-4 cursor-pointer group">
+<div class="relative flex items-center mt-1">
+<input class="peer h-6 w-6 rounded border-outline text-secondary focus:ring-secondary cursor-pointer transition-all" type="checkbox"/>
+<div class="absolute inset-0 bg-secondary rounded opacity-0 peer-checked:opacity-10 scale-0 peer-checked:scale-150 transition-all"></div>
+</div>
+<span class="font-body-md text-body-md text-on-surface leading-snug">
+                                I would like to receive marketing communications and product updates. (Optional)
+                            </span>
+</label>
+</div>
+<div class="pt-4 border-t border-outline-variant">
+<a class="inline-flex items-center gap-2 text-secondary font-label-md text-label-md hover:underline active:opacity-70 transition-all" href="#">
+<span class="material-symbols-outlined text-[20px]" data-icon="policy">policy</span>
+                            Full Privacy Policy
+                        </a>
+</div>
+<!-- Action Button -->
+<button class="w-full h-12 rounded-lg bg-surface-variant text-outline-variant font-label-md text-label-md flex items-center justify-center gap-2 transition-all-200 cursor-not-allowed" disabled="" id="submit-button">
+<span>Continue to Registration</span>
+<span class="material-symbols-outlined text-[20px]" data-icon="arrow_forward">arrow_forward</span>
+</button>
+<p class="text-center font-label-sm text-label-sm text-outline">
+                        Step 2 of 4
+                    </p>
+</div>
+</div>
+</div>
+</main>
+<!-- Footer -->
+<footer class="w-full py-8 px-margin-mobile md:px-gutter-desktop flex flex-col md:flex-row justify-between items-center gap-4 bg-surface-container-low dark:bg-surface-container-highest border-t border-outline-variant">
+<div class="font-headline-md text-on-surface">ProRegis</div>
+<p class="font-body-md text-label-md text-on-surface-variant text-center">© 2024 ProRegis Corporate. All rights reserved.</p>
+<div class="flex gap-6">
+<span class="font-body-md text-label-md text-on-surface-variant hover:text-secondary transition-colors cursor-pointer">Support</span>
+<span class="font-body-md text-label-md text-on-surface-variant hover:text-secondary transition-colors cursor-pointer">Terms of Service</span>
+<span class="font-body-md text-label-md text-on-surface-variant hover:text-secondary transition-colors cursor-pointer">Privacy Policy</span>
+</div>
+</footer>
+<!-- BottomNavBar -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center h-16 pb-safe bg-surface dark:bg-surface-container-lowest border-t border-outline-variant dark:border-outline shadow-lg md:hidden">
+<div class="flex flex-col items-center justify-center text-outline dark:text-outline-variant hover:text-primary dark:hover:text-primary-fixed active:opacity-80 transition-opacity cursor-pointer">
+<span class="material-symbols-outlined" data-icon="info">info</span>
+<span class="font-label-sm text-label-sm">Info</span>
+</div>
+<div class="flex flex-col items-center justify-center text-secondary dark:text-secondary-container font-semibold hover:text-primary dark:hover:text-primary-fixed active:opacity-80 transition-opacity cursor-pointer">
+<span class="material-symbols-outlined" data-icon="fact_check" style="font-variation-settings: 'FILL' 1;">fact_check</span>
+<span class="font-label-sm text-label-sm">Consent</span>
+</div>
+<div class="flex flex-col items-center justify-center text-outline dark:text-outline-variant hover:text-primary dark:hover:text-primary-fixed active:opacity-80 transition-opacity cursor-pointer">
+<span class="material-symbols-outlined" data-icon="app_registration">app_registration</span>
+<span class="font-label-sm text-label-sm">Register</span>
+</div>
+<div class="flex flex-col items-center justify-center text-outline dark:text-outline-variant hover:text-primary dark:hover:text-primary-fixed active:opacity-80 transition-opacity cursor-pointer">
+<span class="material-symbols-outlined" data-icon="check_circle">check_circle</span>
+<span class="font-label-sm text-label-sm">Success</span>
+</div>
+</nav>
+<script>
+        const mandatoryCheckbox = document.getElementById('mandatory-consent');
+        const submitButton = document.getElementById('submit-button');
+
+        mandatoryCheckbox.addEventListener('change', (e) => {
+            if (e.target.checked) {
+                submitButton.disabled = false;
+                submitButton.classList.remove('bg-surface-variant', 'text-outline-variant', 'cursor-not-allowed');
+                submitButton.classList.add('bg-secondary', 'text-white', 'hover:bg-primary', 'cursor-pointer', 'shadow-md', 'active:scale-95');
+            } else {
+                submitButton.disabled = true;
+                submitButton.classList.add('bg-surface-variant', 'text-outline-variant', 'cursor-not-allowed');
+                submitButton.classList.remove('bg-secondary', 'text-white', 'hover:bg-primary', 'cursor-pointer', 'shadow-md', 'active:scale-95');
+            }
+        });
+
+        // Simple button click effect
+        submitButton.addEventListener('click', () => {
+            if (!submitButton.disabled) {
+                submitButton.innerHTML = `
+                    <svg class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>Processing...</span>
+                `;
+                setTimeout(() => {
+                    alert('Consent recorded. Proceeding to registration...');
+                    window.location.reload();
+                }, 1500);
+            }
+        });
+    </script>
+</body></html>
