@@ -46,6 +46,9 @@ services:
       - "traefik.http.middlewares.proregis-strip.stripprefix.prefixes=/api"
       - "traefik.http.routers.proregis-api.middlewares=proregis-strip"
       - "traefik.http.services.proregis-api.loadbalancer.server.port=3001"
+    networks:
+      - default
+      - root_default
     depends_on:
       - postgres
 
@@ -63,8 +66,15 @@ services:
       - "traefik.http.routers.proregis-web.tls=true"
       - "traefik.http.routers.proregis-web.tls.certresolver=myresolver"
       - "traefik.http.services.proregis-web.loadbalancer.server.port=3000"
+    networks:
+      - default
+      - root_default
     depends_on:
       - api
 
-volumes:
-  pgdata:
+networks:
+  default:
+  root_default:
+    external: true
+    name: root_default
+
