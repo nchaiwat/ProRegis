@@ -41,7 +41,7 @@ services:
       - "traefik.http.routers.proregis-api.rule=Host(`proregis.windowasia.com`) && PathPrefix(`/api`)"
       - "traefik.http.routers.proregis-api.entrypoints=websecure"
       - "traefik.http.routers.proregis-api.tls=true"
-      - "traefik.http.routers.proregis-api.tls.certresolver=myresolver"
+      - "traefik.http.routers.proregis-api.tls.certresolver=mytlschallenge"
       - "traefik.http.middlewares.proregis-strip.stripprefix.prefixes=/api"
       - "traefik.http.routers.proregis-api.middlewares=proregis-strip"
       - "traefik.http.services.proregis-api.loadbalancer.server.port=3001"
@@ -64,7 +64,7 @@ services:
       - "traefik.http.routers.proregis-web.rule=Host(`proregis.windowasia.com`)"
       - "traefik.http.routers.proregis-web.entrypoints=websecure"
       - "traefik.http.routers.proregis-web.tls=true"
-      - "traefik.http.routers.proregis-web.tls.certresolver=myresolver"
+      - "traefik.http.routers.proregis-web.tls.certresolver=mytlschallenge"
       - "traefik.http.services.proregis-web.loadbalancer.server.port=3000"
       - "traefik.docker.network=root_default"
     networks:
