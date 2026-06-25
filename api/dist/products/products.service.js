@@ -5,10 +5,37 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
     else for (var i = decorators.length - 1; i >= 0; i--) if (d = decorators[i]) r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r;
     return c > 3 && r && Object.defineProperty(target, key, r), r;
 };
+var __metadata = (this && this.__metadata) || function (k, v) {
+    if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
+};
+var __param = (this && this.__param) || function (paramIndex, decorator) {
+    return function (target, key) { decorator(target, key, paramIndex); }
+};
+var ProductsService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ProductsService = void 0;
 const common_1 = require("@nestjs/common");
-let ProductsService = class ProductsService {
+const typeorm_1 = require("@nestjs/typeorm");
+const typeorm_2 = require("typeorm");
+const config_1 = require("@nestjs/config");
+const product_metadata_entity_1 = require("./product-metadata.entity");
+const production_order_entity_1 = require("../production-order/production-order.entity");
+const sap_service_1 = require("../sap/sap.service");
+const backoffice_service_1 = require("../backoffice/backoffice.service");
+let ProductsService = ProductsService_1 = class ProductsService {
+    productMetadataRepository;
+    productionOrderRepository;
+    sapService;
+    backofficeService;
+    configService;
+    logger = new common_1.Logger(ProductsService_1.name);
+    constructor(productMetadataRepository, productionOrderRepository, sapService, backofficeService, configService) {
+        this.productMetadataRepository = productMetadataRepository;
+        this.productionOrderRepository = productionOrderRepository;
+        this.sapService = sapService;
+        this.backofficeService = backofficeService;
+        this.configService = configService;
+    }
     products = {
         'PR-2024-X1': {
             token: 'PR-2024-X1',
@@ -63,7 +90,7 @@ let ProductsService = class ProductsService {
                 th: [
                     { label: 'ประเภทกระจก', value: 'กระจกนิรภัยเทมเปอร์ (Tempered Glass 8mm)' },
                     { label: 'สีกระจก', value: 'สีเขียวตัดแสง (Green Tinted)' },
-                    { label: 'วัสดุเฟรม', value: 'อลูมิเนียมเกกพรีเมียมอบสีพิเศษ (Magnesium-Alloy)' },
+                    { label: 'วัสดุเฟรม', value: 'อลูมิเนียมเกรดพรีเมียมอบสีพิเศษ (Magnesium-Alloy)' },
                     { label: 'การป้องกันเสียง', value: 'ลดเสียงรบกวนสูงสุด 35 dB' }
                 ],
                 en: [
@@ -116,7 +143,7 @@ let ProductsService = class ProductsService {
                 th: [
                     'รับประกันตลอดอายุการใช้งานสำหรับกระจกและโครงสร้างหลักของประตู',
                     'ป้องกันรังสีความร้อนและความชื้น 100% ไม่บิดงอหรือเกิดตะไคร่น้ำ',
-                    'เฟรมแมกนีเซียม-อลูมิเนียมเกรดอวกาศพร้อมการเคลือบเงาสุดหรู',
+                    'เฟรมแมกนีเซียม-อลูมิเนียมเกรดอากาศยานพร้อมการเคลือบเงาสุดหรู',
                     'ซีลยาง EPDM 3 ชั้นรอบบานประตู ป้องกันลมฝุ่นและน้ำรั่วซึมสมบูรณ์แบบ'
                 ],
                 en: [
@@ -128,33 +155,109 @@ let ProductsService = class ProductsService {
             }
         }
     };
-    findOne(token) {
-        const product = this.products[token];
-        if (product) {
-            return product;
+    async downloadImageAsBase64(itemCode) {
+        const url1Template = this.configService.get('PRODUCT_IMAGE_URL_1', 'https://windowasia.com/wp-content/uploads/products/{itemCode}.png');
+        const url2Template = this.configService.get('PRODUCT_IMAGE_URL_2', 'https://windowasia.com/wp-content/uploads/products/{itemCode}.jpg');
+        const placeholder = 'https://images.unsplash.com/photo-1513694203232-719a280e022f?q=80&w=800&auto=format&fit=crop';
+        const url1 = url1Template.replace('{itemCode}', itemCode);
+        const url2 = url2Template.replace('{itemCode}', itemCode);
+        for (const url of [url1, url2]) {
+            try {
+                this.logger.log(`[PRODUCTS SERVICE] Attempting to download image from: ${url}`);
+                const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
+                if (response.ok) {
+                    const buffer = await response.arrayBuffer();
+                    const contentType = response.headers.get('content-type') || 'image/png';
+                    const base64Str = Buffer.from(buffer).toString('base64');
+                    this.logger.log(`[PRODUCTS SERVICE] Downloaded image successfully from ${url}`);
+                    return `data:${contentType};base64,${base64Str}`;
+                }
+            }
+            catch (err) {
+                this.logger.warn(`[PRODUCTS SERVICE] Failed to download image from ${url}: ${err.message}`);
+            }
+        }
+        this.logger.log(`[PRODUCTS SERVICE] Falling back to placeholder image for ${itemCode}`);
+        return placeholder;
+    }
+    async findOne(token) {
+        if (this.products[token]) {
+            return this.products[token];
+        }
+        let docNum = null;
+        let seqNum = null;
+        const decrypted = this.backofficeService.decryptToken(token);
+        if (decrypted) {
+            docNum = decrypted.docNum;
+            seqNum = decrypted.seqNum;
+        }
+        else {
+            if (token.length === 12 && /^\d+$/.test(token)) {
+                docNum = token.substring(0, 9);
+                seqNum = token.substring(9, 12);
+            }
+            else if (token.length === 9 && /^\d+$/.test(token)) {
+                docNum = token;
+            }
+        }
+        let itemCode = `FA00-D0112-200${docNum ? docNum.substring(5, 9) : '000'}`;
+        let itemName = `กระจกนิรภัยนำเข้า ซีรีส์ ${docNum ? docNum.substring(6, 9) : '000'}`;
+        let plannedQty = 100;
+        if (docNum) {
+            let po = await this.productionOrderRepository.findOne({ where: { docNum } });
+            if (!po) {
+                try {
+                    const sapInfo = await this.sapService.getProductionOrder(docNum);
+                    po = this.productionOrderRepository.create({
+                        docNum,
+                        itemCode: sapInfo.itemCode,
+                        itemName: sapInfo.itemName,
+                        plannedQty: sapInfo.plannedQty,
+                    });
+                    await this.productionOrderRepository.save(po);
+                }
+                catch (err) {
+                    this.logger.error(`[PRODUCTS SERVICE] Failed to fetch production order from SAP: ${err.message}`);
+                }
+            }
+            if (po) {
+                itemCode = po.itemCode;
+                itemName = po.itemName || itemName;
+                plannedQty = po.plannedQty || plannedQty;
+            }
+        }
+        let metadata = await this.productMetadataRepository.findOne({ where: { itemCode } });
+        if (!metadata) {
+            const imageBase64 = await this.downloadImageAsBase64(itemCode);
+            metadata = this.productMetadataRepository.create({
+                itemCode,
+                itemName,
+                imageBase64,
+            });
+            await this.productMetadataRepository.save(metadata);
         }
         return {
             token: token,
-            code: token,
-            modelTh: 'กระจกหน้าต่างอลูมิเนียมนำเข้าซีรีส์ย่อย',
-            modelEn: 'Imported Aluminum Window Sub-Series',
+            code: itemCode,
+            modelTh: metadata.itemName || 'กระจกหน้าต่างอลูมิเนียมนำเข้าซีรีส์ย่อย',
+            modelEn: metadata.itemName || 'Imported Aluminum Window Sub-Series',
             manufactureDate: 'ก.พ. 2026',
-            lotNo: 'LOT-992-GEN',
-            poNo: 'PO-88390',
-            imageUrl: 'https://images.unsplash.com/photo-1513694203232-719a280e022f?q=80&w=800&auto=format&fit=crop',
+            lotNo: docNum ? `LOT-${docNum}` : 'LOT-992-GEN',
+            poNo: docNum || 'PO-88390',
+            imageUrl: metadata.imageBase64 || 'https://images.unsplash.com/photo-1513694203232-719a280e022f?q=80&w=800&auto=format&fit=crop',
             warrantyPeriod: 'ตลอดอายุการใช้งาน (Lifetime Warranty)',
             specs: {
                 th: [
-                    { label: 'รหัสสินค้าสากล', value: token },
+                    { label: 'เลขที่ใบสั่งผลิต', value: docNum || '-' },
+                    { label: 'ลำดับที่', value: seqNum ? `ชิ้นที่ ${parseInt(seqNum, 10)}` : '-' },
                     { label: 'วันที่ผลิต', value: 'ก.พ. 2026' },
                     { label: 'มาตรฐานควบคุม', value: 'ISO 9001:2015' },
-                    { label: 'สีกรอบวงกบ', value: 'อบสีดำเมทัลลิก (Metallic Black)' }
                 ],
                 en: [
-                    { label: 'Global SKU', value: token },
+                    { label: 'Production Order', value: docNum || '-' },
+                    { label: 'Unit No.', value: seqNum ? `Unit ${parseInt(seqNum, 10)}` : '-' },
                     { label: 'Manufacture Date', value: 'Feb 2026' },
                     { label: 'Compliance Standard', value: 'ISO 9001:2015' },
-                    { label: 'Frame Color', value: 'Metallic Black Powder Coated' }
                 ]
             },
             features: {
@@ -173,7 +276,14 @@ let ProductsService = class ProductsService {
     }
 };
 exports.ProductsService = ProductsService;
-exports.ProductsService = ProductsService = __decorate([
-    (0, common_1.Injectable)()
+exports.ProductsService = ProductsService = ProductsService_1 = __decorate([
+    (0, common_1.Injectable)(),
+    __param(0, (0, typeorm_1.InjectRepository)(product_metadata_entity_1.ProductMetadata)),
+    __param(1, (0, typeorm_1.InjectRepository)(production_order_entity_1.ProductionOrder)),
+    __metadata("design:paramtypes", [typeorm_2.Repository,
+        typeorm_2.Repository,
+        sap_service_1.SapService,
+        backoffice_service_1.BackofficeService,
+        config_1.ConfigService])
 ], ProductsService);
 //# sourceMappingURL=products.service.js.map

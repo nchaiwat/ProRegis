@@ -264,8 +264,21 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
     }
   }, []);
 
+  const isValidTokenFormat = (t: string): boolean => {
+    if (t === "PR-2024-X1" || t === "WA-GLASS-7729" || t === "WA-LIFETIME-GLASS") {
+      return true;
+    }
+    const base64UrlRegex = /^[A-Za-z0-9\-_]+$/;
+    return base64UrlRegex.test(t) && t.length >= 20 && t.length <= 40;
+  };
+
   useEffect(() => {
     async function fetchProduct() {
+      if (!isValidTokenFormat(token)) {
+        setDecryptError("INVALID_TOKEN");
+        return;
+      }
+
       let resolvedDocNum: string | null = null;
       let resolvedSeqNum: string | null = null;
 
@@ -283,7 +296,13 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
             resolvedSeqNum = decryptData.seqNum;
             setDocNum(decryptData.docNum);
             setSeqNum(decryptData.seqNum);
+          } else {
+            setDecryptError("INVALID_TOKEN");
+            return;
           }
+        } else {
+          setDecryptError("INVALID_TOKEN");
+          return;
         }
       } catch (err) {
         console.warn("Decrypt API not reachable, treating token as plain.", err);
@@ -363,6 +382,38 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "instant" });
   }, [step]);
+
+  if (decryptError) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-surface-bright p-4">
+        <div className="max-w-[450px] w-full bg-white rounded-2xl border border-outline-variant p-8 shadow-lg text-center space-y-6 animate-fade-in">
+          <div className="w-16 h-16 bg-error/10 rounded-full flex items-center justify-center mx-auto">
+            <span className="material-symbols-outlined text-error text-4xl">error</span>
+          </div>
+          <div className="space-y-2">
+            <h2 className="font-bold text-xl text-primary">
+              {lang === "th" ? "เกิดข้อผิดพลาด" : "Error Occurred"}
+            </h2>
+            <p className="text-sm text-on-surface-variant leading-relaxed">
+              {lang === "th" 
+                ? "ขออภัยครับ รหัส QR นี้ไม่ใช่รหัสสแกนรับประกันของ Window Asia กรุณาตรวจสอบ QR Code รับประกันที่ถูกต้อง แล้วลองสแกนใหม่อีกครั้ง"
+                : "Sorry, this QR code is not a valid Window Asia warranty registration code. Please inspect the correct warranty QR code and try again."
+              }
+            </p>
+          </div>
+          <div className="pt-2">
+            <button
+              onClick={() => setShowScanner(true)}
+              className="w-full h-12 bg-secondary text-white font-bold rounded-xl hover:opacity-95 active:scale-[0.98] transition-all cursor-pointer flex items-center justify-center gap-2"
+            >
+              <span className="material-symbols-outlined text-[20px]">qr_code_scanner</span>
+              <span>{lang === "th" ? "ลองใหม่อีกครั้ง" : "Try Again"}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!product) {
     return (
@@ -1226,8 +1277,8 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
                   
                   {getWarrantyExpiryString(product.warrantyPeriod, new Date(), lang) === "LIFETIME" ? (
                     <div className="flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/20 px-4 py-2 rounded-full text-xs font-bold text-amber-700">
-                      <span className="material-symbols-outlined text-sm text-amber-600 animate-pulse">workspace_premium</span>
-                      <span>{lang === "th" ? "หมดอายุ: ตลอดอายุการใช้งาน" : "Expiry: Lifetime"}</span>
+                      <span className="material-symbols-outlined text-sm text-amber-600">workspace_premium</span>
+                      <span>{lang === "th" ? "รับประกัน: ตลอดอายุการใช้งาน (Lifetime)" : "Warranty: Lifetime"}</span>
                     </div>
                   ) : (
                     <div className="flex items-center gap-1.5 bg-surface-container-low px-4 py-2 rounded-full text-xs font-semibold text-on-surface">

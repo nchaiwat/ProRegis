@@ -1,3 +1,9 @@
+import { Repository } from 'typeorm';
+import { ConfigService } from '@nestjs/config';
+import { ProductMetadata } from './product-metadata.entity';
+import { ProductionOrder } from '../production-order/production-order.entity';
+import { SapService } from '../sap/sap.service';
+import { BackofficeService } from '../backoffice/backoffice.service';
 export interface Product {
     token: string;
     code: string;
@@ -24,6 +30,14 @@ export interface Product {
     };
 }
 export declare class ProductsService {
+    private readonly productMetadataRepository;
+    private readonly productionOrderRepository;
+    private readonly sapService;
+    private readonly backofficeService;
+    private readonly configService;
+    private readonly logger;
+    constructor(productMetadataRepository: Repository<ProductMetadata>, productionOrderRepository: Repository<ProductionOrder>, sapService: SapService, backofficeService: BackofficeService, configService: ConfigService);
     private readonly products;
-    findOne(token: string): Product;
+    private downloadImageAsBase64;
+    findOne(token: string): Promise<Product>;
 }

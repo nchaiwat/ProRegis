@@ -20,7 +20,7 @@ let ProductsController = class ProductsController {
     constructor(productsService) {
         this.productsService = productsService;
     }
-    findOne(token) {
+    async findOne(token) {
         return this.productsService.findOne(token);
     }
 };
@@ -30,7 +30,7 @@ __decorate([
     __param(0, (0, common_1.Param)('token')),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [String]),
-    __metadata("design:returntype", Object)
+    __metadata("design:returntype", Promise)
 ], ProductsController.prototype, "findOne", null);
 exports.ProductsController = ProductsController = __decorate([
     (0, common_1.Controller)('products'),

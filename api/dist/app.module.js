@@ -27,6 +27,7 @@ const user_entity_1 = require("./users/user.entity");
 const role_permission_entity_1 = require("./users/role-permission.entity");
 const audit_log_entity_1 = require("./audit/audit-log.entity");
 const production_order_entity_1 = require("./production-order/production-order.entity");
+const product_metadata_entity_1 = require("./products/product-metadata.entity");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -53,7 +54,7 @@ exports.AppModule = AppModule = __decorate([
                         username,
                         password,
                         database,
-                        entities: [registration_entity_1.Registration, generation_log_entity_1.GenerationLog, user_entity_1.User, audit_log_entity_1.AuditLog, production_order_entity_1.ProductionOrder, role_permission_entity_1.RolePermission],
+                        entities: [registration_entity_1.Registration, generation_log_entity_1.GenerationLog, user_entity_1.User, audit_log_entity_1.AuditLog, production_order_entity_1.ProductionOrder, role_permission_entity_1.RolePermission, product_metadata_entity_1.ProductMetadata],
                         synchronize: true,
                     };
                 },

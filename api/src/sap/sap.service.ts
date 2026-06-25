@@ -144,16 +144,16 @@ export class SapService implements OnModuleInit {
       this.logger.log(`[SAP SERVICE] Fetching Production Order from SAP Service Layer: DocNum=${docNum}`);
       
       // Query Production Order by DocumentNumber
-      const result = await this.getRequest(`/ProductionOrders?$filter=DocumentNumber eq ${parseInt(docNum, 10)}&$select=DocumentNumber,ItemNo,ProdName,PlannedQty`);
+      const result = await this.getRequest(`/ProductionOrders?$filter=DocumentNumber eq ${parseInt(docNum, 10)}&$select=DocumentNumber,ItemNo,ProductDescription,PlannedQuantity`);
       
       if (result && result.value && result.value.length > 0) {
         const po = result.value[0];
         
-        this.logger.log(`[SAP SERVICE] Found Production Order: ${po.ItemNo} (${po.ProdName}), PlannedQty: ${po.PlannedQty}`);
+        this.logger.log(`[SAP SERVICE] Found Production Order: ${po.ItemNo} (${po.ProductDescription}), PlannedQty: ${po.PlannedQuantity}`);
         return {
           itemCode: po.ItemNo,
-          itemName: po.ProdName || 'กระจกนิรภัยนำเข้าซีรีส์มาตรฐาน',
-          plannedQty: Math.max(1, Math.round(po.PlannedQty || 100)),
+          itemName: po.ProductDescription || 'กระจกนิรภัยนำเข้าซีรีส์มาตรฐาน',
+          plannedQty: Math.max(1, Math.round(po.PlannedQuantity || 100)),
         };
       }
 

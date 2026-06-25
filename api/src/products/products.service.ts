@@ -1,4 +1,11 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { ConfigService } from '@nestjs/config';
+import { ProductMetadata } from './product-metadata.entity';
+import { ProductionOrder } from '../production-order/production-order.entity';
+import { SapService } from '../sap/sap.service';
+import { BackofficeService } from '../backoffice/backoffice.service';
 
 export interface Product {
   token: string;
@@ -22,6 +29,18 @@ export interface Product {
 
 @Injectable()
 export class ProductsService {
+  private readonly logger = new Logger(ProductsService.name);
+
+  constructor(
+    @InjectRepository(ProductMetadata)
+    private readonly productMetadataRepository: Repository<ProductMetadata>,
+    @InjectRepository(ProductionOrder)
+    private readonly productionOrderRepository: Repository<ProductionOrder>,
+    private readonly sapService: SapService,
+    private readonly backofficeService: BackofficeService,
+    private readonly configService: ConfigService,
+  ) {}
+
   private readonly products: Record<string, Product> = {
     'PR-2024-X1': {
       token: 'PR-2024-X1',
@@ -76,7 +95,7 @@ export class ProductsService {
         th: [
           { label: 'ประเภทกระจก', value: 'กระจกนิรภัยเทมเปอร์ (Tempered Glass 8mm)' },
           { label: 'สีกระจก', value: 'สีเขียวตัดแสง (Green Tinted)' },
-          { label: 'วัสดุเฟรม', value: 'อลูมิเนียมเกกพรีเมียมอบสีพิเศษ (Magnesium-Alloy)' },
+          { label: 'วัสดุเฟรม', value: 'อลูมิเนียมเกรดพรีเมียมอบสีพิเศษ (Magnesium-Alloy)' },
           { label: 'การป้องกันเสียง', value: 'ลดเสียงรบกวนสูงสุด 35 dB' }
         ],
         en: [
@@ -129,7 +148,7 @@ export class ProductsService {
         th: [
           'รับประกันตลอดอายุการใช้งานสำหรับกระจกและโครงสร้างหลักของประตู',
           'ป้องกันรังสีความร้อนและความชื้น 100% ไม่บิดงอหรือเกิดตะไคร่น้ำ',
-          'เฟรมแมกนีเซียม-อลูมิเนียมเกรดอวกาศพร้อมการเคลือบเงาสุดหรู',
+          'เฟรมแมกนีเซียม-อลูมิเนียมเกรดอากาศยานพร้อมการเคลือบเงาสุดหรู',
           'ซีลยาง EPDM 3 ชั้นรอบบานประตู ป้องกันลมฝุ่นและน้ำรั่วซึมสมบูรณ์แบบ'
         ],
         en: [
@@ -142,35 +161,116 @@ export class ProductsService {
     }
   };
 
-  findOne(token: string): Product {
-    const product = this.products[token];
-    if (product) {
-      return product;
+  private async downloadImageAsBase64(itemCode: string): Promise<string> {
+    const url1Template = this.configService.get<string>('PRODUCT_IMAGE_URL_1', 'https://windowasia.com/wp-content/uploads/products/{itemCode}.png');
+    const url2Template = this.configService.get<string>('PRODUCT_IMAGE_URL_2', 'https://windowasia.com/wp-content/uploads/products/{itemCode}.jpg');
+    const placeholder = 'https://images.unsplash.com/photo-1513694203232-719a280e022f?q=80&w=800&auto=format&fit=crop';
+
+    const url1 = url1Template.replace('{itemCode}', itemCode);
+    const url2 = url2Template.replace('{itemCode}', itemCode);
+
+    for (const url of [url1, url2]) {
+      try {
+        this.logger.log(`[PRODUCTS SERVICE] Attempting to download image from: ${url}`);
+        const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
+        if (response.ok) {
+          const buffer = await response.arrayBuffer();
+          const contentType = response.headers.get('content-type') || 'image/png';
+          const base64Str = Buffer.from(buffer).toString('base64');
+          this.logger.log(`[PRODUCTS SERVICE] Downloaded image successfully from ${url}`);
+          return `data:${contentType};base64,${base64Str}`;
+        }
+      } catch (err) {
+        this.logger.warn(`[PRODUCTS SERVICE] Failed to download image from ${url}: ${err.message}`);
+      }
     }
-    
-    // Dynamic default for unregistered/new tokens
+
+    this.logger.log(`[PRODUCTS SERVICE] Falling back to placeholder image for ${itemCode}`);
+    return placeholder;
+  }
+
+  async findOne(token: string): Promise<Product> {
+    if (this.products[token]) {
+      return this.products[token];
+    }
+
+    let docNum: string | null = null;
+    let seqNum: string | null = null;
+
+    const decrypted = this.backofficeService.decryptToken(token);
+    if (decrypted) {
+      docNum = decrypted.docNum;
+      seqNum = decrypted.seqNum;
+    } else {
+      if (token.length === 12 && /^\d+$/.test(token)) {
+        docNum = token.substring(0, 9);
+        seqNum = token.substring(9, 12);
+      } else if (token.length === 9 && /^\d+$/.test(token)) {
+        docNum = token;
+      }
+    }
+
+    let itemCode = `FA00-D0112-200${docNum ? docNum.substring(5, 9) : '000'}`;
+    let itemName = `กระจกนิรภัยนำเข้า ซีรีส์ ${docNum ? docNum.substring(6, 9) : '000'}`;
+    let plannedQty = 100;
+
+    if (docNum) {
+      let po = await this.productionOrderRepository.findOne({ where: { docNum } });
+      if (!po) {
+        try {
+          const sapInfo = await this.sapService.getProductionOrder(docNum);
+          po = this.productionOrderRepository.create({
+            docNum,
+            itemCode: sapInfo.itemCode,
+            itemName: sapInfo.itemName,
+            plannedQty: sapInfo.plannedQty,
+          });
+          await this.productionOrderRepository.save(po);
+        } catch (err) {
+          this.logger.error(`[PRODUCTS SERVICE] Failed to fetch production order from SAP: ${err.message}`);
+        }
+      }
+
+      if (po) {
+        itemCode = po.itemCode;
+        itemName = po.itemName || itemName;
+        plannedQty = po.plannedQty || plannedQty;
+      }
+    }
+
+    let metadata = await this.productMetadataRepository.findOne({ where: { itemCode } });
+    if (!metadata) {
+      const imageBase64 = await this.downloadImageAsBase64(itemCode);
+      metadata = this.productMetadataRepository.create({
+        itemCode,
+        itemName,
+        imageBase64,
+      });
+      await this.productMetadataRepository.save(metadata);
+    }
+
     return {
       token: token,
-      code: token,
-      modelTh: 'กระจกหน้าต่างอลูมิเนียมนำเข้าซีรีส์ย่อย',
-      modelEn: 'Imported Aluminum Window Sub-Series',
+      code: itemCode,
+      modelTh: metadata.itemName || 'กระจกหน้าต่างอลูมิเนียมนำเข้าซีรีส์ย่อย',
+      modelEn: metadata.itemName || 'Imported Aluminum Window Sub-Series',
       manufactureDate: 'ก.พ. 2026',
-      lotNo: 'LOT-992-GEN',
-      poNo: 'PO-88390',
-      imageUrl: 'https://images.unsplash.com/photo-1513694203232-719a280e022f?q=80&w=800&auto=format&fit=crop',
+      lotNo: docNum ? `LOT-${docNum}` : 'LOT-992-GEN',
+      poNo: docNum || 'PO-88390',
+      imageUrl: metadata.imageBase64 || 'https://images.unsplash.com/photo-1513694203232-719a280e022f?q=80&w=800&auto=format&fit=crop',
       warrantyPeriod: 'ตลอดอายุการใช้งาน (Lifetime Warranty)',
       specs: {
         th: [
-          { label: 'รหัสสินค้าสากล', value: token },
+          { label: 'เลขที่ใบสั่งผลิต', value: docNum || '-' },
+          { label: 'ลำดับที่', value: seqNum ? `ชิ้นที่ ${parseInt(seqNum, 10)}` : '-' },
           { label: 'วันที่ผลิต', value: 'ก.พ. 2026' },
           { label: 'มาตรฐานควบคุม', value: 'ISO 9001:2015' },
-          { label: 'สีกรอบวงกบ', value: 'อบสีดำเมทัลลิก (Metallic Black)' }
         ],
         en: [
-          { label: 'Global SKU', value: token },
+          { label: 'Production Order', value: docNum || '-' },
+          { label: 'Unit No.', value: seqNum ? `Unit ${parseInt(seqNum, 10)}` : '-' },
           { label: 'Manufacture Date', value: 'Feb 2026' },
           { label: 'Compliance Standard', value: 'ISO 9001:2015' },
-          { label: 'Frame Color', value: 'Metallic Black Powder Coated' }
         ]
       },
       features: {

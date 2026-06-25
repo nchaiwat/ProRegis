@@ -7,7 +7,7 @@ export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
 
   @Get(':token')
-  findOne(@Param('token') token: string): Product {
+  async findOne(@Param('token') token: string): Promise<Product> {
     return this.productsService.findOne(token);
   }
 }
