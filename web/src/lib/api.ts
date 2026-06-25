@@ -8,13 +8,13 @@ export function getApiBaseUrl(): string {
   if (typeof window === 'undefined') {
     return 'http://localhost:3001'; // SSR fallback
   }
-  const { hostname, protocol } = window.location;
+  const { hostname, protocol, port } = window.location;
 
-  // Local development (localhost or LAN IP)
-  if (hostname === 'localhost' || hostname.startsWith('192.168.')) {
+  // Local development with raw ports (e.g. npm run dev on port 3000)
+  if ((hostname === 'localhost' || hostname.startsWith('192.168.')) && port && port !== '80' && port !== '443') {
     return `${protocol}//${hostname}:3001`;
   }
 
-  // Production VPS (reverse proxy routes /api to NestJS port 3001)
+  // Docker Compose setup (via Nginx proxy on port 80/443) or Production VPS
   return `${protocol}//${hostname}/api`;
 }

@@ -21,6 +21,8 @@ services:
       context: ./api
       dockerfile: Dockerfile
     container_name: proregis-api-local
+    ports:
+      - "3001:3001"
     environment:
       - PORT=3001
       - DB_HOST=postgres

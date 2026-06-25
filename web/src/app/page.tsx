@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 
@@ -41,6 +41,17 @@ export default function Home() {
   const [lang, setLang] = useState<"th" | "en">("th");
   const [showScanner, setShowScanner] = useState(false);
   const [scanError, setScanError] = useState("");
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("scan") === "true") {
+        setShowScanner(true);
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, "", newUrl);
+      }
+    }
+  }, []);
 
   const handleScanSuccess = (rawToken: string) => {
     setShowScanner(false);

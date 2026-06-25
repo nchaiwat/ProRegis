@@ -342,6 +342,12 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
           const data = await res.json();
           setProduct(data);
           return;
+        } else {
+          // If the server explicitly rejected the request, show the validation error message!
+          const errData = await res.json().catch(() => ({}));
+          const errMsg = errData.message || (lang === "th" ? "ไม่พบข้อมูลสินค้าในระบบ" : "Product not found");
+          setDecryptError(errMsg);
+          return;
         }
       } catch (err) {
         console.warn("API Server not reachable, falling back to local mocks.", err);
@@ -421,15 +427,21 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
               {lang === "th" ? "เกิดข้อผิดพลาด" : "Error Occurred"}
             </h2>
             <p className="text-sm text-on-surface-variant leading-relaxed">
-              {lang === "th" 
-                ? "ขออภัยครับ รหัส QR นี้ไม่ใช่รหัสสแกนรับประกันของ Window Asia กรุณาตรวจสอบ QR Code รับประกันที่ถูกต้อง แล้วลองสแกนใหม่อีกครั้ง"
-                : "Sorry, this QR code is not a valid Window Asia warranty registration code. Please inspect the correct warranty QR code and try again."
+              {decryptError === "INVALID_TOKEN"
+                ? (lang === "th"
+                    ? "ขออภัยครับ รหัส QR นี้ไม่ใช่รหัสสแกนรับประกันของ Window Asia กรุณาตรวจสอบ QR Code รับประกันที่ถูกต้อง แล้วลองสแกนใหม่อีกครั้ง"
+                    : "Sorry, this QR code is not a valid Window Asia warranty registration code. Please inspect the correct warranty QR code and try again."
+                  )
+                : decryptError
               }
             </p>
           </div>
           <div className="pt-2">
             <button
-              onClick={() => setShowScanner(true)}
+              onClick={() => {
+                setDecryptError(null);
+                router.push("/?scan=true");
+              }}
               className="w-full h-12 bg-secondary text-white font-bold rounded-xl hover:opacity-95 active:scale-[0.98] transition-all cursor-pointer flex items-center justify-center gap-2"
             >
               <span className="material-symbols-outlined text-[20px]">qr_code_scanner</span>
