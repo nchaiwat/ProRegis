@@ -4,6 +4,7 @@ import { ProductionOrder } from '../production-order/production-order.entity';
 import { Registration } from '../registration/registration.entity';
 import { TelegramService } from '../telegram/telegram.service';
 import { SapService } from '../sap/sap.service';
+import { ProductsService } from '../products/products.service';
 export interface GeneratedRow {
     code: string;
     pd: string;
@@ -14,7 +15,8 @@ export declare class BackofficeService {
     private readonly registrationRepository;
     private readonly telegramService;
     private readonly sapService;
-    constructor(logRepository: Repository<GenerationLog>, productionOrderRepository: Repository<ProductionOrder>, registrationRepository: Repository<Registration>, telegramService: TelegramService, sapService: SapService);
+    private readonly productsService;
+    constructor(logRepository: Repository<GenerationLog>, productionOrderRepository: Repository<ProductionOrder>, registrationRepository: Repository<Registration>, telegramService: TelegramService, sapService: SapService, productsService: ProductsService);
     encryptToToken(docNum: string, seqStr: string): string;
     decryptToken(token: string): {
         docNum: string;

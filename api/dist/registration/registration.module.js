@@ -14,7 +14,6 @@ const registration_controller_1 = require("./registration.controller");
 const registration_entity_1 = require("./registration.entity");
 const production_order_entity_1 = require("../production-order/production-order.entity");
 const telegram_module_1 = require("../telegram/telegram.module");
-const sap_module_1 = require("../sap/sap.module");
 const otp_module_1 = require("../otp/otp.module");
 let RegistrationModule = class RegistrationModule {
 };
@@ -24,7 +23,6 @@ exports.RegistrationModule = RegistrationModule = __decorate([
         imports: [
             typeorm_1.TypeOrmModule.forFeature([registration_entity_1.Registration, production_order_entity_1.ProductionOrder]),
             telegram_module_1.TelegramModule,
-            sap_module_1.SapModule,
             otp_module_1.OtpModule,
         ],
         controllers: [registration_controller_1.RegistrationController],

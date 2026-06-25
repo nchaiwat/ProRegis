@@ -4,7 +4,6 @@ import { Repository } from 'typeorm';
 import { Registration } from './registration.entity';
 import { ProductionOrder } from '../production-order/production-order.entity';
 import { TelegramService } from '../telegram/telegram.service';
-import { SapService } from '../sap/sap.service';
 import * as crypto from 'crypto';
 
 export class RegistrationDto {
@@ -35,7 +34,6 @@ export class RegistrationService {
     @InjectRepository(ProductionOrder)
     private readonly productionOrderRepository: Repository<ProductionOrder>,
     private readonly telegramService: TelegramService,
-    private readonly sapService: SapService,
   ) {}
 
   private decryptToken(token: string): { docNum: string; seqNum: string } | null {
@@ -181,37 +179,13 @@ export class RegistrationService {
     };
   }
 
-  // Helper to fetch or fetch SAP B1 Item Code and cache it (Cache-Aside Pattern)
+  // Helper to fetch Item Code from database
   private async getOrFetchItemCode(docNum: string): Promise<string> {
     const existing = await this.productionOrderRepository.findOne({ where: { docNum } });
     if (existing) {
       return existing.itemCode;
     }
-    
-    try {
-      // Query read-only from SAP Service Layer
-      const sapInfo = await this.sapService.getProductionOrder(docNum);
-      const cached = this.productionOrderRepository.create({
-        docNum,
-        itemCode: sapInfo.itemCode,
-        itemName: sapInfo.itemName,
-        plannedQty: sapInfo.plannedQty,
-      });
-      await this.productionOrderRepository.save(cached);
-      return sapInfo.itemCode;
-    } catch (err) {
-      this.logger.error('[SAP CACHE ERROR] Failed to cache production order from SAP Service Layer, falling back to mock details:', err);
-      const mockItemCode = `FA00-D0112-200${docNum.substring(5, 9)}`;
-      const mockItemName = `กระจกนิรภัยนำเข้า ซีรีส์ ${docNum.substring(6, 9)}`;
-      const cached = this.productionOrderRepository.create({
-        docNum,
-        itemCode: mockItemCode,
-        itemName: mockItemName,
-        plannedQty: 100,
-      });
-      await this.productionOrderRepository.save(cached);
-      return mockItemCode;
-    }
+    return 'ไม่ระบุ';
   }
 
   // Trigger Telegram notification for successful registration

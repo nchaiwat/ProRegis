@@ -39,5 +39,6 @@ export declare class ProductsService {
     constructor(productMetadataRepository: Repository<ProductMetadata>, productionOrderRepository: Repository<ProductionOrder>, sapService: SapService, backofficeService: BackofficeService, configService: ConfigService);
     private readonly products;
     private downloadImageAsBase64;
+    cacheProductMetadata(itemCode: string, itemName: string): Promise<ProductMetadata>;
     findOne(token: string): Promise<Product>;
 }

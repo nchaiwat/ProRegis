@@ -16,6 +16,7 @@ const production_order_entity_1 = require("../production-order/production-order.
 const registration_entity_1 = require("../registration/registration.entity");
 const telegram_module_1 = require("../telegram/telegram.module");
 const sap_module_1 = require("../sap/sap.module");
+const products_module_1 = require("../products/products.module");
 let BackofficeModule = class BackofficeModule {
 };
 exports.BackofficeModule = BackofficeModule;
@@ -25,6 +26,7 @@ exports.BackofficeModule = BackofficeModule = __decorate([
             typeorm_1.TypeOrmModule.forFeature([generation_log_entity_1.GenerationLog, production_order_entity_1.ProductionOrder, registration_entity_1.Registration]),
             telegram_module_1.TelegramModule,
             sap_module_1.SapModule,
+            (0, common_1.forwardRef)(() => products_module_1.ProductsModule),
         ],
         controllers: [backoffice_controller_1.BackofficeController],
         providers: [backoffice_service_1.BackofficeService],

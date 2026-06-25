@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ProductsService } from './products.service';
 import { ProductsController } from './products.controller';
@@ -11,7 +11,7 @@ import { BackofficeModule } from '../backoffice/backoffice.module';
   imports: [
     TypeOrmModule.forFeature([ProductMetadata, ProductionOrder]),
     SapModule,
-    BackofficeModule,
+    forwardRef(() => BackofficeModule),
   ],
   controllers: [ProductsController],
   providers: [ProductsService],

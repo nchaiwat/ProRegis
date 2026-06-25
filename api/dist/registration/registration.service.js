@@ -53,7 +53,6 @@ const typeorm_2 = require("typeorm");
 const registration_entity_1 = require("./registration.entity");
 const production_order_entity_1 = require("../production-order/production-order.entity");
 const telegram_service_1 = require("../telegram/telegram.service");
-const sap_service_1 = require("../sap/sap.service");
 const crypto = __importStar(require("crypto"));
 class RegistrationDto {
     token;
@@ -77,13 +76,11 @@ let RegistrationService = RegistrationService_1 = class RegistrationService {
     registrationRepository;
     productionOrderRepository;
     telegramService;
-    sapService;
     logger = new common_1.Logger(RegistrationService_1.name);
-    constructor(registrationRepository, productionOrderRepository, telegramService, sapService) {
+    constructor(registrationRepository, productionOrderRepository, telegramService) {
         this.registrationRepository = registrationRepository;
         this.productionOrderRepository = productionOrderRepository;
         this.telegramService = telegramService;
-        this.sapService = sapService;
     }
     decryptToken(token) {
         try {
@@ -204,30 +201,7 @@ let RegistrationService = RegistrationService_1 = class RegistrationService {
         if (existing) {
             return existing.itemCode;
         }
-        try {
-            const sapInfo = await this.sapService.getProductionOrder(docNum);
-            const cached = this.productionOrderRepository.create({
-                docNum,
-                itemCode: sapInfo.itemCode,
-                itemName: sapInfo.itemName,
-                plannedQty: sapInfo.plannedQty,
-            });
-            await this.productionOrderRepository.save(cached);
-            return sapInfo.itemCode;
-        }
-        catch (err) {
-            this.logger.error('[SAP CACHE ERROR] Failed to cache production order from SAP Service Layer, falling back to mock details:', err);
-            const mockItemCode = `FA00-D0112-200${docNum.substring(5, 9)}`;
-            const mockItemName = `กระจกนิรภัยนำเข้า ซีรีส์ ${docNum.substring(6, 9)}`;
-            const cached = this.productionOrderRepository.create({
-                docNum,
-                itemCode: mockItemCode,
-                itemName: mockItemName,
-                plannedQty: 100,
-            });
-            await this.productionOrderRepository.save(cached);
-            return mockItemCode;
-        }
+        return 'ไม่ระบุ';
     }
     async triggerTelegramNotification(reg) {
         const docNum = reg.docNum || 'ไม่ระบุ';
@@ -298,7 +272,6 @@ exports.RegistrationService = RegistrationService = RegistrationService_1 = __de
     __param(1, (0, typeorm_1.InjectRepository)(production_order_entity_1.ProductionOrder)),
     __metadata("design:paramtypes", [typeorm_2.Repository,
         typeorm_2.Repository,
-        telegram_service_1.TelegramService,
-        sap_service_1.SapService])
+        telegram_service_1.TelegramService])
 ], RegistrationService);
 //# sourceMappingURL=registration.service.js.map

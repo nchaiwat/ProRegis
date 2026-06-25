@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BackofficeController } from './backoffice.controller';
 import { BackofficeService } from './backoffice.service';
@@ -7,12 +7,14 @@ import { ProductionOrder } from '../production-order/production-order.entity';
 import { Registration } from '../registration/registration.entity';
 import { TelegramModule } from '../telegram/telegram.module';
 import { SapModule } from '../sap/sap.module';
+import { ProductsModule } from '../products/products.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([GenerationLog, ProductionOrder, Registration]),
     TelegramModule,
     SapModule,
+    forwardRef(() => ProductsModule),
   ],
   controllers: [BackofficeController],
   providers: [BackofficeService],

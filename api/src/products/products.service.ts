@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
@@ -37,6 +37,7 @@ export class ProductsService {
     @InjectRepository(ProductionOrder)
     private readonly productionOrderRepository: Repository<ProductionOrder>,
     private readonly sapService: SapService,
+    @Inject(forwardRef(() => BackofficeService))
     private readonly backofficeService: BackofficeService,
     private readonly configService: ConfigService,
   ) {}
@@ -185,8 +186,51 @@ export class ProductsService {
       }
     }
 
-    this.logger.log(`[PRODUCTS SERVICE] Falling back to placeholder image for ${itemCode}`);
+    this.logger.log(`[PRODUCTS SERVICE] Falling back and downloading placeholder image for ${itemCode}`);
+    try {
+      const response = await fetch(placeholder, { signal: AbortSignal.timeout(5000) });
+      if (response.ok) {
+        const buffer = await response.arrayBuffer();
+        const contentType = response.headers.get('content-type') || 'image/jpeg';
+        const base64Str = Buffer.from(buffer).toString('base64');
+        this.logger.log(`[PRODUCTS SERVICE] Downloaded placeholder image successfully`);
+        return `data:${contentType};base64,${base64Str}`;
+      }
+    } catch (err) {
+      this.logger.error(`[PRODUCTS SERVICE] Failed to download placeholder image: ${err.message}`);
+    }
+
     return placeholder;
+  }
+
+  async cacheProductMetadata(itemCode: string, itemName: string): Promise<ProductMetadata> {
+    this.logger.log(`[PRODUCTS SERVICE] Eagerly caching product metadata for ItemCode=${itemCode}, ItemName=${itemName}`);
+    let metadata = await this.productMetadataRepository.findOne({ where: { itemCode } });
+    if (!metadata) {
+      const imageBase64 = await this.downloadImageAsBase64(itemCode);
+      metadata = this.productMetadataRepository.create({
+        itemCode,
+        itemName,
+        imageBase64,
+      });
+      await this.productMetadataRepository.save(metadata);
+      this.logger.log(`[PRODUCTS SERVICE] Cached product metadata and image successfully for ItemCode=${itemCode}`);
+    } else {
+      let updated = false;
+      if (!metadata.imageBase64 || metadata.imageBase64.startsWith('http')) {
+        metadata.imageBase64 = await this.downloadImageAsBase64(itemCode);
+        updated = true;
+      }
+      if (metadata.itemName !== itemName) {
+        metadata.itemName = itemName;
+        updated = true;
+      }
+      if (updated) {
+        await this.productMetadataRepository.save(metadata);
+        this.logger.log(`[PRODUCTS SERVICE] Updated cached product metadata for ItemCode=${itemCode}`);
+      }
+    }
+    return metadata;
   }
 
   async findOne(token: string): Promise<Product> {
@@ -210,43 +254,22 @@ export class ProductsService {
       }
     }
 
-    let itemCode = `FA00-D0112-200${docNum ? docNum.substring(5, 9) : '000'}`;
-    let itemName = `กระจกนิรภัยนำเข้า ซีรีส์ ${docNum ? docNum.substring(6, 9) : '000'}`;
-    let plannedQty = 100;
-
-    if (docNum) {
-      let po = await this.productionOrderRepository.findOne({ where: { docNum } });
-      if (!po) {
-        try {
-          const sapInfo = await this.sapService.getProductionOrder(docNum);
-          po = this.productionOrderRepository.create({
-            docNum,
-            itemCode: sapInfo.itemCode,
-            itemName: sapInfo.itemName,
-            plannedQty: sapInfo.plannedQty,
-          });
-          await this.productionOrderRepository.save(po);
-        } catch (err) {
-          this.logger.error(`[PRODUCTS SERVICE] Failed to fetch production order from SAP: ${err.message}`);
-        }
-      }
-
-      if (po) {
-        itemCode = po.itemCode;
-        itemName = po.itemName || itemName;
-        plannedQty = po.plannedQty || plannedQty;
-      }
+    if (!docNum) {
+      throw new BadRequestException('ไม่พบรหัสใบสั่งผลิตใน QR Code');
     }
 
-    let metadata = await this.productMetadataRepository.findOne({ where: { itemCode } });
+    const po = await this.productionOrderRepository.findOne({ where: { docNum } });
+    if (!po) {
+      throw new BadRequestException('ไม่พบข้อมูลใบสั่งผลิตนี้ในระบบ หรือยังไม่ได้มีการสร้างรหัส QR Code จากทางหลังบ้าน');
+    }
+
+    const itemCode = po.itemCode;
+    const itemName = po.itemName || `กระจกนิรภัยนำเข้า ซีรีส์ ${docNum.substring(6, 9)}`;
+    const plannedQty = po.plannedQty || 100;
+
+    const metadata = await this.productMetadataRepository.findOne({ where: { itemCode } });
     if (!metadata) {
-      const imageBase64 = await this.downloadImageAsBase64(itemCode);
-      metadata = this.productMetadataRepository.create({
-        itemCode,
-        itemName,
-        imageBase64,
-      });
-      await this.productMetadataRepository.save(metadata);
+      throw new BadRequestException('ไม่พบข้อมูลสเปกหรือรูปภาพของสินค้านี้ในฐานข้อมูล');
     }
 
     return {
@@ -255,19 +278,19 @@ export class ProductsService {
       modelTh: metadata.itemName || 'กระจกหน้าต่างอลูมิเนียมนำเข้าซีรีส์ย่อย',
       modelEn: metadata.itemName || 'Imported Aluminum Window Sub-Series',
       manufactureDate: 'ก.พ. 2026',
-      lotNo: docNum ? `LOT-${docNum}` : 'LOT-992-GEN',
-      poNo: docNum || 'PO-88390',
+      lotNo: `LOT-${docNum}`,
+      poNo: docNum,
       imageUrl: metadata.imageBase64 || 'https://images.unsplash.com/photo-1513694203232-719a280e022f?q=80&w=800&auto=format&fit=crop',
       warrantyPeriod: 'ตลอดอายุการใช้งาน (Lifetime Warranty)',
       specs: {
         th: [
-          { label: 'เลขที่ใบสั่งผลิต', value: docNum || '-' },
+          { label: 'เลขที่ใบสั่งผลิต', value: docNum },
           { label: 'ลำดับที่', value: seqNum ? `ชิ้นที่ ${parseInt(seqNum, 10)}` : '-' },
           { label: 'วันที่ผลิต', value: 'ก.พ. 2026' },
           { label: 'มาตรฐานควบคุม', value: 'ISO 9001:2015' },
         ],
         en: [
-          { label: 'Production Order', value: docNum || '-' },
+          { label: 'Production Order', value: docNum },
           { label: 'Unit No.', value: seqNum ? `Unit ${parseInt(seqNum, 10)}` : '-' },
           { label: 'Manufacture Date', value: 'Feb 2026' },
           { label: 'Compliance Standard', value: 'ISO 9001:2015' },

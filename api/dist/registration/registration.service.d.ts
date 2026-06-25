@@ -2,7 +2,6 @@ import { Repository } from 'typeorm';
 import { Registration } from './registration.entity';
 import { ProductionOrder } from '../production-order/production-order.entity';
 import { TelegramService } from '../telegram/telegram.service';
-import { SapService } from '../sap/sap.service';
 export declare class RegistrationDto {
     token: string;
     docNum?: string;
@@ -24,9 +23,8 @@ export declare class RegistrationService {
     private readonly registrationRepository;
     private readonly productionOrderRepository;
     private readonly telegramService;
-    private readonly sapService;
     private readonly logger;
-    constructor(registrationRepository: Repository<Registration>, productionOrderRepository: Repository<ProductionOrder>, telegramService: TelegramService, sapService: SapService);
+    constructor(registrationRepository: Repository<Registration>, productionOrderRepository: Repository<ProductionOrder>, telegramService: TelegramService);
     private decryptToken;
     registerProduct(dto: RegistrationDto): Promise<{
         success: boolean;

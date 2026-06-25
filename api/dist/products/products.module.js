@@ -23,7 +23,7 @@ exports.ProductsModule = ProductsModule = __decorate([
         imports: [
             typeorm_1.TypeOrmModule.forFeature([product_metadata_entity_1.ProductMetadata, production_order_entity_1.ProductionOrder]),
             sap_module_1.SapModule,
-            backoffice_module_1.BackofficeModule,
+            (0, common_1.forwardRef)(() => backoffice_module_1.BackofficeModule),
         ],
         controllers: [products_controller_1.ProductsController],
         providers: [products_service_1.ProductsService],

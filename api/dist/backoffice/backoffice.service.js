@@ -54,6 +54,7 @@ const production_order_entity_1 = require("../production-order/production-order.
 const registration_entity_1 = require("../registration/registration.entity");
 const telegram_service_1 = require("../telegram/telegram.service");
 const sap_service_1 = require("../sap/sap.service");
+const products_service_1 = require("../products/products.service");
 const crypto = __importStar(require("crypto"));
 const SECRET_KEY = crypto
     .createHash('sha256')
@@ -71,12 +72,14 @@ let BackofficeService = class BackofficeService {
     registrationRepository;
     telegramService;
     sapService;
-    constructor(logRepository, productionOrderRepository, registrationRepository, telegramService, sapService) {
+    productsService;
+    constructor(logRepository, productionOrderRepository, registrationRepository, telegramService, sapService, productsService) {
         this.logRepository = logRepository;
         this.productionOrderRepository = productionOrderRepository;
         this.registrationRepository = registrationRepository;
         this.telegramService = telegramService;
         this.sapService = sapService;
+        this.productsService = productsService;
     }
     encryptToToken(docNum, seqStr) {
         const rawData = `${docNum}:${seqStr}`;
@@ -153,6 +156,43 @@ let BackofficeService = class BackofficeService {
             const nextSeq = await this.getNextSequence(docNum);
             throw new common_1.BadRequestException(`ช่วง Running Number ${startSeq} ถึง ${requestedEndSeq} มีบางส่วนซ้ำซ้อนหรือเหลื่อมกับรหัส QR ที่สร้างไว้แล้วในระบบ (Running ล่าสุดคือ ${nextSeq - 1}, แนะนำให้สร้างต่อที่ลำดับที่ ${nextSeq})`);
         }
+        let poInfo;
+        try {
+            poInfo = await this.sapService.getProductionOrder(docNum);
+        }
+        catch (err) {
+            console.error('[SAP ERROR] Failed to fetch production order, falling back to mock details:', err);
+        }
+        if (!poInfo) {
+            const defaultSuffix = docNum.substring(5, 9) || '205';
+            poInfo = {
+                itemCode: `FA00-D0112-200${defaultSuffix}`,
+                itemName: `กระจกนิรภัยนำเข้า ซีรีส์ ${docNum.substring(6, 9) || '007'} (Mock SAP B1)`,
+                plannedQty: 100,
+            };
+        }
+        let po = await this.productionOrderRepository.findOne({ where: { docNum } });
+        if (!po) {
+            po = this.productionOrderRepository.create({
+                docNum,
+                itemCode: poInfo.itemCode,
+                itemName: poInfo.itemName,
+                plannedQty: poInfo.plannedQty,
+            });
+            await this.productionOrderRepository.save(po);
+        }
+        else {
+            po.itemCode = poInfo.itemCode;
+            po.itemName = poInfo.itemName;
+            po.plannedQty = poInfo.plannedQty;
+            await this.productionOrderRepository.save(po);
+        }
+        try {
+            await this.productsService.cacheProductMetadata(po.itemCode, po.itemName || 'สินค้าทั่วไป');
+        }
+        catch (err) {
+            console.error('[CACHE ERROR] Failed to cache product metadata during QR generation:', err);
+        }
         const rows = [];
         for (let i = 0; i < quantity; i++) {
             const seq = startSeq + i;
@@ -169,22 +209,6 @@ let BackofficeService = class BackofficeService {
             ipAddress: ipAddress || null,
         });
         await this.logRepository.save(log);
-        try {
-            const existingPo = await this.productionOrderRepository.findOne({ where: { docNum } });
-            if (!existingPo) {
-                const mockItemCode = `FA00-D0112-200${docNum.substring(5, 9)}`;
-                const mockItemName = `กระจกนิรภัยนำเข้า ซีรีส์ ${docNum.substring(6, 9)}`;
-                const cached = this.productionOrderRepository.create({
-                    docNum,
-                    itemCode: mockItemCode,
-                    itemName: mockItemName,
-                });
-                await this.productionOrderRepository.save(cached);
-            }
-        }
-        catch (err) {
-            console.error('[CACHE ERROR] Failed to cache production order during QR generation:', err);
-        }
         console.log(`[BACKOFFICE] ${actor} generated ${quantity} QR codes for DocNum ${docNum} (seq ${startSeq}–${startSeq + quantity - 1})`);
         return rows;
     }
@@ -460,10 +484,12 @@ exports.BackofficeService = BackofficeService = __decorate([
     __param(0, (0, typeorm_1.InjectRepository)(generation_log_entity_1.GenerationLog)),
     __param(1, (0, typeorm_1.InjectRepository)(production_order_entity_1.ProductionOrder)),
     __param(2, (0, typeorm_1.InjectRepository)(registration_entity_1.Registration)),
+    __param(5, (0, common_1.Inject)((0, common_1.forwardRef)(() => products_service_1.ProductsService))),
     __metadata("design:paramtypes", [typeorm_2.Repository,
         typeorm_2.Repository,
         typeorm_2.Repository,
         telegram_service_1.TelegramService,
-        sap_service_1.SapService])
+        sap_service_1.SapService,
+        products_service_1.ProductsService])
 ], BackofficeService);
 //# sourceMappingURL=backoffice.service.js.map

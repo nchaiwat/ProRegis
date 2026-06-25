@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { GenerationLog } from './generation-log.entity';
@@ -6,6 +6,7 @@ import { ProductionOrder } from '../production-order/production-order.entity';
 import { Registration } from '../registration/registration.entity';
 import { TelegramService } from '../telegram/telegram.service';
 import { SapService } from '../sap/sap.service';
+import { ProductsService } from '../products/products.service';
 import * as crypto from 'crypto';
 
 // ---------------------------------------------------------------------------
@@ -42,6 +43,8 @@ export class BackofficeService {
     private readonly registrationRepository: Repository<Registration>,
     private readonly telegramService: TelegramService,
     private readonly sapService: SapService,
+    @Inject(forwardRef(() => ProductsService))
+    private readonly productsService: ProductsService,
   ) {}
 
   // -------------------------------------------------------------------------
@@ -156,6 +159,47 @@ export class BackofficeService {
       );
     }
 
+    // Fetch production order from SAP Service Layer eagerly
+    let poInfo;
+    try {
+      poInfo = await this.sapService.getProductionOrder(docNum);
+    } catch (err) {
+      console.error('[SAP ERROR] Failed to fetch production order, falling back to mock details:', err);
+    }
+
+    if (!poInfo) {
+      const defaultSuffix = docNum.substring(5, 9) || '205';
+      poInfo = {
+        itemCode: `FA00-D0112-200${defaultSuffix}`,
+        itemName: `กระจกนิรภัยนำเข้า ซีรีส์ ${docNum.substring(6, 9) || '007'} (Mock SAP B1)`,
+        plannedQty: 100,
+      };
+    }
+
+    // Cache production order details
+    let po = await this.productionOrderRepository.findOne({ where: { docNum } });
+    if (!po) {
+      po = this.productionOrderRepository.create({
+        docNum,
+        itemCode: poInfo.itemCode,
+        itemName: poInfo.itemName,
+        plannedQty: poInfo.plannedQty,
+      });
+      await this.productionOrderRepository.save(po);
+    } else {
+      po.itemCode = poInfo.itemCode;
+      po.itemName = poInfo.itemName;
+      po.plannedQty = poInfo.plannedQty;
+      await this.productionOrderRepository.save(po);
+    }
+
+    // Cache product metadata and download image as Base64 eagerly
+    try {
+      await this.productsService.cacheProductMetadata(po.itemCode, po.itemName || 'สินค้าทั่วไป');
+    } catch (err) {
+      console.error('[CACHE ERROR] Failed to cache product metadata during QR generation:', err);
+    }
+
     const rows: GeneratedRow[] = [];
     for (let i = 0; i < quantity; i++) {
       const seq = startSeq + i;
@@ -174,23 +218,6 @@ export class BackofficeService {
       ipAddress: ipAddress || null,
     });
     await this.logRepository.save(log);
-
-    // Cache production order item code if not cached yet
-    try {
-      const existingPo = await this.productionOrderRepository.findOne({ where: { docNum } });
-      if (!existingPo) {
-        const mockItemCode = `FA00-D0112-200${docNum.substring(5, 9)}`;
-        const mockItemName = `กระจกนิรภัยนำเข้า ซีรีส์ ${docNum.substring(6, 9)}`;
-        const cached = this.productionOrderRepository.create({
-          docNum,
-          itemCode: mockItemCode,
-          itemName: mockItemName,
-        });
-        await this.productionOrderRepository.save(cached);
-      }
-    } catch (err) {
-      console.error('[CACHE ERROR] Failed to cache production order during QR generation:', err);
-    }
 
     console.log(
       `[BACKOFFICE] ${actor} generated ${quantity} QR codes for DocNum ${docNum} (seq ${startSeq}–${startSeq + quantity - 1})`,
