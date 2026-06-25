@@ -119,15 +119,21 @@ let RegistrationService = RegistrationService_1 = class RegistrationService {
                 seqNum = decoded.seqNum;
             }
         }
-        if (docNum && seqNum) {
-            const existingRegistration = await this.registrationRepository.findOne({
-                where: { docNum, seqNum }
-            });
-            if (existingRegistration) {
-                const timeStr = new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
-                const oldRegTime = new Date(existingRegistration.registeredAt).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
-                const itemCode = await this.getOrFetchItemCode(docNum);
-                const alertMessage = `
+        if (!docNum || !seqNum) {
+            throw new common_1.BadRequestException('รหัส QR Code ไม่ถูกต้องหรือเสียหาย');
+        }
+        const po = await this.productionOrderRepository.findOne({ where: { docNum } });
+        if (!po) {
+            throw new common_1.BadRequestException('ไม่พบข้อมูลใบสั่งผลิตนี้ในระบบ หรือยังไม่ได้มีการสร้างรหัส QR Code จากทางพนักงานของบริษัท โปรดติดต่อเจ้าหน้าที่ดูแลระบบ');
+        }
+        const existingRegistration = await this.registrationRepository.findOne({
+            where: { docNum, seqNum }
+        });
+        if (existingRegistration) {
+            const timeStr = new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
+            const oldRegTime = new Date(existingRegistration.registeredAt).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
+            const itemCode = await this.getOrFetchItemCode(docNum);
+            const alertMessage = `
 <b>🚨 [ALERT] ตรวจพบการลงทะเบียนซ้ำ! (Double Registration Attempt)</b>
 ━━━━━━━━━━━━━━━━━━━━━━━━
 📅 <b>วันเวลาที่พยายามลงทะเบียนซ้ำ:</b> ${timeStr}
@@ -148,18 +154,17 @@ let RegistrationService = RegistrationService_1 = class RegistrationService {
 ━━━━━━━━━━━━━━━━━━━━━━━━
 <i>*ผู้ดูแลระบบโปรดติดต่อชี้แจงและยืนยันความเป็นเจ้าของสินค้ากับลูกค้า*</i>
 `.trim();
-                await this.telegramService.sendMessage(alertMessage).catch((err) => {
-                    this.logger.error('[TELEGRAM ALERT ERROR] Failed to send duplicate registration warning Telegram message:', err);
-                });
-                const formattedOldDate = new Date(existingRegistration.registeredAt).toLocaleDateString('th-TH', {
-                    year: 'numeric',
-                    month: 'short',
-                    day: '2-digit',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                });
-                throw new common_1.BadRequestException(`สินค้านี้ถูกลงทะเบียนไปแล้วเมื่อวันที่ ${formattedOldDate} น. ที่จังหวัด ${existingRegistration.province} โปรดติดต่อเจ้าหน้าที่ดูแลระบบหากพบปัญหา`);
-            }
+            await this.telegramService.sendMessage(alertMessage).catch((err) => {
+                this.logger.error('[TELEGRAM ALERT ERROR] Failed to send duplicate registration warning Telegram message:', err);
+            });
+            const formattedOldDate = new Date(existingRegistration.registeredAt).toLocaleDateString('th-TH', {
+                year: 'numeric',
+                month: 'short',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+            throw new common_1.BadRequestException(`สินค้านี้ถูกลงทะเบียนไปแล้วเมื่อวันที่ ${formattedOldDate} น. ที่จังหวัด ${existingRegistration.province} โปรดติดต่อเจ้าหน้าที่ดูแลระบบหากพบปัญหา`);
         }
         const cleanToken = dto.token.substring(0, 3).toUpperCase();
         const registrationId = `REG-${Math.floor(Math.random() * 90000) + 10000}-${cleanToken}`;
@@ -248,6 +253,42 @@ let RegistrationService = RegistrationService_1 = class RegistrationService {
 ━━━━━━━━━━━━━━━━━━━━━━━━
 `.trim();
         await this.telegramService.sendMessage(message);
+    }
+    async getRegistrationsByPhone(phone) {
+        const cleanPhone = phone.replace(/\D/g, '');
+        const registrations = await this.registrationRepository.find({
+            where: { phone: cleanPhone },
+            order: { registeredAt: 'DESC' },
+        });
+        const results = [];
+        for (const reg of registrations) {
+            let itemCode = 'ไม่ระบุ';
+            let itemName = 'ไม่ระบุ';
+            if (reg.docNum) {
+                const po = await this.productionOrderRepository.findOne({ where: { docNum: reg.docNum } });
+                if (po) {
+                    itemCode = po.itemCode;
+                    itemName = po.itemName || 'ไม่ระบุ';
+                }
+            }
+            results.push({
+                id: reg.id,
+                docNum: reg.docNum,
+                seqNum: reg.seqNum,
+                itemCode,
+                itemName,
+                registeredAt: reg.registeredAt,
+                status: reg.status,
+            });
+        }
+        return results;
+    }
+    async checkPhoneExists(phone) {
+        const cleanPhone = phone.replace(/\D/g, '');
+        const count = await this.registrationRepository.count({
+            where: { phone: cleanPhone }
+        });
+        return count > 0;
     }
 };
 exports.RegistrationService = RegistrationService;

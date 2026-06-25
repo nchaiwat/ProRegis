@@ -4,8 +4,22 @@
 const selfsigned = require('selfsigned');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 
-const LAN_IP = '192.168.68.104'; // Wi-Fi IP ของเครื่อง
+function getLocalIp() {
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name] || []) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        return iface.address;
+      }
+    }
+  }
+  return 'localhost';
+}
+
+const LAN_IP = getLocalIp();
+
 
 const attrs = [
   { name: 'commonName', value: 'ProRegis Dev' },

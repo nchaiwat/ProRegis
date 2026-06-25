@@ -15,13 +15,28 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.RegistrationController = void 0;
 const common_1 = require("@nestjs/common");
 const registration_service_1 = require("./registration.service");
+const otp_service_1 = require("../otp/otp.service");
+class CheckHistoryDto {
+    phone;
+    otpCode;
+}
 let RegistrationController = class RegistrationController {
     registrationService;
-    constructor(registrationService) {
+    otpService;
+    constructor(registrationService, otpService) {
         this.registrationService = registrationService;
+        this.otpService = otpService;
     }
     async registerProduct(body) {
         return this.registrationService.registerProduct(body);
+    }
+    async getRegistrationsByPhone(body) {
+        await this.otpService.verifyOtp(body.phone, body.otpCode);
+        return this.registrationService.getRegistrationsByPhone(body.phone);
+    }
+    async checkPhone(body) {
+        const exists = await this.registrationService.checkPhoneExists(body.phone);
+        return { exists };
     }
 };
 exports.RegistrationController = RegistrationController;
@@ -32,8 +47,23 @@ __decorate([
     __metadata("design:paramtypes", [registration_service_1.RegistrationDto]),
     __metadata("design:returntype", Promise)
 ], RegistrationController.prototype, "registerProduct", null);
+__decorate([
+    (0, common_1.Post)('by-phone'),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [CheckHistoryDto]),
+    __metadata("design:returntype", Promise)
+], RegistrationController.prototype, "getRegistrationsByPhone", null);
+__decorate([
+    (0, common_1.Post)('check-phone'),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], RegistrationController.prototype, "checkPhone", null);
 exports.RegistrationController = RegistrationController = __decorate([
     (0, common_1.Controller)('registration'),
-    __metadata("design:paramtypes", [registration_service_1.RegistrationService])
+    __metadata("design:paramtypes", [registration_service_1.RegistrationService,
+        otp_service_1.OtpService])
 ], RegistrationController);
 //# sourceMappingURL=registration.controller.js.map

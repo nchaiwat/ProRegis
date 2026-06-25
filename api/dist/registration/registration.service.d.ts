@@ -35,4 +35,14 @@ export declare class RegistrationService {
     }>;
     private getOrFetchItemCode;
     private triggerTelegramNotification;
+    getRegistrationsByPhone(phone: string): Promise<{
+        id: string;
+        docNum: string | null;
+        seqNum: string | null;
+        itemCode: string;
+        itemName: string;
+        registeredAt: Date;
+        status: string;
+    }[]>;
+    checkPhoneExists(phone: string): Promise<boolean>;
 }

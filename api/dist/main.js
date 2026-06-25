@@ -37,6 +37,18 @@ const core_1 = require("@nestjs/core");
 const app_module_1 = require("./app.module");
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
+const os = __importStar(require("os"));
+function getLocalIp() {
+    const interfaces = os.networkInterfaces();
+    for (const name of Object.keys(interfaces)) {
+        for (const iface of interfaces[name] || []) {
+            if (iface.family === 'IPv4' && !iface.internal) {
+                return iface.address;
+            }
+        }
+    }
+    return 'localhost';
+}
 async function bootstrap() {
     const certDir = path.join(process.cwd(), '..', 'web', 'certs');
     const keyPath = path.join(certDir, 'key.pem');
@@ -60,7 +72,8 @@ async function bootstrap() {
     const protocol = useHttps ? 'https' : 'http';
     console.log(`[NESTJS BACKEND] Running on ${protocol}://0.0.0.0:${port}`);
     if (useHttps) {
-        console.log(`[NESTJS BACKEND] HTTPS enabled — LAN: https://192.168.68.104:${port}`);
+        const localIp = getLocalIp();
+        console.log(`[NESTJS BACKEND] HTTPS enabled — LAN: https://${localIp}:${port}`);
     }
 }
 bootstrap();

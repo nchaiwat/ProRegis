@@ -2,6 +2,19 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
+
+function getLocalIp(): string {
+  const interfaces = os.networkInterfaces();
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name] || []) {
+      if (iface.family === 'IPv4' && !iface.internal) {
+        return iface.address;
+      }
+    }
+  }
+  return 'localhost';
+}
 
 async function bootstrap() {
   // ---------------------------------------------------------------------------
@@ -35,7 +48,9 @@ async function bootstrap() {
   const protocol = useHttps ? 'https' : 'http';
   console.log(`[NESTJS BACKEND] Running on ${protocol}://0.0.0.0:${port}`);
   if (useHttps) {
-    console.log(`[NESTJS BACKEND] HTTPS enabled — LAN: https://192.168.68.104:${port}`);
+    const localIp = getLocalIp();
+    console.log(`[NESTJS BACKEND] HTTPS enabled — LAN: https://${localIp}:${port}`);
   }
 }
 bootstrap();
+

@@ -76,11 +76,20 @@ export class RegistrationService {
       }
     }
 
-    if (docNum && seqNum) {
-      // 1. Check if already registered (Double Registration Check)
-      const existingRegistration = await this.registrationRepository.findOne({
-        where: { docNum, seqNum }
-      });
+    if (!docNum || !seqNum) {
+      throw new BadRequestException('รหัส QR Code ไม่ถูกต้องหรือเสียหาย');
+    }
+
+    // 1. Check if ProductionOrder is pre-generated in backend (by staff)
+    const po = await this.productionOrderRepository.findOne({ where: { docNum } });
+    if (!po) {
+      throw new BadRequestException('ไม่พบข้อมูลใบสั่งผลิตนี้ในระบบ หรือยังไม่ได้มีการสร้างรหัส QR Code จากทางพนักงานของบริษัท โปรดติดต่อเจ้าหน้าที่ดูแลระบบ');
+    }
+
+    // 2. Check if already registered (Double Registration Check)
+    const existingRegistration = await this.registrationRepository.findOne({
+      where: { docNum, seqNum }
+    });
 
       if (existingRegistration) {
         const timeStr = new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
@@ -127,7 +136,6 @@ export class RegistrationService {
           `สินค้านี้ถูกลงทะเบียนไปแล้วเมื่อวันที่ ${formattedOldDate} น. ที่จังหวัด ${existingRegistration.province} โปรดติดต่อเจ้าหน้าที่ดูแลระบบหากพบปัญหา`
         );
       }
-    }
 
     // Generate Registration Code
     const cleanToken = dto.token.substring(0, 3).toUpperCase();
@@ -235,5 +243,52 @@ export class RegistrationService {
 `.trim();
 
     await this.telegramService.sendMessage(message);
+  }
+
+  async getRegistrationsByPhone(phone: string) {
+    const cleanPhone = phone.replace(/\D/g, '');
+    const registrations = await this.registrationRepository.find({
+      where: { phone: cleanPhone },
+      order: { registeredAt: 'DESC' },
+    });
+
+    const results: Array<{
+      id: string;
+      docNum: string | null;
+      seqNum: string | null;
+      itemCode: string;
+      itemName: string;
+      registeredAt: Date;
+      status: string;
+    }> = [];
+    for (const reg of registrations) {
+      let itemCode = 'ไม่ระบุ';
+      let itemName = 'ไม่ระบุ';
+      if (reg.docNum) {
+        const po = await this.productionOrderRepository.findOne({ where: { docNum: reg.docNum } });
+        if (po) {
+          itemCode = po.itemCode;
+          itemName = po.itemName || 'ไม่ระบุ';
+        }
+      }
+      results.push({
+        id: reg.id,
+        docNum: reg.docNum,
+        seqNum: reg.seqNum,
+        itemCode,
+        itemName,
+        registeredAt: reg.registeredAt,
+        status: reg.status,
+      });
+    }
+    return results;
+  }
+
+  async checkPhoneExists(phone: string): Promise<boolean> {
+    const cleanPhone = phone.replace(/\D/g, '');
+    const count = await this.registrationRepository.count({
+      where: { phone: cleanPhone }
+    });
+    return count > 0;
   }
 }

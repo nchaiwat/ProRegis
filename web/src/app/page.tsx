@@ -10,6 +10,32 @@ const QrScannerModal = dynamic(() => import("./QrScannerModal"), {
   loading: () => null,
 });
 
+const THFlag = () => (
+  <svg viewBox="0 0 9 6" width="20" height="13" className="rounded-[2px] shadow-[0_0_1px_rgba(0,0,0,0.35)] object-cover">
+    <rect width="9" height="6" fill="#a51931"/>
+    <rect y="1" width="9" height="4" fill="#f4f5f8"/>
+    <rect y="2" width="9" height="2" fill="#2d2a4a"/>
+  </svg>
+);
+
+const USFlag = () => (
+  <svg viewBox="0 0 76 40" width="20" height="13" className="rounded-[2px] shadow-[0_0_1px_rgba(0,0,0,0.35)] object-cover">
+    <rect width="76" height="40" fill="#b22234"/>
+    <path d="M0,3.08h76v3.08H0zm0,6.15h76v3.08H0zm0,6.15h76v3.08H0zm0,6.15h76v3.08H0zm0,6.15h76v3.08H0zm0,6.15h76v3.08H0z" fill="#fff"/>
+    <rect width="30" height="21.54" fill="#3c3b6e"/>
+    <g fill="#fff">
+      <circle cx="5" cy="5" r="1"/>
+      <circle cx="15" cy="5" r="1"/>
+      <circle cx="25" cy="5" r="1"/>
+      <circle cx="10" cy="10" r="1"/>
+      <circle cx="20" cy="10" r="1"/>
+      <circle cx="5" cy="15" r="1"/>
+      <circle cx="15" cy="15" r="1"/>
+      <circle cx="25" cy="15" r="1"/>
+    </g>
+  </svg>
+);
+
 export default function Home() {
   const router = useRouter();
   const [lang, setLang] = useState<"th" | "en">("th");
@@ -34,13 +60,26 @@ export default function Home() {
           </div>
           <h1 className="font-bold text-xl text-primary tracking-tight">ProRegis</h1>
         </div>
-        <button
-          onClick={() => setLang(lang === "th" ? "en" : "th")}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-outline-variant bg-surface-container-lowest text-sm font-semibold hover:bg-surface-container-low transition-colors active:scale-95 duration-100"
-        >
-          <span className="material-symbols-outlined text-lg">language</span>
-          {lang === "th" ? "English" : "ไทย"}
-        </button>
+
+        <div className="flex items-center gap-2">
+          {/* Check Warranty Button (Header style) */}
+          <button
+            onClick={() => router.push("/my-warranty")}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-secondary text-secondary text-xs font-bold hover:bg-secondary/5 transition-colors active:scale-95 duration-100 cursor-pointer shadow-sm animate-fade-in"
+          >
+            <span className="material-symbols-outlined text-[16px]">verified</span>
+            <span className="hidden sm:inline">{lang === "th" ? "ตรวจสอบสิทธิ์" : "Check Warranty"}</span>
+          </button>
+
+          {/* Language Flag Button */}
+          <button
+            onClick={() => setLang(lang === "th" ? "en" : "th")}
+            className="flex items-center justify-center w-9 h-9 rounded-lg border border-outline-variant bg-surface-container-lowest hover:bg-surface-container-low transition-colors active:scale-95 duration-100 cursor-pointer shadow-sm"
+            title={lang === "th" ? "Switch to English" : "เปลี่ยนเป็นภาษาไทย"}
+          >
+            {lang === "th" ? <USFlag /> : <THFlag />}
+          </button>
+        </div>
       </header>
 
       {/* Main Content */}
@@ -66,7 +105,7 @@ export default function Home() {
             setScanError("");
             setShowScanner(true);
           }}
-          className="w-full max-w-sm h-16 bg-secondary text-white font-bold text-lg rounded-2xl shadow-lg hover:opacity-95 active:scale-[0.98] transition-all flex items-center justify-center gap-3 mb-4"
+          className="w-full max-w-sm h-16 bg-secondary text-white font-bold text-lg rounded-2xl shadow-lg hover:opacity-95 active:scale-[0.98] transition-all flex items-center justify-center gap-3 mb-4 cursor-pointer"
         >
           <span
             className="material-symbols-outlined !text-2xl"
@@ -76,6 +115,7 @@ export default function Home() {
           </span>
           {lang === "th" ? "เปิดกล้องสแกน QR Code" : "Open Camera to Scan QR"}
         </button>
+
 
         {/* Instruction Steps */}
         <div className="w-full max-w-sm bg-surface-container-lowest border border-outline-variant rounded-2xl p-5 mb-6">

@@ -8,6 +8,32 @@ import { getApiBaseUrl } from '@/lib/api';
 
 const QrScannerModal = dynamic(() => import("./QrScannerModal"), { ssr: false });
 
+const THFlag = () => (
+  <svg viewBox="0 0 9 6" width="20" height="13" className="rounded-[2px] shadow-[0_0_1px_rgba(0,0,0,0.35)] object-cover">
+    <rect width="9" height="6" fill="#a51931"/>
+    <rect y="1" width="9" height="4" fill="#f4f5f8"/>
+    <rect y="2" width="9" height="2" fill="#2d2a4a"/>
+  </svg>
+);
+
+const USFlag = () => (
+  <svg viewBox="0 0 76 40" width="20" height="13" className="rounded-[2px] shadow-[0_0_1px_rgba(0,0,0,0.35)] object-cover">
+    <rect width="76" height="40" fill="#b22234"/>
+    <path d="M0,3.08h76v3.08H0zm0,6.15h76v3.08H0zm0,6.15h76v3.08H0zm0,6.15h76v3.08H0zm0,6.15h76v3.08H0zm0,6.15h76v3.08H0z" fill="#fff"/>
+    <rect width="30" height="21.54" fill="#3c3b6e"/>
+    <g fill="#fff">
+      <circle cx="5" cy="5" r="1"/>
+      <circle cx="15" cy="5" r="1"/>
+      <circle cx="25" cy="5" r="1"/>
+      <circle cx="10" cy="10" r="1"/>
+      <circle cx="20" cy="10" r="1"/>
+      <circle cx="5" cy="15" r="1"/>
+      <circle cx="15" cy="15" r="1"/>
+      <circle cx="25" cy="15" r="1"/>
+    </g>
+  </svg>
+);
+
 interface ProductData {
   token: string;
   code: string;
@@ -726,12 +752,13 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
           <h1 className="font-bold text-xl text-primary tracking-tight">ProRegis</h1>
         </div>
         <div className="flex items-center gap-3">
+          {/* Language Flag Button */}
           <button
             onClick={() => setLang(lang === "th" ? "en" : "th")}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-outline-variant bg-surface-container-lowest text-sm font-semibold hover:bg-surface-container-low transition-colors active:scale-95 duration-100"
+            className="flex items-center justify-center w-9 h-9 rounded-lg border border-outline-variant bg-surface-container-lowest hover:bg-surface-container-low transition-colors active:scale-95 duration-100 cursor-pointer shadow-sm"
+            title={lang === "th" ? "Switch to English" : "เปลี่ยนเป็นภาษาไทย"}
           >
-            <span className="material-symbols-outlined text-lg">language</span>
-            {lang === "th" ? "English" : "ไทย"}
+            {lang === "th" ? <USFlag /> : <THFlag />}
           </button>
           <button 
             onClick={() => router.push("/")}
