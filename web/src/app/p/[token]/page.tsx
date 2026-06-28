@@ -6,7 +6,7 @@ import dynamic from "next/dynamic";
 import { translations } from "../../translations";
 import { getApiBaseUrl } from '@/lib/api';
 
-const QrScannerModal = dynamic(() => import("./QrScannerModal"), { ssr: false });
+const QrScannerModal = dynamic(() => import("../../QrScannerModal"), { ssr: false });
 
 const THFlag = () => (
   <svg viewBox="0 0 9 6" width="20" height="13" className="rounded-[2px] shadow-[0_0_1px_rgba(0,0,0,0.35)] object-cover">

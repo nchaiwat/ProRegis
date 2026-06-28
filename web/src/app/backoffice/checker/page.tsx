@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { getApiBaseUrl } from "@/lib/api";
 
-const QrScannerModal = dynamic(() => import("../../p/[token]/QrScannerModal"), { ssr: false });
+const QrScannerModal = dynamic(() => import("../../QrScannerModal"), { ssr: false });
 
 interface RegistrationDetails {
   id: string;

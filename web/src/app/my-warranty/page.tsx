@@ -588,34 +588,73 @@ export default function MyWarrantyPage() {
 
             <form onSubmit={handleVerifyOtp} className="space-y-5">
               <div className="space-y-2">
-                <label className="text-xs font-bold text-primary uppercase tracking-wider block">
+                <label className="text-xs font-bold text-primary uppercase tracking-wider block text-center">
                   {lang === "th" ? "รหัสยืนยัน 6 หลัก" : "6-Digit Verification Code"}
                 </label>
-                <div className="relative">
-                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 material-symbols-outlined text-outline text-xl">
-                    lock
-                  </span>
+                
+                <div className="relative flex flex-col gap-2">
+                  {/* 6 Styled OTP Boxes */}
+                  <div className="flex justify-center gap-2 py-2">
+                    {Array.from({ length: 6 }).map((_, idx) => {
+                      const digit = otpCode[idx] || "";
+                      const isFocused = otpCode.length === idx;
+                      return (
+                        <div
+                          key={idx}
+                          className={`w-12 h-14 border-2 rounded-xl flex items-center justify-center text-xl font-bold transition-all ${
+                            digit
+                              ? "border-secondary bg-secondary/5 text-primary"
+                              : isFocused
+                              ? "border-secondary bg-white ring-4 ring-secondary/15"
+                              : "border-outline-variant bg-surface-container-lowest"
+                          }`}
+                        >
+                          {digit}
+                          {isFocused && (
+                            <span className="w-[2px] h-6 bg-secondary animate-pulse" />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Hidden input overlaying the boxes */}
                   <input
                     type="text"
+                    pattern="\d*"
+                    inputMode="numeric"
                     maxLength={6}
-                    placeholder="123456"
                     value={otpCode}
-                    onChange={(e) => setOtpCode(e.target.value)}
-                    className="w-full h-12 pl-11 pr-4 bg-surface-container-lowest border border-outline-variant rounded-xl text-center text-lg tracking-[0.5em] font-bold focus:outline-none focus:border-secondary focus:ring-1 focus:ring-secondary transition-all"
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/\D/g, "");
+                      setOtpCode(val);
+                      if (error) setError("");
+                    }}
+                    autoFocus
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-text select-none text-transparent"
+                    style={{ caretColor: "transparent" }}
                   />
                 </div>
+
                 {error && (
-                  <p className="text-xs text-error font-semibold flex items-center gap-1">
+                  <p className="text-xs text-error font-semibold flex items-center justify-center gap-1 mt-1">
                     <span className="material-symbols-outlined text-base">error</span>
                     {error}
                   </p>
                 )}
+                <p className="text-[10px] text-outline text-center mt-1">
+                  {lang === "th" ? "เพื่อทดสอบ โปรดป้อน: 123456" : "For testing, enter: 123456"}
+                </p>
               </div>
 
               <button
                 type="submit"
-                disabled={isLoading}
-                className="w-full h-14 bg-secondary text-white font-bold rounded-xl shadow hover:opacity-95 active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-base cursor-pointer disabled:opacity-50"
+                disabled={otpCode.length !== 6 || isLoading}
+                className={`w-full h-14 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-base ${
+                  otpCode.length === 6 && !isLoading
+                    ? "bg-secondary text-white hover:opacity-95 shadow-md active:scale-95 cursor-pointer"
+                    : "bg-surface-container-high text-outline-variant cursor-not-allowed"
+                }`}
               >
                 {isLoading ? (
                   <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
