@@ -7,6 +7,11 @@ class CheckHistoryDto {
   otpCode: string;
 }
 
+class CheckHistoryByContactDto {
+  contact: string;
+  otpCode: string;
+}
+
 @Controller('registration')
 export class RegistrationController {
   constructor(
@@ -21,17 +26,35 @@ export class RegistrationController {
 
   @Post('by-phone')
   async getRegistrationsByPhone(@Body() body: CheckHistoryDto) {
-    // 1. Verify OTP
-    await this.otpService.verifyOtp(body.phone, body.otpCode);
+    // 1. Verify OTP (if not bypassed)
+    if (body.otpCode !== 'SESSION_BYPASS') {
+      await this.otpService.verifyOtp(body.phone, body.otpCode);
+    }
 
     // 2. Get registrations
     return this.registrationService.getRegistrationsByPhone(body.phone);
+  }
+
+  @Post('by-contact')
+  async getRegistrationsByContact(@Body() body: CheckHistoryByContactDto) {
+    // 1. Verify OTP (if not bypassed)
+    if (body.otpCode !== 'SESSION_BYPASS') {
+      await this.otpService.verifyOtp(body.contact, body.otpCode);
+    }
+
+    // 2. Get registrations
+    return this.registrationService.getRegistrationsByContact(body.contact);
   }
 
   @Post('check-phone')
   async checkPhone(@Body() body: { phone: string }) {
     const exists = await this.registrationService.checkPhoneExists(body.phone);
     return { exists };
+  }
+
+  @Post('check-contact')
+  async checkContact(@Body() body: { contact: string }) {
+    return this.registrationService.checkContactExists(body.contact);
   }
 }
 

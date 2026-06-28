@@ -258,11 +258,114 @@ export class RegistrationService {
     return results;
   }
 
+  async getRegistrationsByContact(contact: string) {
+    const cleanContact = contact.trim();
+    const isEmail = cleanContact.includes('@');
+    
+    let registrations;
+    if (isEmail) {
+      registrations = await this.registrationRepository.find({
+        where: { email: cleanContact },
+        order: { registeredAt: 'DESC' },
+      });
+    } else {
+      const cleanPhone = cleanContact.replace(/\D/g, '');
+      registrations = await this.registrationRepository.find({
+        where: { phone: cleanPhone },
+        order: { registeredAt: 'DESC' },
+      });
+    }
+
+    const results: Array<{
+      id: string;
+      docNum: string | null;
+      seqNum: string | null;
+      itemCode: string;
+      itemName: string;
+      registeredAt: Date;
+      status: string;
+    }> = [];
+    for (const reg of registrations) {
+      let itemCode = 'ไม่ระบุ';
+      let itemName = 'ไม่ระบุ';
+      if (reg.docNum) {
+        const po = await this.productionOrderRepository.findOne({ where: { docNum: reg.docNum } });
+        if (po) {
+          itemCode = po.itemCode;
+          itemName = po.itemName || 'ไม่ระบุ';
+        }
+      }
+      results.push({
+        id: reg.id,
+        docNum: reg.docNum,
+        seqNum: reg.seqNum,
+        itemCode,
+        itemName,
+        registeredAt: reg.registeredAt,
+        status: reg.status,
+      });
+    }
+    return results;
+  }
+
   async checkPhoneExists(phone: string): Promise<boolean> {
     const cleanPhone = phone.replace(/\D/g, '');
     const count = await this.registrationRepository.count({
       where: { phone: cleanPhone }
     });
     return count > 0;
+  }
+
+  async checkContactExists(contact: string): Promise<{
+    exists: boolean;
+    phone?: string | null;
+    email?: string | null;
+    maskedPhone?: string | null;
+    maskedEmail?: string | null;
+  }> {
+    const cleanContact = contact.trim();
+    const isEmail = cleanContact.includes('@');
+    
+    let reg;
+    if (isEmail) {
+      reg = await this.registrationRepository.findOne({
+        where: { email: cleanContact },
+        order: { registeredAt: 'DESC' }
+      });
+    } else {
+      const cleanPhone = cleanContact.replace(/\D/g, '');
+      reg = await this.registrationRepository.findOne({
+        where: { phone: cleanPhone },
+        order: { registeredAt: 'DESC' }
+      });
+    }
+    
+    if (!reg) {
+      return { exists: false };
+    }
+    
+    const maskEmail = (email: string | null): string | null => {
+      if (!email) return null;
+      const parts = email.split('@');
+      if (parts.length !== 2) return email;
+      const [local, domain] = parts;
+      if (local.length <= 2) return `*@${domain}`;
+      return `${local[0]}***${local[local.length - 1]}@${domain}`;
+    };
+    
+    const maskPhone = (phone: string | null): string | null => {
+      if (!phone) return null;
+      const clean = phone.replace(/\D/g, '');
+      if (clean.length < 9) return phone;
+      return `${clean.slice(0, 3)}-xxx-${clean.slice(-4)}`;
+    };
+
+    return {
+      exists: true,
+      phone: reg.phone,
+      email: reg.email,
+      maskedPhone: maskPhone(reg.phone),
+      maskedEmail: maskEmail(reg.email)
+    };
   }
 }

@@ -10,38 +10,41 @@ export class OtpService {
   // Simple in-memory store for demo. In production, use Redis.
   private otpStore = new Map<string, OtpData>();
 
-  async generateAndSendOtp(phone: string): Promise<{ success: boolean; expiresIn: number }> {
-    // Standardize phone format (remove dashes, spaces)
-    const cleanPhone = phone.replace(/\D/g, '');
+  private getCleanContact(contact: string, channel: 'sms' | 'email'): string {
+    if (channel === 'email') {
+      return contact.trim().toLowerCase();
+    }
+    return contact.replace(/\D/g, '');
+  }
+
+  async generateAndSendOtp(contact: string, channel: 'sms' | 'email' = 'sms'): Promise<{ success: boolean; expiresIn: number }> {
+    const cleanContact = this.getCleanContact(contact, channel);
     
     // For testing/development convenience, we can use 123456
     const code = '123456';
     const durationSeconds = 300; // 5 minutes
     const expiresAt = Date.now() + durationSeconds * 1000;
 
-    this.otpStore.set(cleanPhone, { code, expiresAt });
+    this.otpStore.set(cleanContact, { code, expiresAt });
 
-    console.log(`[OTP SERVICE] Generated OTP ${code} for phone +66${cleanPhone}`);
+    if (channel === 'email') {
+      console.log(`[OTP SERVICE] Generated OTP ${code} for email ${cleanContact}`);
+    } else {
+      console.log(`[OTP SERVICE] Generated OTP ${code} for phone +66${cleanContact}`);
+    }
     
     // =========================================================================
-    // PRODUCTION SMS GATEWAY INTEGRATION EXAMPLE (e.g. Thaibulksms, SMS2PRO)
+    // PRODUCTION SMS/EMAIL GATEWAY INTEGRATION EXAMPLE
     // =========================================================================
     /*
     try {
-      const apiKey = process.env.SMS_API_KEY;
-      const apiSecret = process.env.SMS_API_SECRET;
-      const message = `รหัส OTP สำหรับการลงทะเบียนรับประกัน ProRegis ของท่านคือ ${code} (รหัสมีอายุ 5 นาที)`;
-      
-      // Axios request to Thailand SMS Gateway:
-      await axios.post('https://api.sms2pro.com/v1/sms', {
-        sender: 'WindowAsia',
-        phone: `66${cleanPhone}`,
-        message: message,
-      }, {
-        headers: { 'Authorization': `Bearer ${apiKey}` }
-      });
+      if (channel === 'email') {
+        // Send email via nodemailer/SES...
+      } else {
+        // Send SMS via sms2pro/thaibulksms...
+      }
     } catch (err) {
-      console.error('Failed to send real SMS via gateway:', err);
+      console.error('Failed to send real OTP:', err);
     }
     */
     // =========================================================================
@@ -52,16 +55,19 @@ export class OtpService {
     };
   }
 
-  async verifyOtp(phone: string, code: string): Promise<boolean> {
-    const cleanPhone = phone.replace(/\D/g, '');
-    const data = this.otpStore.get(cleanPhone);
+  async verifyOtp(contact: string, code: string): Promise<boolean> {
+    // Detect channel based on contact format
+    const isEmail = contact.includes('@');
+    const cleanContact = this.getCleanContact(contact, isEmail ? 'email' : 'sms');
+    
+    const data = this.otpStore.get(cleanContact);
 
     if (!data) {
-      throw new BadRequestException('No active OTP request found for this phone number.');
+      throw new BadRequestException('No active OTP request found for this contact info.');
     }
 
     if (Date.now() > data.expiresAt) {
-      this.otpStore.delete(cleanPhone);
+      this.otpStore.delete(cleanContact);
       throw new BadRequestException('OTP code has expired. Please request a new one.');
     }
 
@@ -70,7 +76,7 @@ export class OtpService {
     }
 
     // Success: remove OTP code from store
-    this.otpStore.delete(cleanPhone);
+    this.otpStore.delete(cleanContact);
     return true;
   }
 }
