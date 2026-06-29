@@ -78,7 +78,7 @@ const localT = {
     noHistory: "ยังไม่มีประวัติการลงทะเบียนรับประกันด้วยข้อมูลการติดต่อนี้",
     goHome: "กลับไปยังหน้าแรก",
     itemCode: "รหัสสินค้า",
-    prodOrder: "ใบสั่งผลิต (PD)",
+    prodOrder: "จำนวนที่ผลิต",
     seqNo: "ลำดับที่",
     registeredAt: "ลงทะเบียนเมื่อ",
     activeStatus: "รับประกันแล้ว",
@@ -117,7 +117,7 @@ const localT = {
     noHistory: "No warranty registration history found for this contact details.",
     goHome: "Back to Home Page",
     itemCode: "Product Code",
-    prodOrder: "Prod Order (PD)",
+    prodOrder: "Production Quantity",
     seqNo: "Seq No",
     registeredAt: "Registered on",
     activeStatus: "Warranty Active",
@@ -735,14 +735,22 @@ export default function MyWarrantyPage() {
                       </span>
                       <h3 className="font-bold text-base text-primary pt-0.5">{item.itemName}</h3>
                       
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 text-xs text-on-surface-variant">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 text-xs text-on-surface-variant">
                         <p className="flex items-center gap-1.5">
                           <span className="font-semibold text-primary">{localT[lang].itemCode}:</span>
                           <code>{item.itemCode}</code>
                         </p>
                         <p className="flex items-center gap-1.5">
+                          <span className="font-semibold text-primary">{lang === "th" ? "วันที่ผลิต" : "Mfg Date"}:</span>
+                          <code>{lang === "th" ? (item as any).mfgDateTh || "-" : (item as any).mfgDateEn || "-"}</code>
+                        </p>
+                        <p className="flex items-center gap-1.5">
+                          <span className="font-semibold text-primary">{lang === "th" ? "เลขล็อตการผลิต" : "Lot No."}:</span>
+                          <code>{(item as any).lotNo || "-"}</code>
+                        </p>
+                        <p className="flex items-center gap-1.5">
                           <span className="font-semibold text-primary">{localT[lang].prodOrder}:</span>
-                          <code>{item.docNum || "-"}</code>
+                          <code>{(item as any).totalQty ? `${(item as any).totalQty} ${lang === "th" ? "ชิ้น" : "Units"}` : "-"}</code>
                         </p>
                         <p className="flex items-center gap-1.5 sm:col-span-2">
                           <span className="font-semibold text-primary">{localT[lang].seqNo}:</span>

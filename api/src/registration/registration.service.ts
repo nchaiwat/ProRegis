@@ -24,6 +24,8 @@ export class RegistrationDto {
   lineUserId?: string; // LINE User ID (optional, from LIFF)
 }
 
+import { GenerationLog } from '../backoffice/generation-log.entity';
+
 @Injectable()
 export class RegistrationService {
   private readonly logger = new Logger(RegistrationService.name);
@@ -33,6 +35,8 @@ export class RegistrationService {
     private readonly registrationRepository: Repository<Registration>,
     @InjectRepository(ProductionOrder)
     private readonly productionOrderRepository: Repository<ProductionOrder>,
+    @InjectRepository(GenerationLog)
+    private readonly generationLogRepository: Repository<GenerationLog>,
     private readonly telegramService: TelegramService,
   ) {}
 
@@ -276,6 +280,15 @@ export class RegistrationService {
       });
     }
 
+    const formatMfgDate = (date: Date, lang: 'th' | 'en'): string => {
+      if (!date) return 'N/A';
+      const monthsTh = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+      const monthsEn = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const m = date.getMonth();
+      const y = date.getFullYear();
+      return lang === 'th' ? `${monthsTh[m]} ${y}` : `${monthsEn[m]} ${y}`;
+    };
+
     const results: Array<{
       id: string;
       docNum: string | null;
@@ -284,17 +297,51 @@ export class RegistrationService {
       itemName: string;
       registeredAt: Date;
       status: string;
+      mfgDateTh: string;
+      mfgDateEn: string;
+      lotNo: string;
+      totalQty: string;
     }> = [];
+
     for (const reg of registrations) {
       let itemCode = 'ไม่ระบุ';
       let itemName = 'ไม่ระบุ';
+      let mfgDateTh = 'N/A';
+      let mfgDateEn = 'N/A';
+      let lotNo = 'LOT-01';
+      let totalQty = 'N/A';
+
       if (reg.docNum) {
         const po = await this.productionOrderRepository.findOne({ where: { docNum: reg.docNum } });
         if (po) {
           itemCode = po.itemCode;
           itemName = po.itemName || 'ไม่ระบุ';
+          mfgDateTh = po.createdAt ? formatMfgDate(po.createdAt, 'th') : 'N/A';
+          mfgDateEn = po.createdAt ? formatMfgDate(po.createdAt, 'en') : 'N/A';
         }
+
+        const logs = await this.generationLogRepository.find({
+          where: { docNum: reg.docNum },
+          order: { generatedAt: 'ASC' }
+        });
+
+        let lotIndex = 1;
+        if (reg.seqNum && logs.length > 0) {
+          const seqNumNum = parseInt(reg.seqNum, 10);
+          for (let i = 0; i < logs.length; i++) {
+            const log = logs[i];
+            if (seqNumNum >= log.startSeq && seqNumNum < log.startSeq + log.quantity) {
+              lotIndex = i + 1;
+              break;
+            }
+          }
+        }
+        lotNo = `LOT-${String(lotIndex).padStart(2, '0')}`;
+
+        const sumQty = logs.reduce((sum, log) => sum + log.quantity, 0);
+        totalQty = sumQty > 0 ? `${sumQty}` : 'N/A';
       }
+
       results.push({
         id: reg.id,
         docNum: reg.docNum,
@@ -303,6 +350,10 @@ export class RegistrationService {
         itemName,
         registeredAt: reg.registeredAt,
         status: reg.status,
+        mfgDateTh,
+        mfgDateEn,
+        lotNo,
+        totalQty,
       });
     }
     return results;

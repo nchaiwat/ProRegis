@@ -364,19 +364,19 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
           modelTh: "กระจกหน้าต่างอลูมิเนียมนำเข้าซีรีส์ย่อย",
           modelEn: "Imported Aluminum Window Sub-Series",
           manufactureDate: "ก.พ. 2026",
-          lotNo: resolvedDocNum ? `LOT-${resolvedDocNum}` : "LOT-992-GEN",
-          poNo: resolvedDocNum ? resolvedDocNum : "PO-88390",
+          lotNo: "LOT-01",
+          poNo: "120",
           imageUrl: "https://images.unsplash.com/photo-1513694203232-719a280e022f?q=80&w=800&auto=format&fit=crop",
           warrantyPeriod: "ตลอดอายุการใช้งาน (Lifetime Warranty)",
           specs: {
             th: [
-              { label: "เลขที่ใบสั่งผลิต", value: resolvedDocNum || lookupKey },
+              { label: "จำนวนที่ผลิต", value: "120 ชิ้น" },
               { label: "ลำดับที่", value: resolvedSeqNum ? `ชิ้นที่ ${parseInt(resolvedSeqNum)}` : "-" },
               { label: "วันที่ผลิต", value: "ก.พ. 2026" },
               { label: "มาตรฐานควบคุม", value: "ISO 9001:2015" },
             ],
             en: [
-              { label: "Production Order", value: resolvedDocNum || lookupKey },
+              { label: "Production Quantity", value: "120 Units" },
               { label: "Unit No.", value: resolvedSeqNum ? `Unit ${parseInt(resolvedSeqNum)}` : "-" },
               { label: "Manufacture Date", value: "Feb 2026" },
               { label: "Compliance Standard", value: "ISO 9001:2015" },
