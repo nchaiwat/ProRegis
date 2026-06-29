@@ -27,6 +27,8 @@ export interface Product {
   };
 }
 
+import { GenerationLog } from '../backoffice/generation-log.entity';
+
 @Injectable()
 export class ProductsService {
   private readonly logger = new Logger(ProductsService.name);
@@ -36,6 +38,8 @@ export class ProductsService {
     private readonly productMetadataRepository: Repository<ProductMetadata>,
     @InjectRepository(ProductionOrder)
     private readonly productionOrderRepository: Repository<ProductionOrder>,
+    @InjectRepository(GenerationLog)
+    private readonly generationLogRepository: Repository<GenerationLog>,
     private readonly sapService: SapService,
     @Inject(forwardRef(() => BackofficeService))
     private readonly backofficeService: BackofficeService,
@@ -233,6 +237,15 @@ export class ProductsService {
     return metadata;
   }
 
+  private formatManufactureDate(date: Date, lang: 'th' | 'en'): string {
+    if (!date) return 'N/A';
+    const monthsTh = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+    const monthsEn = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const m = date.getMonth();
+    const y = date.getFullYear();
+    return lang === 'th' ? `${monthsTh[m]} ${y}` : `${monthsEn[m]} ${y}`;
+  }
+
   async findOne(token: string): Promise<Product> {
     if (this.products[token]) {
       return this.products[token];
@@ -265,34 +278,59 @@ export class ProductsService {
 
     const itemCode = po.itemCode;
     const itemName = po.itemName || `กระจกนิรภัยนำเข้า ซีรีส์ ${docNum.substring(6, 9)}`;
-    const plannedQty = po.plannedQty || 100;
-
+    
     const metadata = await this.productMetadataRepository.findOne({ where: { itemCode } });
     if (!metadata) {
       throw new BadRequestException('ไม่พบข้อมูลสเปกหรือรูปภาพของสินค้านี้ในฐานข้อมูล');
     }
+
+    // Dynamic specs from DB & SAP
+    const mfgDateTh = po.createdAt ? this.formatManufactureDate(po.createdAt, 'th') : 'N/A';
+    const mfgDateEn = po.createdAt ? this.formatManufactureDate(po.createdAt, 'en') : 'N/A';
+
+    // Query GenerationLogs for this docNum to compute LOT-XX and Total Quantity
+    const logs = await this.generationLogRepository.find({
+      where: { docNum },
+      order: { generatedAt: 'ASC' }
+    });
+
+    let lotIndex = 1;
+    if (seqNum && logs.length > 0) {
+      const seqNumNum = parseInt(seqNum, 10);
+      for (let i = 0; i < logs.length; i++) {
+        const log = logs[i];
+        if (seqNumNum >= log.startSeq && seqNumNum < log.startSeq + log.quantity) {
+          lotIndex = i + 1;
+          break;
+        }
+      }
+    }
+    const lotNo = `LOT-${String(lotIndex).padStart(2, '0')}`;
+
+    const totalQty = logs.reduce((sum, log) => sum + log.quantity, 0);
+    const poNoValue = totalQty > 0 ? `${totalQty}` : 'N/A';
 
     return {
       token: token,
       code: itemCode,
       modelTh: metadata.itemName || 'กระจกหน้าต่างอลูมิเนียมนำเข้าซีรีส์ย่อย',
       modelEn: metadata.itemName || 'Imported Aluminum Window Sub-Series',
-      manufactureDate: 'ก.พ. 2026',
-      lotNo: `LOT-${docNum}`,
-      poNo: docNum,
+      manufactureDate: mfgDateTh,
+      lotNo: lotNo,
+      poNo: poNoValue,
       imageUrl: metadata.imageBase64 || 'https://images.unsplash.com/photo-1513694203232-719a280e022f?q=80&w=800&auto=format&fit=crop',
       warrantyPeriod: 'ตลอดอายุการใช้งาน (Lifetime Warranty)',
       specs: {
         th: [
-          { label: 'เลขที่ใบสั่งผลิต', value: docNum },
+          { label: 'จำนวนที่ผลิต', value: totalQty > 0 ? `${totalQty} ชิ้น` : 'N/A' },
           { label: 'ลำดับที่', value: seqNum ? `ชิ้นที่ ${parseInt(seqNum, 10)}` : '-' },
-          { label: 'วันที่ผลิต', value: 'ก.พ. 2026' },
+          { label: 'วันที่ผลิต', value: mfgDateTh },
           { label: 'มาตรฐานควบคุม', value: 'ISO 9001:2015' },
         ],
         en: [
-          { label: 'Production Order', value: docNum },
+          { label: 'Production Quantity', value: totalQty > 0 ? `${totalQty} Units` : 'N/A' },
           { label: 'Unit No.', value: seqNum ? `Unit ${parseInt(seqNum, 10)}` : '-' },
-          { label: 'Manufacture Date', value: 'Feb 2026' },
+          { label: 'Manufacture Date', value: mfgDateEn },
           { label: 'Compliance Standard', value: 'ISO 9001:2015' },
         ]
       },

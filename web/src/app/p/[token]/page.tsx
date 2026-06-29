@@ -795,7 +795,8 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
 
         {/* Step 1: Product Specs */}
         {step === 1 && (
-          <div className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+            <div className="lg:col-span-8 space-y-6">
             <section className="overflow-hidden rounded-xl bg-white shadow-sm border border-outline-variant/30">
               <div className="relative h-[250px] md:h-[400px] w-full bg-surface-container">
                 <img 
@@ -917,6 +918,46 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
               </button>
               <p className="text-[10px] text-outline font-semibold">{t.step} 1 {t.stepOf}</p>
             </div>
+            </div>
+
+            {/* Sidebar info */}
+            <div className="lg:col-span-4 space-y-6">
+              <div className="p-6 bg-surface-container border border-outline-variant rounded-xl flex flex-col items-center text-center">
+                <div className="w-12 h-12 rounded-full bg-secondary-container flex items-center justify-center mb-4">
+                  <span className="material-symbols-outlined text-on-secondary-container">verified_user</span>
+                </div>
+                <h3 className="font-bold text-sm text-primary mb-2">{lang === "th" ? "การลงทะเบียนที่ปลอดภัย" : "Secure Registration"}</h3>
+                <p className="text-xs text-on-surface-variant leading-relaxed">
+                  {lang === "th" 
+                    ? "ข้อมูลของคุณจะได้รับการจัดเก็บอย่างปลอดภัยด้วยการเข้ารหัส SSL และใช้เฉพาะเพื่อวัตถุประสงค์ในการยืนยันสิทธิ์รับประกันสินค้าเท่านั้น" 
+                    : "Your data is stored securely using SSL encryption and is used exclusively for verifying your warranty rights."}
+                </p>
+              </div>
+
+              <div className="p-6 bg-white border border-outline-variant rounded-xl shadow-sm space-y-4">
+                <h3 className="font-bold text-sm text-primary">{lang === "th" ? "ขั้นตอนทั้งหมด" : "Steps Progress"}</h3>
+                <ul className="space-y-3.5 text-xs font-semibold">
+                  <li className="flex items-center gap-2 text-secondary">
+                    <div className="w-5 h-5 rounded-full border-2 border-secondary flex items-center justify-center">
+                      <div className="w-2.5 h-2.5 rounded-full bg-secondary"></div>
+                    </div>
+                    <span>{t.navInfo}</span>
+                  </li>
+                  <li className="flex items-center gap-2 text-outline">
+                    <span className="material-symbols-outlined !text-xl">radio_button_unchecked</span>
+                    <span>{t.navConsent}</span>
+                  </li>
+                  <li className="flex items-center gap-2 text-outline">
+                    <span className="material-symbols-outlined !text-xl">radio_button_unchecked</span>
+                    <span>{t.navRegister}</span>
+                  </li>
+                  <li className="flex items-center gap-2 text-outline">
+                    <span className="material-symbols-outlined !text-xl">radio_button_unchecked</span>
+                    <span>{t.navSuccess}</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
           </div>
         )}
 
@@ -982,7 +1023,12 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
                 </div>
 
                 <div className="pt-4 border-t border-outline-variant flex justify-between items-center">
-                  <a href="#" className="inline-flex items-center gap-1.5 text-xs font-bold text-secondary hover:underline">
+                  <a 
+                    href="https://windowasia.com/wp-content/uploads/2024/02/%E0%B8%99%E0%B9%82%E0%B8%A2%E0%B8%9A%E0%B8%B2%E0%B8%A2%E0%B8%81%E0%B8%B2%E0%B8%A3%E0%B8%84%E0%B8%B8%E0%B9%89%E0%B8%A1%E0%B8%84%E0%B8%A3%E0%B8%AD%E0%B8%87%E0%B8%82%E0%B9%85%E0%B8%AD%E0%B8%A1%E0%B8%B9%E0%B8%A5%E0%B8%AA%E0%B9%88%E0%B8%A7%E0%B8%99%E0%B8%9A%E0%B8%B8%E0%B8%84%E0%B8%84%E0%B8%A5-.pdf"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1.5 text-xs font-bold text-secondary hover:underline"
+                  >
                     <span className="material-symbols-outlined text-[18px]">policy</span>
                     {t.privacyPolicyFull}
                   </a>
@@ -1012,6 +1058,31 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
                   </button>
                 </div>
                 <p className="text-center text-[10px] text-outline font-semibold">{t.step} 2 {t.stepOf}</p>
+              </div>
+
+              {/* Steps Progress card for Step 2 */}
+              <div className="p-6 bg-white border border-outline-variant rounded-xl shadow-sm space-y-4 mt-6">
+                <h3 className="font-bold text-sm text-primary">{lang === "th" ? "ขั้นตอนทั้งหมด" : "Steps Progress"}</h3>
+                <ul className="space-y-3.5 text-xs font-semibold">
+                  <li className="flex items-center gap-2 text-on-surface-variant">
+                    <span className="material-symbols-outlined text-green-600 !text-xl">check_circle</span>
+                    <span>{t.navInfo}</span>
+                  </li>
+                  <li className="flex items-center gap-2 text-secondary">
+                    <div className="w-5 h-5 rounded-full border-2 border-secondary flex items-center justify-center">
+                      <div className="w-2.5 h-2.5 rounded-full bg-secondary"></div>
+                    </div>
+                    <span>{t.navConsent}</span>
+                  </li>
+                  <li className="flex items-center gap-2 text-outline">
+                    <span className="material-symbols-outlined !text-xl">radio_button_unchecked</span>
+                    <span>{t.navRegister}</span>
+                  </li>
+                  <li className="flex items-center gap-2 text-outline">
+                    <span className="material-symbols-outlined !text-xl">radio_button_unchecked</span>
+                    <span>{t.navSuccess}</span>
+                  </li>
+                </ul>
               </div>
             </div>
           </div>
@@ -1293,8 +1364,18 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
                 </span>
               </div>
               <h2 className="font-bold text-3xl text-primary">{t.successTitle}</h2>
-              <p className="text-sm text-on-surface-variant max-w-md mt-2">
-                {t.successSubtitle}
+              <p className="text-sm text-on-surface-variant max-w-md mt-2 leading-relaxed">
+                {lang === "th" ? (
+                  <>
+                    ข้อมูลสินค้าและการรับประกันของคุณได้รับการบันทึกในระบบหลักของ{" "}
+                    <span className="whitespace-nowrap">Window&nbsp;Asia&nbsp;PCL.</span> เรียบร้อยแล้ว
+                  </>
+                ) : (
+                  <>
+                    Your product information and warranty details have been successfully recorded in the{" "}
+                    <span className="whitespace-nowrap">Window&nbsp;Asia&nbsp;PCL.</span> registry.
+                  </>
+                )}
               </p>
             </section>
 
@@ -1427,25 +1508,37 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
               {/* VIP customer support contacts */}
               <div className="md:col-span-12 bg-surface-container-high rounded-xl p-6 md:p-8 space-y-4">
                 <div>
-                  <h4 className="font-bold text-lg text-primary">{t.csTitle}</h4>
+                  <h4 className="font-bold text-lg text-primary">
+                    {lang === "th" ? (
+                      <>
+                        ฝ่ายบริการลูกค้า <span className="whitespace-nowrap">Window&nbsp;Asia&nbsp;PCL.</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="whitespace-nowrap">Window&nbsp;Asia&nbsp;PCL.</span> Customer Support
+                      </>
+                    )}
+                  </h4>
                   <p className="text-xs text-on-surface-variant mt-1">{t.csSubtitle}</p>
                 </div>
                 <div className="flex flex-wrap gap-3 pt-2">
-                  <a href="tel:021234567" className="flex items-center gap-2 bg-white border border-outline-variant px-4 py-2.5 rounded-lg text-xs font-semibold text-primary hover:bg-surface-container-low transition-colors">
+                  <a href="tel:0614193518" className="flex items-center gap-2 bg-white border border-outline-variant px-4 py-2.5 rounded-lg text-xs font-semibold text-primary hover:bg-surface-container-low transition-colors">
                     <span className="material-symbols-outlined">call</span>
                     <span>{t.csPhone}</span>
                   </a>
-                  <a href="mailto:support@windowasia.com" className="flex items-center gap-2 bg-white border border-outline-variant px-4 py-2.5 rounded-lg text-xs font-semibold text-primary hover:bg-surface-container-low transition-colors">
+                  <a href="mailto:waservice@windowasia.com" className="flex items-center gap-2 bg-white border border-outline-variant px-4 py-2.5 rounded-lg text-xs font-semibold text-primary hover:bg-surface-container-low transition-colors">
                     <span className="material-symbols-outlined">mail</span>
                     <span>{t.csEmail}</span>
                   </a>
-                  <button 
-                    onClick={() => alert(lang === "th" ? "กำลังต่อสายไปยังศูนย์สนทนาสด..." : "Connecting to chat room...")}
-                    className="flex items-center gap-2 bg-secondary text-white px-5 py-2.5 rounded-lg text-xs font-semibold hover:opacity-90 transition-all shadow-md active:scale-95"
+                  <a 
+                    href="https://line.me/R/ti/p/@windowasia"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 bg-[#06C755] text-white px-5 py-2.5 rounded-lg text-xs font-semibold hover:opacity-90 transition-all shadow-md active:scale-95"
                   >
-                    <span className="material-symbols-outlined">chat</span>
+                    <span className="material-symbols-outlined text-[18px]">chat</span>
                     <span>{t.csChat}</span>
-                  </button>
+                  </a>
                 </div>
               </div>
             </div>

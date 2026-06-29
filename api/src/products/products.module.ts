@@ -7,9 +7,11 @@ import { ProductionOrder } from '../production-order/production-order.entity';
 import { SapModule } from '../sap/sap.module';
 import { BackofficeModule } from '../backoffice/backoffice.module';
 
+import { GenerationLog } from '../backoffice/generation-log.entity';
+
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ProductMetadata, ProductionOrder]),
+    TypeOrmModule.forFeature([ProductMetadata, ProductionOrder, GenerationLog]),
     SapModule,
     forwardRef(() => BackofficeModule),
   ],

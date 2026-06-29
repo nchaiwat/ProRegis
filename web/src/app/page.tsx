@@ -105,8 +105,8 @@ export default function Home() {
           </h2>
           <p className="text-sm text-on-surface-variant leading-relaxed max-w-xs mx-auto">
             {lang === "th"
-              ? "สแกน QR Code บนสินค้า Window Asia เพื่อเปิดใช้งานสิทธิ์รับประกันสินค้าของคุณ"
-              : "Scan the QR Code on your Window Asia product to activate your warranty coverage."}
+              ? "สแกน QR Code บนสินค้า Window Asia PCL. เพื่อเปิดใช้งานสิทธิ์รับประกันสินค้าของคุณ"
+              : "Scan the QR Code on your Window Asia PCL. product to activate your warranty coverage."}
           </p>
         </div>
 
@@ -174,17 +174,6 @@ export default function Home() {
         {scanError && (
           <p className="text-xs text-error font-semibold text-center">{scanError}</p>
         )}
-
-        {/* Window Asia branding */}
-        <div className="flex items-center gap-2 mt-2">
-          <div className="w-px h-4 bg-outline-variant" />
-          <p className="text-xs text-outline">
-            {lang === "th"
-              ? "ให้บริการโดย Window Asia Public Company Limited"
-              : "Powered by Window Asia Public Company Limited"}
-          </p>
-          <div className="w-px h-4 bg-outline-variant" />
-        </div>
       </main>
 
       {/* Footer */}
