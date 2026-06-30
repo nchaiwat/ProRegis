@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Registration } from './registration.entity';
 import { ProductionOrder } from '../production-order/production-order.entity';
-import { TelegramService } from '../telegram/telegram.service';
+import { TelegramService, formatThaiDateTime } from '../telegram/telegram.service';
 import * as crypto from 'crypto';
 
 export class RegistrationDto {
@@ -94,32 +94,32 @@ export class RegistrationService {
     });
 
       if (existingRegistration) {
-        const timeStr = new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
-        const oldRegTime = new Date(existingRegistration.registeredAt).toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
+        const timeStr = formatThaiDateTime(new Date());
+        const oldRegTime = formatThaiDateTime(new Date(existingRegistration.registeredAt));
         const itemCode = await this.getOrFetchItemCode(docNum);
         
         // Construct Telegram Alert message
-        const alertMessage = `
-<b>🚨 [ALERT] ตรวจพบการลงทะเบียนซ้ำ! (Double Registration Attempt)</b>
-━━━━━━━━━━━━━━━━━━━━━━━━
-📅 <b>วันเวลาที่พยายามลงทะเบียนซ้ำ:</b> ${timeStr}
-📦 <b>Production Order (PD):</b> <code>${docNum}</code>
-🔢 <b>Production Running No:</b> <code>${seqNum}</code>
-🏷️ <b>รหัสสินค้า (SAP B1):</b> <code>${itemCode}</code>
-━━━━━━━━━━━━━━━━━━━━━━━━
-📍 <b>ข้อมูลการลงทะเบียนเก่า:</b>
-• 👤 <b>ชื่อ-นามสกุล:</b> ${existingRegistration.firstName} ${existingRegistration.lastName}
-• 📞 <b>เบอร์โทรศัพท์:</b> ${existingRegistration.phone}
-• 📍 <b>จังหวัดติดตั้ง:</b> จ.${existingRegistration.province}
-• 📅 <b>วันเวลาลงทะเบียนสำเร็จ:</b> ${oldRegTime}
-━━━━━━━━━━━━━━━━━━━━━━━━
-⚠️ <b>ข้อมูลผู้ใช้ที่พยายามสมัครซ้ำ:</b>
-• 👤 <b>ชื่อ-นามสกุล:</b> ${dto.firstName} ${dto.lastName}
-• 📞 <b>เบอร์โทรศัพท์:</b> ${dto.phone}
-• 📍 <b>จังหวัดติดตั้ง:</b> จ.${dto.province}
-━━━━━━━━━━━━━━━━━━━━━━━━
-<i>*ผู้ดูแลระบบโปรดติดต่อชี้แจงและยืนยันความเป็นเจ้าของสินค้ากับลูกค้า*</i>
-`.trim();
+        const alertMessage = [
+          `📲 <b>ProRegis</b> · ${timeStr}`,
+          `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+          `🚨 <b>แจ้งเตือน: ตรวจพบการลงทะเบียนซ้ำ! (Double Registration)</b>\n`,
+          `• 📦 <b>Production Order (PD):</b> <code>${docNum}</code>`,
+          `• 🔢 <b>Production Running No:</b> <code>${seqNum}</code>`,
+          `• 🏷️ <b>รหัสสินค้า (SAP B1):</b> <code>${itemCode}</code>`,
+          `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+          `📍 <b>ข้อมูลการลงทะเบียนครั้งก่อนหน้า:</b>`,
+          `• 👤 <b>ชื่อ-นามสกุล:</b> ${existingRegistration.firstName} ${existingRegistration.lastName}`,
+          `• 📞 <b>เบอร์โทรศัพท์:</b> ${existingRegistration.phone}`,
+          `• 📍 <b>จังหวัดติดตั้ง:</b> จ.${existingRegistration.province}`,
+          `• 📅 <b>วันเวลาลงทะเบียนสำเร็จ:</b> ${oldRegTime}`,
+          `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+          `⚠️ <b>ข้อมูลการพยายามลงทะเบียนซ้ำ:</b>`,
+          `• 👤 <b>ชื่อ-นามสกุล:</b> ${dto.firstName} ${dto.lastName}`,
+          `• 📞 <b>เบอร์โทรศัพท์:</b> ${dto.phone}`,
+          `• 📍 <b>จังหวัดติดตั้ง:</b> จ.${dto.province}`,
+          `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+          `🔍 <i>โปรดติดต่อยืนยันความเป็นเจ้าของสินค้ากับลูกค้าในระบบ ProRegis</i>`
+        ].join('\n');
 
         await this.telegramService.sendMessage(alertMessage).catch((err) => {
           this.logger.error('[TELEGRAM ALERT ERROR] Failed to send duplicate registration warning Telegram message:', err);
@@ -199,7 +199,7 @@ export class RegistrationService {
     
     const itemCode = reg.docNum ? await this.getOrFetchItemCode(reg.docNum) : 'ไม่ระบุ';
     
-    const timeStr = new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
+    const timeStr = formatThaiDateTime(new Date());
     const gpsLink = reg.latitude && reg.longitude 
       ? `https://www.google.com/maps?q=${reg.latitude},${reg.longitude}`
       : null;
@@ -207,18 +207,19 @@ export class RegistrationService {
       ? `<a href="${gpsLink}">คลิกเพื่อดู Google Maps (${reg.latitude}, ${reg.longitude})</a>`
       : 'ลูกค้าปฏิเสธการแชร์พิกัด';
 
-    const message = `
-<b>🔔 [SYSTEM] แจ้งเตือนการลงทะเบียนสำเร็จ</b>
-━━━━━━━━━━━━━━━━━━━━━━━━
-📅 <b>วันเวลาแจ้งเตือน:</b> ${timeStr}
-📦 <b>Production Order (PD):</b> ${docNum}
-🔢 <b>Production Running No:</b> ${seqNum}
-🏷️ <b>รหัสสินค้า (SAP B1):</b> <code>${itemCode}</code>
-📍 <b>ที่อยู่ติดตั้ง:</b> ${reg.address || ''} จ.${reg.province || ''} ${reg.postalCode || ''}
-📞 <b>เบอร์โทรศัพท์:</b> ${reg.phone || 'ไม่ระบุ'}
-🌐 <b>GPS Location:</b> ${gpsText}
-━━━━━━━━━━━━━━━━━━━━━━━━
-`.trim();
+    const message = [
+      `📲 <b>ProRegis</b> · ${timeStr}`,
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+      `🔔 <b>แจ้งเตือน: ลงทะเบียนรับประกันสินค้าสำเร็จ (Warranty Registration)</b>\n`,
+      `• 📦 <b>Production Order (PD):</b> <code>${docNum}</code>`,
+      `• 🔢 <b>Production Running No:</b> <code>${seqNum}</code>`,
+      `• 🏷️ <b>รหัสสินค้า (SAP B1):</b> <code>${itemCode}</code>`,
+      `• 📍 <b>ที่อยู่ติดตั้ง:</b> ${reg.address || ''} จ.${reg.province || ''} ${reg.postalCode || ''}`,
+      `• 📞 <b>เบอร์โทรศัพท์:</b> ${reg.phone || 'ไม่ระบุ'}`,
+      `• 🌐 <b>GPS Location:</b> ${gpsText}`,
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+      `🔍 <i>สามารถตรวจสอบรายละเอียดประกันภัยได้เพิ่มเติมในระบบ ProRegis</i>`
+    ].join('\n');
 
     await this.telegramService.sendMessage(message);
   }

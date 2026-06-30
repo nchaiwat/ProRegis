@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User, UserRole, UserStatus } from './user.entity';
 import { RolePermission } from './role-permission.entity';
+import { TelegramService, formatThaiDateTime } from '../telegram/telegram.service';
 import * as bcrypt from 'bcryptjs';
 
 @Injectable()
@@ -12,6 +13,7 @@ export class UsersService implements OnApplicationBootstrap {
     private readonly userRepository: Repository<User>,
     @InjectRepository(RolePermission)
     private readonly rolePermissionRepository: Repository<RolePermission>,
+    private readonly telegramService: TelegramService,
   ) {}
 
   // Seed default users and permissions on startup if table is empty
@@ -55,18 +57,36 @@ export class UsersService implements OnApplicationBootstrap {
           passwordHash: adminPass,
           role: UserRole.SYSTEM_ADMIN,
           status: UserStatus.ACTIVE,
+          firstName: 'System',
+          lastName: 'Admin',
+          department: 'IT',
+          email: 'admin@windowasia.com',
+          mobile: '061-419-3518',
+          telegramId: null,
         },
         {
           username: 'factory1',
           passwordHash: adminPass,
           role: UserRole.QR_GENERATOR,
           status: UserStatus.ACTIVE,
+          firstName: 'Factory',
+          lastName: 'One',
+          department: 'PD',
+          email: 'factory1@windowasia.com',
+          mobile: '081-234-5679',
+          telegramId: null,
         },
         {
           username: 'crm1',
           passwordHash: adminPass,
           role: UserRole.CRM_MANAGER,
           status: UserStatus.ACTIVE,
+          firstName: 'CRM',
+          lastName: 'One',
+          department: 'CS',
+          email: 'crm1@windowasia.com',
+          mobile: '081-234-5680',
+          telegramId: null,
         },
       ];
 
@@ -79,7 +99,10 @@ export class UsersService implements OnApplicationBootstrap {
   }
 
   async findByUsername(username: string): Promise<User | null> {
-    return this.userRepository.findOne({ where: { username } });
+    return this.userRepository
+      .createQueryBuilder('user')
+      .where('LOWER(user.username) = LOWER(:username)', { username: username.trim() })
+      .getOne();
   }
 
   async findById(id: string): Promise<User | null> {
@@ -92,9 +115,20 @@ export class UsersService implements OnApplicationBootstrap {
     });
   }
 
-  async createUser(username: string, passwordPlain: string, role: UserRole): Promise<User> {
+  async createUser(
+    username: string,
+    passwordPlain: string,
+    role: UserRole,
+    firstName: string,
+    lastName: string,
+    department: string,
+    email: string | null,
+    mobile: string | null,
+    telegramId: string | null,
+    pinCode?: string | null,
+  ): Promise<User> {
     // Validate username uniqueness
-    const existing = await this.findByUsername(username.trim().toLowerCase());
+    const existing = await this.findByUsername(username.trim());
     if (existing) {
       throw new BadRequestException('ชื่อผู้ใช้นี้มีอยู่ในระบบแล้ว');
     }
@@ -104,28 +138,93 @@ export class UsersService implements OnApplicationBootstrap {
       throw new BadRequestException('รหัสผ่านต้องมีความยาวไม่น้อยกว่า 8 ตัวอักษร');
     }
     
+    // Validate PIN Code if provided
+    if (pinCode && !/^\d{6}$/.test(pinCode)) {
+      throw new BadRequestException('PIN Code ต้องเป็นตัวเลข 6 หลักเท่านั้น');
+    }
+    
     const passwordHash = await bcrypt.hash(passwordPlain, 10);
     const newUser = this.userRepository.create({
-      username: username.trim().toLowerCase(),
+      username: username.trim(),
       passwordHash,
       role,
       status: UserStatus.ACTIVE,
+      firstName: firstName || '',
+      lastName: lastName || '',
+      department: department || '',
+      email: email || null,
+      mobile: mobile || null,
+      telegramId: telegramId || null,
+      pinCode: pinCode || null,
     });
 
     return this.userRepository.save(newUser);
   }
 
-  async updateUserRoleAndStatus(id: string, role: UserRole, status: UserStatus): Promise<User> {
+  async updateUser(
+    id: string,
+    data: {
+      role: UserRole;
+      status: UserStatus;
+      firstName: string;
+      lastName: string;
+      department: string;
+      email: string | null;
+      mobile: string | null;
+      telegramId: string | null;
+      pinCode?: string | null;
+    },
+  ): Promise<User> {
     const user = await this.findById(id);
     if (!user) {
       throw new NotFoundException('ไม่พบผู้ใช้ที่ระบุ');
     }
 
-    user.role = role;
-    user.status = status;
-    if (status === UserStatus.ACTIVE) {
+    // Validate PIN Code if provided
+    if (data.pinCode && !/^\d{6}$/.test(data.pinCode)) {
+      throw new BadRequestException('PIN Code ต้องเป็นตัวเลข 6 หลักเท่านั้น');
+    }
+
+    user.role = data.role;
+    user.status = data.status;
+    user.firstName = data.firstName || '';
+    user.lastName = data.lastName || '';
+    user.department = data.department || '';
+    user.email = data.email || null;
+    user.mobile = data.mobile || null;
+    user.telegramId = data.telegramId || null;
+    user.pinCode = data.pinCode || null;
+
+    if (data.status === UserStatus.ACTIVE) {
       user.failedAttempts = 0;
       user.lockedUntil = null;
+    }
+
+    return this.userRepository.save(user);
+  }
+
+  async updateUserPasswordAndPin(
+    id: string,
+    passwordPlain?: string,
+    pinCode?: string | null,
+  ): Promise<User> {
+    const user = await this.findById(id);
+    if (!user) {
+      throw new NotFoundException('ไม่พบผู้ใช้ที่ระบุ');
+    }
+
+    if (passwordPlain) {
+      if (passwordPlain.length < 8) {
+        throw new BadRequestException('รหัสผ่านต้องมีความยาวไม่น้อยกว่า 8 ตัวอักษร');
+      }
+      user.passwordHash = await bcrypt.hash(passwordPlain, 10);
+    }
+
+    if (pinCode !== undefined) {
+      if (pinCode && !/^\d{6}$/.test(pinCode)) {
+        throw new BadRequestException('PIN Code ต้องเป็นตัวเลข 6 หลักเท่านั้น');
+      }
+      user.pinCode = pinCode || null;
     }
 
     return this.userRepository.save(user);
@@ -162,6 +261,33 @@ export class UsersService implements OnApplicationBootstrap {
       user.lockedUntil = null;
       await this.userRepository.save(user);
     }
+  }
+
+  async recordSuccessfulLogin(user: User): Promise<void> {
+    user.failedAttempts = 0;
+    user.lockedUntil = null;
+    user.lastLogin = new Date();
+    await this.userRepository.save(user);
+  }
+
+  async sendTestTelegramMessage(user: User): Promise<{ success: boolean; error?: string }> {
+    if (!user.telegramId) return { success: false, error: 'ไม่มี Telegram ID' };
+    const timeStr = formatThaiDateTime(new Date());
+
+    const message = [
+      `📲 <b>ProRegis</b> · ${timeStr}`,
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+      `📝 <b>ข้อความทดสอบการเชื่อมต่อ (Test Connection)</b>\n`,
+      `• 👤 <b>ผู้รับทดสอบ:</b> ${user.firstName} ${user.lastName} (${user.username})`,
+      `• 🔑 <b>User ID:</b> ${user.username}`,
+      `• 🏢 <b>แผนก:</b> ${user.department || '-'}`,
+      `• 📧 <b>อีเมล:</b> ${user.email || '-'}`,
+      `• 📞 <b>เบอร์โทร:</b> ${user.mobile || '-'}`,
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+      `🔍 <i>นี่คือการทดสอบการเชื่อมต่อระบบ หากได้รับข้อความนี้แสดงว่าบอทพร้อมทำงานแล้ว</i>`
+    ].join('\n');
+
+    return this.telegramService.sendDirectMessage(user.telegramId, message);
   }
 
   // Find allowed menus for a specific role

@@ -17,11 +17,38 @@ export class User {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
+  @Column({ name: 'system_seq_id', type: 'integer', generated: 'increment', unique: true })
+  systemSeqId: number;
+
   @Column({ unique: true })
   username: string;
 
   @Column({ name: 'password_hash' })
   passwordHash: string;
+
+  @Column({ name: 'first_name', type: 'varchar', default: '' })
+  firstName: string;
+
+  @Column({ name: 'last_name', type: 'varchar', default: '' })
+  lastName: string;
+
+  @Column({ name: 'department', type: 'varchar', default: '' })
+  department: string;
+
+  @Column({ name: 'email', type: 'varchar', nullable: true })
+  email: string | null;
+
+  @Column({ name: 'mobile', type: 'varchar', nullable: true })
+  mobile: string | null;
+
+  @Column({ name: 'telegram_id', type: 'varchar', nullable: true })
+  telegramId: string | null;
+
+  @Column({ name: 'pin_code', type: 'varchar', length: 6, nullable: true })
+  pinCode: string | null;
+
+  @Column({ name: 'last_login', type: 'timestamp', nullable: true })
+  lastLogin: Date | null;
 
   @Column({
     type: 'varchar',

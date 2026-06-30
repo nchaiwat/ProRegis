@@ -4,7 +4,7 @@ import { Repository } from 'typeorm';
 import { GenerationLog } from './generation-log.entity';
 import { ProductionOrder } from '../production-order/production-order.entity';
 import { Registration } from '../registration/registration.entity';
-import { TelegramService } from '../telegram/telegram.service';
+import { TelegramService, formatThaiDateTime } from '../telegram/telegram.service';
 import { SapService } from '../sap/sap.service';
 import { ProductsService } from '../products/products.service';
 import * as crypto from 'crypto';
@@ -136,18 +136,19 @@ export class BackofficeService {
 
     if (overlaps.length > 0) {
       // Trigger Telegram Alert
-      const timeStr = new Date().toLocaleString('th-TH', { timeZone: 'Asia/Bangkok' });
-      const alertMsg = `
-<b>⚠️ [WARNING] ตรวจพบการพยายามสร้าง QR Code ซ้ำซ้อน!</b>
-━━━━━━━━━━━━━━━━━━━━━━━━
-👤 <b>ผู้ใช้ที่ส่งคำขอ:</b> <code>${actor}</code>
-📦 <b>Production Order (PD):</b> <code>${docNum}</code>
-🔢 <b>Running ที่ขอ:</b> <code>${startSeq}</code> ถึง <code>${requestedEndSeq}</code> (จำนวน: ${quantity})
-📅 <b>วันเวลาที่ส่งคำขอ:</b> ${timeStr}
-🖥️ <b>IP Address:</b> <code>${ipAddress}</code>
-❌ <b>ผลลัพธ์:</b> ถูกระงับการสร้างเนื่องจากช่วงตัวเลขทับซ้อนกับข้อมูลที่มีอยู่แล้ว
-━━━━━━━━━━━━━━━━━━━━━━━━
-`.trim();
+      const timeStr = formatThaiDateTime(new Date());
+      const alertMsg = [
+        `📲 <b>ProRegis</b> · ${timeStr}`,
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+        `⚠️ <b>แจ้งเตือน: ตรวจพบการพยายามสร้าง QR Code ซ้ำซ้อน!</b>\n`,
+        `• 👤 <b>ผู้ส่งคำขอ:</b> <code>${actor}</code>`,
+        `• 📦 <b>Production Order (PD):</b> <code>${docNum}</code>`,
+        `• 🔢 <b>ช่วงรหัสที่ขอ:</b> <code>${startSeq}</code> ถึง <code>${requestedEndSeq}</code> (จำนวน: ${quantity})`,
+        `• 🖥️ <b>IP Address:</b> <code>${ipAddress}</code>`,
+        `• ❌ <b>ผลลัพธ์:</b> <i>ถูกระงับเนื่องจากลำดับตัวเลขนี้เคยถูกสร้างคิวอาร์โค้ดแล้วในระบบ</i>`,
+        `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+        `🔍 <i>โปรดตรวจสอบช่วง Running Number ของ Production Order ดังกล่าว</i>`
+      ].join('\n');
 
       this.telegramService.sendMessage(alertMsg).catch((err) => {
         console.error('[TELEGRAM ALERT ERROR] Failed to send duplicate QR warning Telegram:', err);

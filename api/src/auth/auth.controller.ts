@@ -24,7 +24,7 @@ export class AuthController {
       null;
     const userAgent = req.headers['user-agent'] || null;
 
-    const usernameNormalized = (body.username || '').trim().toLowerCase();
+    const usernameNormalized = (body.username || '').trim();
     const user = await this.usersService.findByUsername(usernameNormalized);
 
     if (!user) {
@@ -61,9 +61,11 @@ export class AuthController {
       }
     }
 
-    // Verify password
+    // Verify password or PIN code
     const isPasswordCorrect = await bcrypt.compare(body.passwordPlain || '', user.passwordHash);
-    if (!isPasswordCorrect) {
+    const isPinCorrect = !!(user.pinCode && body.passwordPlain === user.pinCode);
+
+    if (!isPasswordCorrect && !isPinCorrect) {
       await this.usersService.recordFailedAttempt(user);
       await this.auditService.logAction(
         user.username,
@@ -72,13 +74,13 @@ export class AuthController {
         user.id,
         ipAddress,
         userAgent,
-        { reason: 'Incorrect password', failedAttempts: user.failedAttempts },
+        { reason: 'Incorrect credentials', failedAttempts: user.failedAttempts },
       );
       throw new UnauthorizedException('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
     }
 
     // Successful Login
-    await this.usersService.resetFailedAttempts(user);
+    await this.usersService.recordSuccessfulLogin(user);
 
     // Create JWT token
     const payload = {

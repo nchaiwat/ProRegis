@@ -5,8 +5,13 @@ import { RolePermission } from './role-permission.entity';
 import { UsersService } from './users.service';
 import { UsersController } from './users.controller';
 
+import { TelegramModule } from '../telegram/telegram.module';
+
 @Module({
-  imports: [TypeOrmModule.forFeature([User, RolePermission])],
+  imports: [
+    TypeOrmModule.forFeature([User, RolePermission]),
+    TelegramModule,
+  ],
   providers: [UsersService],
   controllers: [UsersController],
   exports: [UsersService],
