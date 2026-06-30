@@ -37,26 +37,36 @@ export class BackofficeController {
       req.socket?.remoteAddress ||
       'unknown';
 
-    const rows = await this.backofficeService.generateBatch(
-      actor,
-      body.docNum,
-      body.startSeq,
-      body.quantity,
-      ipAddress,
-      body.preview,
-    );
+    try {
+      const rows = await this.backofficeService.generateBatch(
+        actor,
+        body.docNum,
+        body.startSeq,
+        body.quantity,
+        ipAddress,
+        body.preview,
+      );
 
-    if (body.preview) {
-      return res.json({ success: true, rows });
+      if (body.preview) {
+        return res.json({ success: true, rows });
+      }
+
+      const csvContent = this.backofficeService.buildCsv(rows);
+
+      const filename = `QR_Batch_${body.docNum}_seq${String(body.startSeq).padStart(3, '0')}_qty${body.quantity}.csv`;
+
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(Buffer.from(csvContent, 'utf8'));
+    } catch (err) {
+      const status = typeof err.getStatus === 'function' ? err.getStatus() : 400;
+      const message = err.message || 'เกิดข้อผิดพลาดในการสร้างไฟล์';
+      return res.status(status).json({
+        statusCode: status,
+        message: message,
+        error: err.name || 'Bad Request',
+      });
     }
-
-    const csvContent = this.backofficeService.buildCsv(rows);
-
-    const filename = `QR_Batch_${body.docNum}_seq${String(body.startSeq).padStart(3, '0')}_qty${body.quantity}.csv`;
-
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.send(Buffer.from(csvContent, 'utf8'));
   }
 
   // -------------------------------------------------------------------------

@@ -147,9 +147,9 @@ export class SapService implements OnModuleInit {
     try {
       this.logger.log(`[SAP SERVICE] Fetching Production Order from SAP Service Layer: DocNum=${docNum}`);
       
-      // Query Production Order by DocumentNumber with new SAP columns
+      // Query Production Order by DocumentNumber (removed strict select to prevent cross-version SAP Service Layer compatibility issues)
       const result = await this.getRequest(
-        `/ProductionOrders?$filter=DocumentNumber eq ${parseInt(docNum, 10)}&$select=DocumentNumber,ItemNo,ProductDescription,PlannedQuantity,PostingDate,StartDate,ProductionOrderStatus,CompletedQuantity`
+        `/ProductionOrders?$filter=DocumentNumber eq ${parseInt(docNum, 10)}`
       );
       
       if (result && result.value && result.value.length > 0) {
@@ -160,10 +160,10 @@ export class SapService implements OnModuleInit {
           itemCode: po.ItemNo,
           itemName: po.ProductDescription || 'กระจกนิรภัยนำเข้าซีรีส์มาตรฐาน',
           plannedQty: Math.max(1, Math.round(po.PlannedQuantity || 100)),
-          orderDate: po.PostingDate || null,
+          orderDate: po.PostingDate || po.PostDate || po.CreationDate || null,
           startDate: po.StartDate || null,
-          status: po.ProductionOrderStatus || null,
-          completedQty: Math.round(po.CompletedQuantity || 0),
+          status: po.ProductionOrderStatus || po.Status || null,
+          completedQty: Math.round(po.CompletedQuantity || po.CompletedQty || po.CmpltQty || 0),
         };
       }
 
