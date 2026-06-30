@@ -27,7 +27,7 @@ export class BackofficeController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('SYSTEM_ADMIN', 'QR_GENERATOR')
   async generateCsv(
-    @Body() body: { docNum: string; startSeq: number; quantity: number },
+    @Body() body: { docNum: string; startSeq: number; quantity: number; preview?: boolean },
     @Req() req: Request,
     @Res() res: Response,
   ) {
@@ -43,7 +43,13 @@ export class BackofficeController {
       body.startSeq,
       body.quantity,
       ipAddress,
+      body.preview,
     );
+
+    if (body.preview) {
+      return res.json({ success: true, rows });
+    }
+
     const csvContent = this.backofficeService.buildCsv(rows);
 
     const filename = `QR_Batch_${body.docNum}_seq${String(body.startSeq).padStart(3, '0')}_qty${body.quantity}.csv`;

@@ -59,26 +59,55 @@ export default function GeneratePage() {
 
   const validateDocNum = (val: string) => /^\d{9}$/.test(val);
 
-  // สร้าง Preview (client-side — แค่แสดง PD เพราะ AES ต้องทำฝั่ง server)
-  const handlePreview = () => {
+  // สร้าง Preview (server-side validation & preview)
+  const handlePreview = async () => {
     setError("");
+    setSuccessMsg("");
+    setPreview([]);
+
     if (!validateDocNum(docNum)) {
       setError("Production Order ต้องเป็นตัวเลข 9 หลัก เช่น 260600007");
       return;
     }
     const finalSeq = startSeq === "" ? 1 : startSeq;
     const finalQty = quantity === "" ? 10 : quantity;
-    
-    const rows: PreviewRow[] = [];
-    for (let i = 0; i < finalQty; i++) {
-      const seq = finalSeq + i;
-      const seqStr = String(seq).padStart(3, "0");
-      rows.push({
-        code: "*** (เข้ารหัสด้วย AES-128-CBC) ***",
-        pd: `${docNum}${seqStr}`,
+
+    try {
+      const token = sessionStorage.getItem("bo_token") || "";
+      const res = await fetch(`${getApiBaseUrl()}/backoffice/generate`, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          docNum,
+          startSeq: finalSeq,
+          quantity: finalQty,
+          preview: true,
+        }),
       });
+
+      if (!res.ok) {
+        if (res.status === 401 || res.status === 403) {
+          sessionStorage.clear();
+          router.replace("/backoffice");
+          return;
+        }
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data?.message || "เกิดข้อผิดพลาดในการโหลด Preview");
+      }
+
+      const data = await res.json();
+      if (data.success && Array.isArray(data.rows)) {
+        setPreview(data.rows);
+      } else {
+        throw new Error("โครงสร้างข้อมูลไม่ถูกต้อง");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "เกิดข้อผิดพลาด");
+      setPreview([]);
     }
-    setPreview(rows);
   };
 
   // Download CSV จาก Server

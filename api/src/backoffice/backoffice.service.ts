@@ -115,6 +115,7 @@ export class BackofficeService {
     startSeq: number,
     quantity: number,
     ipAddress: string,
+    previewOnly = false,
   ): Promise<GeneratedRow[]> {
     // Validate inputs
     if (!docNum || !/^\d{9}$/.test(docNum)) {
@@ -192,6 +193,18 @@ export class BackofficeService {
 
     const activePoInfo = poInfo!;
 
+    // Check ItemCode prefix (Must start with FA or FU)
+    const itemCodeUpper = (activePoInfo.itemCode || '').toUpperCase();
+    if (!itemCodeUpper.startsWith('FA') && !itemCodeUpper.startsWith('FU')) {
+      if (bypassValidation) {
+        console.warn(`[SAP BYPASS] Item Code ${activePoInfo.itemCode} does not start with FA or FU. Bypassing in Local/Mock mode.`);
+      } else {
+        throw new BadRequestException(
+          `รหัสสินค้า (Item Code) ของใบสั่งผลิตนี้คือ ${activePoInfo.itemCode} ซึ่งต้องขึ้นต้นด้วย FA หรือ FU เท่านั้น`
+        );
+      }
+    }
+
     // Check if total requested QR quantity exceeds SAP Planned Quantity
     if (requestedEndSeq > activePoInfo.plannedQty) {
       if (bypassValidation) {
@@ -242,6 +255,10 @@ export class BackofficeService {
       const code = this.encryptToToken(docNum, seqStr);
       const pd = `${docNum}${seqStr}`; // เช่น 260600007001
       rows.push({ code, pd });
+    }
+
+    if (previewOnly) {
+      return rows;
     }
 
     // บันทึก Audit Log

@@ -21,22 +21,20 @@ interface ProductionTrackerItem {
 
 const getStatusBadge = (status: string | null | undefined) => {
   if (!status) return <span className="px-2 py-0.5 rounded-full bg-outline/10 text-outline text-[10px] font-bold">ไม่ระบุ</span>;
-  switch (status) {
-    case "bposPlanned":
-    case "Planned":
-      return <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-200 text-[10px] font-bold">Planned</span>;
-    case "bposReleased":
-    case "Released":
-      return <span className="px-2 py-0.5 rounded-full bg-green-50 text-green-600 border border-green-200 text-[10px] font-bold">Released</span>;
-    case "bposClosed":
-    case "Closed":
-      return <span className="px-2 py-0.5 rounded-full bg-slate-50 text-slate-600 border border-slate-200 text-[10px] font-bold">Closed</span>;
-    case "bposCancelled":
-    case "Cancelled":
-      return <span className="px-2 py-0.5 rounded-full bg-red-50 text-red-600 border border-red-200 text-[10px] font-bold">Cancelled</span>;
-    default:
-      return <span className="px-2 py-0.5 rounded-full bg-outline/10 text-outline text-[10px] font-bold">{status}</span>;
+  const s = status.trim();
+  if (s === "L" || s === "bposClosed" || s === "Closed") {
+    return <span className="px-2 py-0.5 rounded-full bg-slate-50 text-slate-600 border border-slate-200 text-[10px] font-bold">Closed</span>;
   }
+  if (s === "R" || s === "bposReleased" || s === "Released") {
+    return <span className="px-2 py-0.5 rounded-full bg-green-50 text-green-600 border border-green-200 text-[10px] font-bold">Released</span>;
+  }
+  if (s === "P" || s === "bposPlanned" || s === "Planned") {
+    return <span className="px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 border border-blue-200 text-[10px] font-bold">Planned</span>;
+  }
+  if (s === "C" || s === "bposCancelled" || s === "Cancelled") {
+    return <span className="px-2 py-0.5 rounded-full bg-red-50 text-red-600 border border-red-200 text-[10px] font-bold">Cancelled</span>;
+  }
+  return <span className="px-2 py-0.5 rounded-full bg-outline/10 text-outline text-[10px] font-bold">{status}</span>;
 };
 
 export default function ProductionTrackerPage() {
@@ -102,7 +100,7 @@ export default function ProductionTrackerPage() {
   });
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6 px-4 animate-success">
+    <div className="w-full mx-auto space-y-6 px-4 md:px-8 animate-success">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <h2 className="font-bold text-2xl text-primary">Production Tracker</h2>
