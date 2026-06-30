@@ -138,7 +138,7 @@ export class BackofficeService {
       // Trigger Telegram Alert
       const timeStr = formatThaiDateTime(new Date());
       const alertMsg = [
-        `📲 <b>ProRegis</b> · ${timeStr}`,
+        `📱 <b>ProRegis</b> · ${timeStr}`,
         `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
         `⚠️ <b>แจ้งเตือน: ตรวจพบการพยายามสร้าง QR Code ซ้ำซ้อน!</b>\n`,
         `• 👤 <b>ผู้ส่งคำขอ:</b> <code>${actor}</code>`,

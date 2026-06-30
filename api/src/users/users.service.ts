@@ -275,7 +275,7 @@ export class UsersService implements OnApplicationBootstrap {
     const timeStr = formatThaiDateTime(new Date());
 
     const message = [
-      `📲 <b>ProRegis</b> · ${timeStr}`,
+      `📱 <b>ProRegis</b> · ${timeStr}`,
       `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
       `📝 <b>ข้อความทดสอบการเชื่อมต่อ (Test Connection)</b>\n`,
       `• 👤 <b>ผู้รับทดสอบ:</b> ${user.firstName} ${user.lastName} (${user.username})`,
