@@ -1,11 +1,12 @@
 import { Injectable, UnauthorizedException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { GenerationLog } from './generation-log.entity';
 import { ProductionOrder } from '../production-order/production-order.entity';
 import { Registration } from '../registration/registration.entity';
 import { TelegramService, formatThaiDateTime } from '../telegram/telegram.service';
-import { SapService } from '../sap/sap.service';
+import { SapService, SapProductionOrderInfo } from '../sap/sap.service';
 import { ProductsService } from '../products/products.service';
 import * as crypto from 'crypto';
 
@@ -45,6 +46,7 @@ export class BackofficeService {
     private readonly sapService: SapService,
     @Inject(forwardRef(() => ProductsService))
     private readonly productsService: ProductsService,
+    private readonly configService: ConfigService,
   ) {}
 
   // -------------------------------------------------------------------------
@@ -161,36 +163,68 @@ export class BackofficeService {
     }
 
     // Fetch production order from SAP Service Layer eagerly
-    let poInfo;
+    const bypassValidation = this.configService.get<string>('SAP_BYPASS_VALIDATION', 'false') === 'true';
+    let poInfo: SapProductionOrderInfo | null = null;
     try {
       poInfo = await this.sapService.getProductionOrder(docNum);
     } catch (err) {
-      console.error('[SAP ERROR] Failed to fetch production order, falling back to mock details:', err);
+      console.error('[SAP ERROR] Failed to fetch production order:', err);
     }
 
     if (!poInfo) {
-      const defaultSuffix = docNum.substring(5, 9) || '205';
-      poInfo = {
-        itemCode: `FA00-D0112-200${defaultSuffix}`,
-        itemName: `กระจกนิรภัยนำเข้า ซีรีส์ ${docNum.substring(6, 9) || '007'} (Mock SAP B1)`,
-        plannedQty: 100,
-      };
+      if (bypassValidation) {
+        // Fallback for Local / development mode
+        const defaultSuffix = docNum.substring(5, 9) || '205';
+        poInfo = {
+          itemCode: `FA00-D0112-200${defaultSuffix}`,
+          itemName: `กระจกนิรภัยนำเข้า ซีรีส์ ${docNum.substring(6, 9) || '007'} (Mock SAP B1)`,
+          plannedQty: 100,
+          orderDate: '2026-06-01',
+          startDate: '2026-06-05',
+          status: 'bposReleased',
+          completedQty: 10,
+        };
+        console.warn(`[SAP BYPASS] Production order ${docNum} not found in SAP B1. Bypassing validation in Local/Mock mode.`);
+      } else {
+        throw new BadRequestException(`ไม่พบเลขที่สั่งผลิต (PD) ${docNum} นี้ในระบบ SAP B1`);
+      }
     }
 
-    // Cache production order details
+    const activePoInfo = poInfo!;
+
+    // Check if total requested QR quantity exceeds SAP Planned Quantity
+    if (requestedEndSeq > activePoInfo.plannedQty) {
+      if (bypassValidation) {
+        console.warn(`[SAP BYPASS] Requested QR quantity end seq ${requestedEndSeq} exceeds planned quantity ${activePoInfo.plannedQty}. Bypassing in Local/Mock mode.`);
+      } else {
+        throw new BadRequestException(
+          `จำนวน QR ที่ต้องการสร้าง เกินกว่าจำนวนที่ระบุในแผนการผลิตของ SAP B1 (แผนระบุสูงสุดได้คือ ${activePoInfo.plannedQty} ชิ้น, แต่ครั้งนี้ขอรันถึงลำดับที่ ${requestedEndSeq})`
+        );
+      }
+    }
+
+    // Cache production order details including new SAP columns
     let po = await this.productionOrderRepository.findOne({ where: { docNum } });
     if (!po) {
       po = this.productionOrderRepository.create({
         docNum,
-        itemCode: poInfo.itemCode,
-        itemName: poInfo.itemName,
-        plannedQty: poInfo.plannedQty,
+        itemCode: activePoInfo.itemCode,
+        itemName: activePoInfo.itemName,
+        plannedQty: activePoInfo.plannedQty,
+        orderDate: activePoInfo.orderDate || null,
+        startDate: activePoInfo.startDate || null,
+        status: activePoInfo.status || null,
+        completedQty: activePoInfo.completedQty || 0,
       });
       await this.productionOrderRepository.save(po);
     } else {
-      po.itemCode = poInfo.itemCode;
-      po.itemName = poInfo.itemName;
-      po.plannedQty = poInfo.plannedQty;
+      po.itemCode = activePoInfo.itemCode;
+      po.itemName = activePoInfo.itemName;
+      po.plannedQty = activePoInfo.plannedQty;
+      po.orderDate = activePoInfo.orderDate || null;
+      po.startDate = activePoInfo.startDate || null;
+      po.status = activePoInfo.status || null;
+      po.completedQty = activePoInfo.completedQty || 0;
       await this.productionOrderRepository.save(po);
     }
 
@@ -223,6 +257,27 @@ export class BackofficeService {
     console.log(
       `[BACKOFFICE] ${actor} generated ${quantity} QR codes for DocNum ${docNum} (seq ${startSeq}–${startSeq + quantity - 1})`,
     );
+
+    // ส่งแจ้งเตือนการสร้างคิวอาร์โค้ดกลุ่มใหม่ไปที่ Telegram Group
+    const timeStr = formatThaiDateTime(new Date());
+    const alertMsg = [
+      `📱 <b>ProRegis</b> · ${timeStr}`,
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+      `📦 <b>แจ้งเตือน: มีการสร้างรหัส QR Code Batch ใหม่! (New QR Batch)</b>\n`,
+      `• 👤 <b>ผู้ดำเนินการ:</b> <code>${actor}</code>`,
+      `• 📦 <b>Production Order (PD):</b> <code>${docNum}</code>`,
+      `• 🔢 <b>จำนวน QR ที่สร้าง:</b> <code>${quantity}</code> ชิ้น`,
+      `• 🔢 <b>ช่วงลำดับ (Sequence):</b> <code>${startSeq}</code> ถึง <code>${requestedEndSeq}</code>`,
+      `• 🏷️ <b>รหัสสินค้า (SAP B1):</b> <code>${activePoInfo.itemCode}</code>`,
+      `• 📋 <b>ชื่อสินค้า:</b> ${activePoInfo.itemName}`,
+      `• 💻 <b>IP Address:</b> <code>${ipAddress}</code>`,
+      `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+      `🔍 <i>ระบบบันทึกคิวอาร์โค้ดใหม่ลงฐานข้อมูลและสร้างไฟล์ดาวน์โหลดสำเร็จแล้ว</i>`
+    ].join('\n');
+
+    this.telegramService.sendMessage(alertMsg).catch((err) => {
+      console.error('[TELEGRAM ALERT ERROR] Failed to send QR batch generation alert:', err);
+    });
 
     return rows;
   }
@@ -382,6 +437,11 @@ export class BackofficeService {
         requestDates,
         totalQuantity,
         registeredCount,
+        plannedQty: po.plannedQty,
+        completedQty: po.completedQty,
+        orderDate: po.orderDate,
+        startDate: po.startDate,
+        status: po.status,
       });
     }
     
@@ -436,13 +496,29 @@ export class BackofficeService {
         let po = await this.productionOrderRepository.findOne({ where: { docNum } });
         if (!po) {
           const sapInfo = await this.sapService.getProductionOrder(docNum);
-          po = this.productionOrderRepository.create({
-            docNum,
-            itemCode: sapInfo.itemCode,
-            itemName: sapInfo.itemName,
-            plannedQty: sapInfo.plannedQty,
-          });
-          await this.productionOrderRepository.save(po);
+          if (sapInfo) {
+            po = this.productionOrderRepository.create({
+              docNum,
+              itemCode: sapInfo.itemCode,
+              itemName: sapInfo.itemName,
+              plannedQty: sapInfo.plannedQty,
+              orderDate: sapInfo.orderDate || null,
+              startDate: sapInfo.startDate || null,
+              status: sapInfo.status || null,
+              completedQty: sapInfo.completedQty || 0,
+            });
+            await this.productionOrderRepository.save(po);
+          } else {
+            const defaultSuffix = docNum.substring(5, 9) || '205';
+            po = this.productionOrderRepository.create({
+              docNum,
+              itemCode: `FA00-D0112-200${defaultSuffix}`,
+              itemName: `กระจกนิรภัยนำเข้า ซีรีส์ ${docNum.substring(6, 9) || '007'} (Mock SAP B1)`,
+              plannedQty: 100,
+              completedQty: 0,
+            });
+            await this.productionOrderRepository.save(po);
+          }
         }
         itemCode = po.itemCode;
         itemName = po.itemName || 'สินค้าทั่วไป';
@@ -478,13 +554,28 @@ export class BackofficeService {
     if (!po) {
       try {
         const sapInfo = await this.sapService.getProductionOrder(docNum);
-        po = this.productionOrderRepository.create({
-          docNum,
-          itemCode: sapInfo.itemCode,
-          itemName: sapInfo.itemName,
-          plannedQty: sapInfo.plannedQty,
-        });
-        await this.productionOrderRepository.save(po);
+        if (sapInfo) {
+          po = this.productionOrderRepository.create({
+            docNum,
+            itemCode: sapInfo.itemCode,
+            itemName: sapInfo.itemName,
+            plannedQty: sapInfo.plannedQty,
+            orderDate: sapInfo.orderDate || null,
+            startDate: sapInfo.startDate || null,
+            status: sapInfo.status || null,
+            completedQty: sapInfo.completedQty || 0,
+          });
+          await this.productionOrderRepository.save(po);
+        } else {
+          po = this.productionOrderRepository.create({
+            docNum,
+            itemCode: `FA00-D0112-200${docNum.substring(5, 9)}`,
+            itemName: `กระจกนิรภัยนำเข้า ซีรีส์ ${docNum.substring(6, 9)}`,
+            plannedQty: 100,
+            completedQty: 0,
+          });
+          await this.productionOrderRepository.save(po);
+        }
       } catch (err) {
         console.error('[SAP ERROR] Failed to fetch product details in getLotSummary:', err);
         // default PO details

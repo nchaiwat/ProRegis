@@ -14,6 +14,18 @@ export class ProductionOrder {
   @Column({ type: 'integer', name: 'planned_qty', default: 0 })
   plannedQty: number; // Planned Quantity from SAP B1 (total item count in Lot)
 
+  @Column({ type: 'varchar', name: 'order_date', nullable: true })
+  orderDate: string | null; // SAP B1 PostingDate
+
+  @Column({ type: 'varchar', name: 'start_date', nullable: true })
+  startDate: string | null; // SAP B1 StartDate
+
+  @Column({ type: 'varchar', name: 'status', nullable: true })
+  status: string | null; // SAP B1 ProductionOrderStatus
+
+  @Column({ type: 'integer', name: 'completed_qty', default: 0 })
+  completedQty: number; // SAP B1 CompletedQuantity
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 }

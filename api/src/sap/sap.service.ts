@@ -5,6 +5,10 @@ export interface SapProductionOrderInfo {
   itemCode: string;
   itemName: string;
   plannedQty: number;
+  orderDate?: string | null;
+  startDate?: string | null;
+  status?: string | null;
+  completedQty?: number;
 }
 
 @Injectable()
@@ -135,7 +139,7 @@ export class SapService implements OnModuleInit {
    * Fetches Production Order details for a given docNum.
    * Leverages mock fallback if SAP is unreachable.
    */
-  async getProductionOrder(docNum: string): Promise<SapProductionOrderInfo> {
+  async getProductionOrder(docNum: string): Promise<SapProductionOrderInfo | null> {
     if (this.isMockMode) {
       return this.getMockProductionOrder(docNum);
     }
@@ -143,8 +147,10 @@ export class SapService implements OnModuleInit {
     try {
       this.logger.log(`[SAP SERVICE] Fetching Production Order from SAP Service Layer: DocNum=${docNum}`);
       
-      // Query Production Order by DocumentNumber
-      const result = await this.getRequest(`/ProductionOrders?$filter=DocumentNumber eq ${parseInt(docNum, 10)}&$select=DocumentNumber,ItemNo,ProductDescription,PlannedQuantity`);
+      // Query Production Order by DocumentNumber with new SAP columns
+      const result = await this.getRequest(
+        `/ProductionOrders?$filter=DocumentNumber eq ${parseInt(docNum, 10)}&$select=DocumentNumber,ItemNo,ProductDescription,PlannedQuantity,PostingDate,StartDate,ProductionOrderStatus,CompletedQuantity`
+      );
       
       if (result && result.value && result.value.length > 0) {
         const po = result.value[0];
@@ -154,14 +160,18 @@ export class SapService implements OnModuleInit {
           itemCode: po.ItemNo,
           itemName: po.ProductDescription || 'กระจกนิรภัยนำเข้าซีรีส์มาตรฐาน',
           plannedQty: Math.max(1, Math.round(po.PlannedQuantity || 100)),
+          orderDate: po.PostingDate || null,
+          startDate: po.StartDate || null,
+          status: po.ProductionOrderStatus || null,
+          completedQty: Math.round(po.CompletedQuantity || 0),
         };
       }
 
-      this.logger.warn(`[SAP SERVICE] Production Order with DocNum=${docNum} not found in SAP B1. Falling back to Mock data.`);
-      return this.getMockProductionOrder(docNum);
+      this.logger.warn(`[SAP SERVICE] Production Order with DocNum=${docNum} not found in SAP B1.`);
+      return null;
     } catch (err) {
-      this.logger.error(`[SAP SERVICE] Failed to query Production Order ${docNum}. Falling back to Mock data.`, err);
-      return this.getMockProductionOrder(docNum);
+      this.logger.error(`[SAP SERVICE] Failed to query Production Order ${docNum}:`, err);
+      return null;
     }
   }
 
@@ -171,6 +181,10 @@ export class SapService implements OnModuleInit {
       itemCode: `FA00-D0112-200${defaultSuffix}`,
       itemName: `กระจกนิรภัยนำเข้า ซีรีส์ ${docNum.substring(6, 9) || '007'} (Mock SAP B1)`,
       plannedQty: 120, // Mock default planned quantity in Lot
+      orderDate: '2026-06-01',
+      startDate: '2026-06-05',
+      status: 'bposReleased',
+      completedQty: 45,
     };
   }
 }
