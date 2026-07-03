@@ -28,6 +28,7 @@ export default function GroupManagementPage() {
     { key: "users", name: "จัดการบัญชีผู้ใช้ (User Admin)", group: "admin" },
     { key: "groups", name: "จัดการกลุ่มผู้ใช้งาน (Group Management)", group: "admin" },
     { key: "logs", name: "ประวัติบันทึกการทำงาน (Audit Logs)", group: "admin" },
+    { key: "settings", name: "ตั้งค่าระบบ (System Settings)", group: "admin" },
   ];
 
   const roleFriendlyNames: Record<string, string> = {
