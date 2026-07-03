@@ -166,6 +166,12 @@ export default function BackofficeLayout({ children }: { children: React.ReactNo
       path: "/backoffice/logs",
       icon: "history_toggle_off",
     },
+    {
+      key: "settings",
+      name: "ตั้งค่าระบบ (System Settings)",
+      path: "/backoffice/settings",
+      icon: "settings",
+    },
   ];
 
   // Filter menus based on dynamic allowedMenus array

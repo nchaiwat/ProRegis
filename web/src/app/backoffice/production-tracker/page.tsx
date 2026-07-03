@@ -9,8 +9,15 @@ interface ProductionTrackerItem {
   itemCode: string;
   itemName: string;
   requestCount: number;
-  requestDates: string[];
-  totalQuantity: number;
+  latestRequestDate: string;
+  latestRequestUser: string;
+  latestRequestQty: number;
+  history: Array<{
+    attemptNumber: number;
+    generatedAt: string;
+    username: string;
+    quantity: number;
+  }>;
   registeredCount: number;
   plannedQty?: number;
   completedQty?: number;
@@ -150,16 +157,19 @@ export default function ProductionTrackerPage() {
             <table className="w-full text-xs text-left">
               <thead className="bg-surface-container-low border-b border-outline-variant">
                 <tr className="whitespace-nowrap">
-                  <th className="px-4 py-4 font-bold text-on-surface-variant uppercase tracking-wider">เลขที่สั่งผลิต (PD)</th>
-                  <th className="px-4 py-4 font-bold text-on-surface-variant uppercase tracking-wider">รหัสสินค้า (Item Code)</th>
-                  <th className="px-4 py-4 font-bold text-on-surface-variant uppercase tracking-wider">ชื่อสินค้า (SAP B1)</th>
-                  <th className="px-4 py-4 font-bold text-on-surface-variant uppercase tracking-wider text-center">วันที่สั่ง (Order Date)</th>
-                  <th className="px-4 py-4 font-bold text-on-surface-variant uppercase tracking-wider text-center">วันที่เริ่ม (Start Date)</th>
-                  <th className="px-4 py-4 font-bold text-on-surface-variant uppercase tracking-wider text-center">สถานะ</th>
-                  <th className="px-4 py-4 font-bold text-on-surface-variant uppercase tracking-wider text-center">Planned Qty</th>
-                  <th className="px-4 py-4 font-bold text-on-surface-variant uppercase tracking-wider text-center">Completed Qty</th>
-                  <th className="px-4 py-4 font-bold text-on-surface-variant uppercase tracking-wider text-center">ขอสร้าง QR (ชิ้น)</th>
-                  <th className="px-4 py-4 font-bold text-on-surface-variant uppercase tracking-wider text-center">รายละเอียด</th>
+                  <th className="px-2 py-3.5 font-bold text-on-surface-variant uppercase tracking-wider text-center">วัน/เวลา ที่ขอ</th>
+                  <th className="px-2 py-3.5 font-bold text-on-surface-variant uppercase tracking-wider text-center">User ID</th>
+                  <th className="px-2 py-3.5 font-bold text-on-surface-variant uppercase tracking-wider text-center">PD Num</th>
+                  <th className="px-2 py-3.5 font-bold text-on-surface-variant uppercase tracking-wider text-center">จำนวน QR</th>
+                  <th className="px-2 py-3.5 font-bold text-on-surface-variant uppercase tracking-wider text-center">สร้างครั้งที่</th>
+                  <th className="px-2 py-3.5 font-bold text-on-surface-variant uppercase tracking-wider text-center">Pln Qty</th>
+                  <th className="px-2 py-3.5 font-bold text-on-surface-variant uppercase tracking-wider text-center">Cpl Qty</th>
+                  <th className="px-2 py-3.5 font-bold text-on-surface-variant uppercase tracking-wider text-center">Item Code</th>
+                  <th className="px-2 py-3.5 font-bold text-on-surface-variant uppercase tracking-wider text-left">Desc</th>
+                  <th className="px-2 py-3.5 font-bold text-on-surface-variant uppercase tracking-wider text-center">Order Date</th>
+                  <th className="px-2 py-3.5 font-bold text-on-surface-variant uppercase tracking-wider text-center">Start Date</th>
+                  <th className="px-2 py-3.5 font-bold text-on-surface-variant uppercase tracking-wider text-center">Status</th>
+                  <th className="px-2 py-3.5 font-bold text-on-surface-variant uppercase tracking-wider text-center">ประวัติขอ</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-outline-variant/50">
@@ -180,23 +190,56 @@ export default function ProductionTrackerPage() {
                       }
                     };
 
+                    const formatDateTime = (dateStr: string | null | undefined) => {
+                      if (!dateStr) return "-";
+                      try {
+                        const d = new Date(dateStr);
+                        if (isNaN(d.getTime())) return dateStr;
+                        return d.toLocaleString("th-TH", {
+                          year: "numeric",
+                          month: "short",
+                          day: "numeric",
+                          hour: "2-digit",
+                          minute: "2-digit"
+                        });
+                      } catch {
+                        return dateStr;
+                      }
+                    };
+
                     return (
                       <tr key={idx} className="hover:bg-surface-container-low/30 transition-colors whitespace-nowrap">
-                        <td className="px-4 py-4 font-mono font-bold text-primary">{item.docNum}</td>
-                        <td className="px-4 py-4 font-mono font-bold text-secondary">{item.itemCode}</td>
-                        <td className="px-4 py-4 text-on-surface font-semibold max-w-xs truncate" title={item.itemName}>{item.itemName || "สินค้าทั่วไป (Mock SAP)"}</td>
-                        <td className="px-4 py-4 text-center font-semibold text-on-surface-variant">{formatDate(item.orderDate)}</td>
-                        <td className="px-4 py-4 text-center font-semibold text-on-surface-variant">{formatDate(item.startDate)}</td>
-                        <td className="px-4 py-4 text-center">{getStatusBadge(item.status)}</td>
-                        <td className="px-4 py-4 text-center font-mono font-bold text-primary">{(item.plannedQty ?? 0).toLocaleString()} ชิ้น</td>
-                        <td className="px-4 py-4 text-center font-mono font-bold text-secondary">{(item.completedQty ?? 0).toLocaleString()} ชิ้น</td>
-                        <td className="px-4 py-4 text-center font-mono font-bold text-on-surface">{(item.totalQuantity ?? 0).toLocaleString()} ชิ้น</td>
-                        <td className="px-4 py-4 text-center">
+                        <td className="px-2 py-3.5 text-center font-mono font-semibold text-primary">{formatDateTime(item.latestRequestDate)}</td>
+                        <td className="px-2 py-3.5 text-center font-semibold text-on-surface">{item.latestRequestUser || "-"}</td>
+                        <td className="px-2 py-3.5 text-center font-mono font-bold text-primary">{item.docNum}</td>
+                        <td className="px-2 py-3.5 text-center font-mono font-bold text-secondary">{(item.latestRequestQty ?? 0).toLocaleString()}</td>
+                        <td className="px-2 py-3.5 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <span className="font-mono font-bold text-on-surface">{item.requestCount}</span>
+                            {item.requestCount >= 2 && (
+                              <button
+                                onClick={() => setSelectedItem(item)}
+                                title="ดูประวัติการสร้างครั้งก่อนหน้า"
+                                className="w-5 h-5 rounded-full bg-secondary/10 hover:bg-secondary/20 text-secondary flex items-center justify-center transition-all cursor-pointer"
+                              >
+                                <span className="material-symbols-outlined !text-[12px]">history</span>
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-2 py-3.5 text-center font-mono font-bold text-primary">{(item.plannedQty ?? 0).toLocaleString()}</td>
+                        <td className="px-2 py-3.5 text-center font-mono font-bold text-secondary">{(item.completedQty ?? 0).toLocaleString()}</td>
+                        <td className="px-2 py-3.5 text-center font-mono font-bold text-secondary">{item.itemCode}</td>
+                        <td className="px-2 py-3.5 text-on-surface font-semibold max-w-[220px] truncate text-left" title={item.itemName}>{item.itemName || "สินค้าทั่วไป"}</td>
+                        <td className="px-2 py-3.5 text-center font-semibold text-on-surface-variant">{formatDate(item.orderDate)}</td>
+                        <td className="px-2 py-3.5 text-center font-semibold text-on-surface-variant">{formatDate(item.startDate)}</td>
+                        <td className="px-2 py-3.5 text-center">{getStatusBadge(item.status)}</td>
+                        <td className="px-2 py-3.5 text-center">
                           <button
                             onClick={() => setSelectedItem(item)}
-                            className="h-8 px-3 rounded-lg border border-outline-variant hover:bg-surface-container text-xs font-bold transition-all inline-flex items-center gap-1 cursor-pointer"
+                            className="h-8 px-2.5 rounded-lg border border-outline-variant hover:bg-surface-container text-xs font-bold transition-all inline-flex items-center gap-1 cursor-pointer"
                           >
-                            <span className="material-symbols-outlined !text-[16px]">history</span>
+                            <span className="material-symbols-outlined !text-[16px]">info</span>
                             ประวัติขอ
                           </button>
                         </td>
@@ -205,7 +248,7 @@ export default function ProductionTrackerPage() {
                   })
                 ) : (
                   <tr>
-                    <td colSpan={10} className="px-5 py-10 text-center text-outline italic">
+                    <td colSpan={13} className="px-5 py-10 text-center text-outline italic">
                       ไม่พบข้อมูลใบสั่งผลิตที่ตรงกับคำค้นหา
                     </td>
                   </tr>
@@ -219,11 +262,11 @@ export default function ProductionTrackerPage() {
       {/* Modal for detailed history */}
       {selectedItem && (
         <div className="fixed inset-0 bg-primary/40 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-success">
-          <div className="bg-white rounded-2xl border border-outline-variant max-w-md w-full shadow-2xl p-6 space-y-4">
+          <div className="bg-white rounded-2xl border border-outline-variant max-w-lg w-full shadow-2xl p-6 space-y-4">
             <div className="flex justify-between items-start">
               <div>
-                <h3 className="font-bold text-lg text-primary">รายละเอียดออเดอร์และการผลิต</h3>
-                <p className="text-xs text-outline font-semibold">ใบสั่งผลิต: {selectedItem.docNum}</p>
+                <h3 className="font-bold text-lg text-primary">ประวัติการขอสร้าง QR Code</h3>
+                <p className="text-xs text-outline font-semibold">ใบสั่งผลิต (PD Num): {selectedItem.docNum}</p>
               </div>
               <button
                 onClick={() => setSelectedItem(null)}
@@ -233,45 +276,76 @@ export default function ProductionTrackerPage() {
               </button>
             </div>
 
-            <div className="bg-surface-container-low p-4 rounded-xl border border-outline-variant/60 space-y-2">
-              <div className="flex justify-between text-xs">
-                <span className="text-outline">รหัสสินค้า:</span>
-                <span className="font-mono font-bold text-primary">{selectedItem.itemCode}</span>
+            {/* PO Details Cache Card */}
+            <div className="bg-surface-container-low p-4 rounded-xl border border-outline-variant/60 grid grid-cols-2 gap-2 text-xs">
+              <div>
+                <span className="text-outline">รหัสสินค้า (Item Code):</span>
+                <p className="font-mono font-bold text-primary">{selectedItem.itemCode}</p>
               </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-outline">ชื่อสินค้า:</span>
-                <span className="font-bold text-primary text-right max-w-[220px] truncate" title={selectedItem.itemName}>{selectedItem.itemName}</span>
+              <div>
+                <span className="text-outline">ชื่อสินค้า (Desc):</span>
+                <p className="font-bold text-primary truncate" title={selectedItem.itemName}>{selectedItem.itemName || "สินค้าทั่วไป"}</p>
               </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-outline">สถานะ:</span>
-                <span>{getStatusBadge(selectedItem.status)}</span>
+              <div>
+                <span className="text-outline">แผนผลิต SAP (Pln Qty):</span>
+                <p className="font-bold text-primary">{(selectedItem.plannedQty ?? 0).toLocaleString()} ชิ้น</p>
               </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-outline">แผนการผลิต SAP (Planned):</span>
-                <span className="font-bold text-primary">{(selectedItem.plannedQty ?? 0).toLocaleString()} ชิ้น</span>
-              </div>
-              <div className="flex justify-between text-xs">
-                <span className="text-outline">ผลิตเสร็จแล้ว SAP (Completed):</span>
-                <span className="font-bold text-secondary">{(selectedItem.completedQty ?? 0).toLocaleString()} ชิ้น</span>
-              </div>
-              <div className="flex justify-between text-xs pt-1 border-t border-outline-variant/30">
-                <span className="text-outline">จำนวนที่ขอสร้าง QR สะสม:</span>
-                <span className="font-bold text-on-surface">{selectedItem.totalQuantity.toLocaleString()} ชิ้น</span>
+              <div>
+                <span className="text-outline">ผลิตเสร็จ SAP (Cpl Qty):</span>
+                <p className="font-bold text-secondary">{(selectedItem.completedQty ?? 0).toLocaleString()} ชิ้น</p>
               </div>
             </div>
 
+            {/* Previous Requests Table */}
             <div className="space-y-2">
-              <h4 className="text-xs font-bold text-outline uppercase tracking-wider">ประวัติการขอไฟล์ QR ({selectedItem.requestCount} ครั้ง)</h4>
-              <div className="max-h-48 overflow-y-auto custom-scrollbar border border-outline-variant/60 rounded-xl divide-y divide-outline-variant/30">
-                {selectedItem.requestDates.map((date, i) => (
-                  <div key={i} className="px-4 py-2.5 text-xs font-semibold text-primary flex justify-between items-center bg-surface-container-lowest hover:bg-surface-container-low/50">
-                    <span className="flex items-center gap-1.5 text-outline">
-                      <span className="w-1.5 h-1.5 rounded-full bg-secondary"></span>
-                      ครั้งที่ {selectedItem.requestDates.length - i}
-                    </span>
-                    <span className="font-mono">{new Date(date).toLocaleString("th-TH")}</span>
+              <h4 className="text-xs font-bold text-outline uppercase tracking-wider">
+                ประวัติการสร้างก่อนหน้า (ครั้งที่ 1 ถึง {selectedItem.requestCount - 1})
+              </h4>
+              <div className="max-h-56 overflow-y-auto custom-scrollbar border border-outline-variant/60 rounded-xl">
+                {selectedItem.history && selectedItem.history.length > 0 ? (
+                  <table className="w-full text-xs text-left">
+                    <thead className="bg-surface-container-low border-b border-outline-variant/60">
+                      <tr>
+                        <th className="px-3 py-2.5 font-bold text-outline text-center">ครั้งที่</th>
+                        <th className="px-3 py-2.5 font-bold text-outline text-center">วัน/เวลา</th>
+                        <th className="px-3 py-2.5 font-bold text-outline text-center">User ID</th>
+                        <th className="px-3 py-2.5 font-bold text-outline text-center">จำนวน QR</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-outline-variant/30">
+                      {selectedItem.history.map((hist: any, i: number) => {
+                        const formatHistDateTime = (dateStr: string | null | undefined) => {
+                          if (!dateStr) return "-";
+                          try {
+                            const d = new Date(dateStr);
+                            if (isNaN(d.getTime())) return dateStr;
+                            return d.toLocaleString("th-TH", {
+                              year: "numeric",
+                              month: "short",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit"
+                            });
+                          } catch {
+                            return dateStr;
+                          }
+                        };
+                        return (
+                          <tr key={i} className="hover:bg-surface-container-low/30 whitespace-nowrap">
+                            <td className="px-3 py-2.5 text-center font-mono font-semibold text-outline">ครั้งที่ {hist.attemptNumber}</td>
+                            <td className="px-3 py-2.5 text-center font-mono text-primary">{formatHistDateTime(hist.generatedAt)}</td>
+                            <td className="px-3 py-2.5 text-center font-semibold text-on-surface">{hist.username}</td>
+                            <td className="px-3 py-2.5 text-center font-mono font-bold text-secondary">{hist.quantity.toLocaleString()} ชิ้น</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="p-4 text-center text-outline italic text-xs">
+                    ไม่มีประวัติการสร้างก่อนหน้า (การสร้างครั้งแรกแสดงอยู่ที่ตารางหลักแล้ว)
                   </div>
-                ))}
+                )}
               </div>
             </div>
 

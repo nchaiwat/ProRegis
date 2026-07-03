@@ -1,10 +1,11 @@
-import { Injectable, UnauthorizedException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
+import { Injectable, UnauthorizedException, BadRequestException, Inject, forwardRef, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { GenerationLog } from './generation-log.entity';
 import { ProductionOrder } from '../production-order/production-order.entity';
 import { Registration } from '../registration/registration.entity';
+import { SystemSetting } from './system-setting.entity';
 import { TelegramService, formatThaiDateTime } from '../telegram/telegram.service';
 import { SapService, SapProductionOrderInfo } from '../sap/sap.service';
 import { ProductsService } from '../products/products.service';
@@ -34,7 +35,7 @@ export interface GeneratedRow {
 }
 
 @Injectable()
-export class BackofficeService {
+export class BackofficeService implements OnModuleInit {
   constructor(
     @InjectRepository(GenerationLog)
     private readonly logRepository: Repository<GenerationLog>,
@@ -42,12 +43,66 @@ export class BackofficeService {
     private readonly productionOrderRepository: Repository<ProductionOrder>,
     @InjectRepository(Registration)
     private readonly registrationRepository: Repository<Registration>,
+    @InjectRepository(SystemSetting)
+    private readonly systemSettingRepository: Repository<SystemSetting>,
     private readonly telegramService: TelegramService,
     private readonly sapService: SapService,
     @Inject(forwardRef(() => ProductsService))
     private readonly productsService: ProductsService,
     private readonly configService: ConfigService,
   ) {}
+
+  async onModuleInit() {
+    await this.seedSettings();
+  }
+
+  private async seedSettings() {
+    const defaultSettings = [
+      { key: 'QR_CODE_MODE', value: 'STATIC' },
+      { key: 'VERIFICATION_MODE', value: 'OTP' },
+    ];
+    for (const setting of defaultSettings) {
+      try {
+        const exists = await this.systemSettingRepository.findOne({ where: { key: setting.key } });
+        if (!exists) {
+          await this.systemSettingRepository.save(this.systemSettingRepository.create(setting));
+          console.log(`[BACKOFFICE SERVICE] Seeded default setting: ${setting.key}=${setting.value}`);
+        }
+      } catch (err) {
+        console.warn(`[BACKOFFICE SERVICE] Failed to seed setting: ${setting.key}`, err.message);
+      }
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Settings Management
+  // -------------------------------------------------------------------------
+  async getSystemSettings(): Promise<Record<string, string>> {
+    const list = await this.systemSettingRepository.find();
+    const result: Record<string, string> = {};
+    for (const item of list) {
+      result[item.key] = item.value;
+    }
+    // Fallbacks
+    if (!result['QR_CODE_MODE']) result['QR_CODE_MODE'] = 'STATIC';
+    if (!result['VERIFICATION_MODE']) result['VERIFICATION_MODE'] = 'OTP';
+    return result;
+  }
+
+  async updateSystemSetting(key: string, value: string): Promise<void> {
+    let setting = await this.systemSettingRepository.findOne({ where: { key } });
+    if (!setting) {
+      setting = this.systemSettingRepository.create({ key, value });
+    } else {
+      setting.value = value;
+    }
+    await this.systemSettingRepository.save(setting);
+  }
+
+  async getSettingValue(key: string, defaultValue: string): Promise<string> {
+    const setting = await this.systemSettingRepository.findOne({ where: { key } });
+    return setting ? setting.value : defaultValue;
+  }
 
   // -------------------------------------------------------------------------
   // AES-128-CBC Encrypt → Base64URL
@@ -436,13 +491,24 @@ export class BackofficeService {
     for (const po of productionOrders) {
       const docNum = po.docNum;
       
-      const genLogs = await this.logRepository.find({ where: { docNum } });
-      const requestCount = genLogs.length;
-      let totalQuantity = 0;
-      const requestDates = genLogs.map(l => l.generatedAt);
-      for (const log of genLogs) {
-        totalQuantity += log.quantity;
+      const genLogs = await this.logRepository.find({
+        where: { docNum },
+        order: { generatedAt: 'ASC' },
+      });
+      
+      if (genLogs.length === 0) {
+        continue;
       }
+      
+      const requestCount = genLogs.length;
+      const latestLog = genLogs[genLogs.length - 1];
+      
+      const historyLogs = genLogs.slice(0, genLogs.length - 1).map((log, index) => ({
+        attemptNumber: index + 1,
+        generatedAt: log.generatedAt,
+        username: log.username,
+        quantity: log.quantity,
+      }));
       
       const registeredCount = await this.registrationRepository.count({ where: { docNum } });
       
@@ -451,8 +517,10 @@ export class BackofficeService {
         itemCode: po.itemCode,
         itemName: po.itemName,
         requestCount,
-        requestDates,
-        totalQuantity,
+        latestRequestDate: latestLog.generatedAt,
+        latestRequestUser: latestLog.username,
+        latestRequestQty: latestLog.quantity,
+        history: historyLogs,
         registeredCount,
         plannedQty: po.plannedQty,
         completedQty: po.completedQty,
@@ -461,6 +529,11 @@ export class BackofficeService {
         status: po.status,
       });
     }
+    
+    // Sort tracker list by latest request date descending
+    trackerList.sort(
+      (a, b) => new Date(b.latestRequestDate).getTime() - new Date(a.latestRequestDate).getTime(),
+    );
     
     return trackerList;
   }

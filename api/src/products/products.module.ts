@@ -8,10 +8,11 @@ import { SapModule } from '../sap/sap.module';
 import { BackofficeModule } from '../backoffice/backoffice.module';
 
 import { GenerationLog } from '../backoffice/generation-log.entity';
+import { SystemSetting } from '../backoffice/system-setting.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ProductMetadata, ProductionOrder, GenerationLog]),
+    TypeOrmModule.forFeature([ProductMetadata, ProductionOrder, GenerationLog, SystemSetting]),
     SapModule,
     forwardRef(() => BackofficeModule),
   ],

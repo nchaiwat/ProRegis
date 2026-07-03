@@ -8,10 +8,11 @@ import { Registration } from '../registration/registration.entity';
 import { TelegramModule } from '../telegram/telegram.module';
 import { SapModule } from '../sap/sap.module';
 import { ProductsModule } from '../products/products.module';
+import { SystemSetting } from './system-setting.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([GenerationLog, ProductionOrder, Registration]),
+    TypeOrmModule.forFeature([GenerationLog, ProductionOrder, Registration, SystemSetting]),
     TelegramModule,
     SapModule,
     forwardRef(() => ProductsModule),

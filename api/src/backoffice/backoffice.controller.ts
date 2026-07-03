@@ -9,6 +9,7 @@ import {
   Param,
   HttpCode,
   UseGuards,
+  BadRequestException,
 } from '@nestjs/common';
 import type { Response, Request } from 'express';
 import { BackofficeService } from './backoffice.service';
@@ -147,6 +148,30 @@ export class BackofficeController {
   @UseGuards(JwtAuthGuard)
   async getLotSummary(@Param('docNum') docNum: string) {
     return this.backofficeService.getLotSummary(docNum);
+  }
+
+  // -------------------------------------------------------------------------
+  // GET /backoffice/settings - Restricted to SYSTEM_ADMIN
+  // -------------------------------------------------------------------------
+  @Get('settings')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('SYSTEM_ADMIN')
+  async getSettings() {
+    return this.backofficeService.getSystemSettings();
+  }
+
+  // -------------------------------------------------------------------------
+  // POST /backoffice/settings - Restricted to SYSTEM_ADMIN
+  // -------------------------------------------------------------------------
+  @Post('settings')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('SYSTEM_ADMIN')
+  async updateSettings(@Body() body: { key: string; value: string }) {
+    if (!body.key || !body.value) {
+      throw new BadRequestException('Key and Value are required');
+    }
+    await this.backofficeService.updateSystemSetting(body.key, body.value);
+    return { success: true };
   }
 }
 

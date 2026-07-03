@@ -232,6 +232,19 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
   const [seqNum, setSeqNum] = useState<string | null>(null);
   const [decryptError, setDecryptError] = useState<string | null>(null);
 
+  // System Config states (fetched dynamically from product specs payload)
+  const [qrMode, setQrMode] = useState<"STATIC" | "DYNAMIC">("STATIC");
+  const [verificationMode, setVerificationMode] = useState<"OTP" | "LINE">("OTP");
+
+  // LINE LIFF auth states
+  const [lineUserId, setLineUserId] = useState<string | null>(null);
+  const [lineProfileName, setLineProfileName] = useState<string | null>(null);
+
+  // Static QR site-registration check states
+  const [isRegisteredAtSite, setIsRegisteredAtSite] = useState(false);
+  const [registrationHistory, setRegistrationHistory] = useState<any[]>([]);
+  const [isCheckingStatus, setIsCheckingStatus] = useState(false);
+
   // Step 2 Form State
   const [mandatoryConsent, setMandatoryConsent] = useState(false);
   const [optionalConsent, setOptionalConsent] = useState(false);
@@ -264,7 +277,9 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
 
   const t = translations[lang];
 
+  // Load session on mount & dynamically load LINE LIFF SDK
   useEffect(() => {
+    let storedPhone: string | null = null;
     const sessionStr = localStorage.getItem("proregis_customer_session");
     if (sessionStr) {
       try {
@@ -281,6 +296,7 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
             email: session.email || ""
           });
           setHasActiveSession(true);
+          storedPhone = session.phone;
         } else {
           localStorage.removeItem("proregis_customer_session");
         }
@@ -288,7 +304,80 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
         console.warn("Failed to retrieve local session data:", e);
       }
     }
+
+    // Load LINE LIFF SDK dynamically from edge CDN
+    const script = document.createElement("script");
+    script.src = "https://static.line-scdn.net/liff/edge/2/sdk.js";
+    script.async = true;
+    script.onload = async () => {
+      const liff = (window as any).liff;
+      if (liff) {
+        try {
+          // LIFF ID for Window Asia
+          await liff.init({ liffId: "2003884321-7N81eKxa" }).catch(() => {});
+          if (liff.isLoggedIn()) {
+            const profile = await liff.getProfile();
+            setLineUserId(profile.userId);
+            setLineProfileName(profile.displayName);
+            if (profile.displayName) {
+              const names = profile.displayName.split(" ");
+              setFormData(prev => ({
+                ...prev,
+                firstName: prev.firstName || names[0] || "",
+                lastName: prev.lastName || names[1] || ""
+              }));
+            }
+          } else {
+            if (liff.isInClient()) {
+              liff.login();
+            }
+          }
+        } catch (err) {
+          console.error("LINE LIFF SDK initialisation error:", err);
+        }
+      }
+    };
+    document.head.appendChild(script);
+
+    return () => {
+      if (document.head.contains(script)) {
+        document.head.removeChild(script);
+      }
+    };
   }, []);
+
+  // Helper to check if this lot (PD) is already registered at user's location
+  const checkRegistrationStatus = async (resolvedDocNum: string, phoneVal: string, lat?: number, lng?: number) => {
+    if (!resolvedDocNum || !phoneVal) return;
+    setIsCheckingStatus(true);
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/registration/check-status`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          docNum: resolvedDocNum,
+          phone: phoneVal,
+          latitude: lat,
+          longitude: lng
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.registered) {
+          setIsRegisteredAtSite(true);
+          setRegistrationHistory(data.list || []);
+          setRefRegNumber(data.list[data.list.length - 1]?.id || "");
+          setStep(4); // Redirect directly to Warranty Dashboard (step 4)
+        } else {
+          setIsRegisteredAtSite(false);
+        }
+      }
+    } catch (err) {
+      console.warn("Failed checking registration status:", err);
+    } finally {
+      setIsCheckingStatus(false);
+    }
+  };
 
   const isValidTokenFormat = (t: string): boolean => {
     if (t === "PR-2024-X1" || t === "WA-GLASS-7729" || t === "WA-LIFETIME-GLASS") {
@@ -341,6 +430,22 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
         if (res.ok) {
           const data = await res.json();
           setProduct(data);
+          if (data.qrMode) setQrMode(data.qrMode as "STATIC" | "DYNAMIC");
+          if (data.verificationMode) setVerificationMode(data.verificationMode as "OTP" | "LINE");
+
+          // If QR Mode is STATIC and we have phone number, immediately trigger registration status check
+          const storedSession = localStorage.getItem("proregis_customer_session");
+          const actualDocNum = resolvedDocNum || (lookupKey.length === 9 ? lookupKey : null);
+          if (data.qrMode === "STATIC" && storedSession && actualDocNum) {
+            try {
+              const session = JSON.parse(storedSession);
+              if (session.phone) {
+                await checkRegistrationStatus(actualDocNum, session.phone);
+              }
+            } catch (e) {
+              console.warn("Error parsing session on fetchProduct", e);
+            }
+          }
           return;
         } else {
           // If the server explicitly rejected the request, show the validation error message!
@@ -525,7 +630,8 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
     e.preventDefault();
     if (!validateStep3()) return;
 
-    if (hasActiveSession) {
+    // Bypass OTP if LINE Mode is active or we have active session
+    if (verificationMode === "LINE" || hasActiveSession) {
       await handleDirectRegistration();
       return;
     }
@@ -578,7 +684,8 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
           mandatoryConsent: mandatoryConsent,
           optionalConsent: optionalConsent,
           latitude: gpsLocation?.latitude || undefined,
-          longitude: gpsLocation?.longitude || undefined
+          longitude: gpsLocation?.longitude || undefined,
+          lineUserId: lineUserId || undefined
         })
       });
       if (res.ok) {
@@ -683,7 +790,8 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
           mandatoryConsent: mandatoryConsent,
           optionalConsent: optionalConsent,
           latitude: gpsLocation?.latitude || undefined,
-          longitude: gpsLocation?.longitude || undefined
+          longitude: gpsLocation?.longitude || undefined,
+          lineUserId: lineUserId || undefined
         })
       });
       if (res.ok) {
@@ -744,6 +852,31 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
         setShowOtpModal(false);
         return;
       }
+    }
+  };
+
+  const handleAddUnit = async () => {
+    setIsSubmitting(true);
+    setSubmitError(null);
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/registration/add-unit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, phone: formData.phone })
+      });
+      if (res.ok) {
+        const actualDocNum = docNum || (token.length === 9 ? token : null);
+        if (actualDocNum) {
+          await checkRegistrationStatus(actualDocNum, formData.phone, gpsLocation?.latitude, gpsLocation?.longitude);
+        }
+      } else {
+        const data = await res.json();
+        setSubmitError(data.message || (lang === "th" ? "เกิดข้อผิดพลาดในการเพิ่มชิ้นงาน" : "Failed to add unit"));
+      }
+    } catch {
+      setSubmitError(lang === "th" ? "ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้" : "Server connection failed");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -1353,114 +1486,220 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
           </div>
         )}
 
-        {/* Step 4: Registration Success */}
+        {/* Step 4: Registration Success / Warranty Dashboard */}
         {step === 4 && (
           <div className="space-y-8 animate-success">
-            {/* Header Success info */}
-            <section className="flex flex-col items-center text-center py-6">
-              <div className="w-24 h-24 bg-secondary-container rounded-full flex items-center justify-center mb-6 shadow-lg shadow-secondary-container/20">
-                <span className="material-symbols-outlined text-on-secondary-container !text-5xl" style={{ fontVariationSettings: "'FILL' 1" }}>
-                  check_circle
-                </span>
-              </div>
-              <h2 className="font-bold text-3xl text-primary">{t.successTitle}</h2>
-              <p className="text-sm text-on-surface-variant max-w-md mt-2 leading-relaxed">
-                {lang === "th" ? (
-                  <>
-                    ข้อมูลสินค้าและการรับประกันของคุณได้รับการบันทึกในระบบหลักของ{" "}
-                    <span className="whitespace-nowrap">Window&nbsp;Asia&nbsp;PCL.</span> เรียบร้อยแล้ว
-                  </>
-                ) : (
-                  <>
-                    Your product information and warranty details have been successfully recorded in the{" "}
-                    <span className="whitespace-nowrap">Window&nbsp;Asia&nbsp;PCL.</span> registry.
-                  </>
-                )}
-              </p>
-            </section>
+            {isRegisteredAtSite ? (
+              /* =====================================================================
+                 WARRANTY DASHBOARD (STATIC QR MODE FOR EXISTING CUSTOMERS)
+                 ===================================================================== */
+              <div className="space-y-6">
+                <section className="flex flex-col items-center text-center py-6">
+                  <div className="w-20 h-20 bg-secondary-container rounded-full flex items-center justify-center mb-6 shadow-md border border-secondary/20">
+                    <span className="material-symbols-outlined text-secondary !text-4xl" style={{ fontVariationSettings: "'FILL' 1" }}>
+                      shield
+                    </span>
+                  </div>
+                  <h2 className="font-bold text-2xl md:text-3xl text-primary tracking-tight">
+                    {lang === "th" ? "แดชบอร์ดรับประกันสินค้า" : "Warranty Dashboard"}
+                  </h2>
+                  <p className="text-sm text-on-surface-variant max-w-lg mt-2 leading-relaxed">
+                    {lang === "th"
+                      ? "สินค้ารุ่นนี้ได้รับการเปิดใช้งานสิทธิ์รับประกันภัยเรียบร้อยแล้ว ณ จุดติดตั้งของคุณ"
+                      : "This product lot has active lifetime warranty coverage at your site."}
+                  </p>
+                </section>
 
-            {/* Bento details grid */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                  {/* Installation Details card */}
+                  <div className="lg:col-span-7 bg-white rounded-xl p-6 border border-outline-variant shadow-sm space-y-4">
+                    <h3 className="font-bold text-base text-primary border-b border-outline-variant/40 pb-3 flex items-center gap-2">
+                      <span className="material-symbols-outlined text-secondary">house</span>
+                      {lang === "th" ? "ข้อมูลจุดติดตั้งและสเปกหลัก" : "Installation & Specs"}
+                    </h3>
+                    <div className="grid grid-cols-2 gap-y-4 gap-x-6 text-xs">
+                      <div>
+                        <p className="text-[10px] text-outline font-bold uppercase tracking-wider">{lang === "th" ? "ชื่อลูกค้า" : "Name"}</p>
+                        <p className="text-sm text-primary font-semibold mt-1">{formData.firstName} {formData.lastName}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-outline font-bold uppercase tracking-wider">{lang === "th" ? "เบอร์โทรศัพท์" : "Phone"}</p>
+                        <p className="text-sm text-primary font-semibold mt-1">{formData.phone}</p>
+                      </div>
+                      <div className="col-span-2">
+                        <p className="text-[10px] text-outline font-bold uppercase tracking-wider">{lang === "th" ? "ที่อยู่ติดตั้ง" : "Address"}</p>
+                        <p className="text-sm text-primary font-medium mt-1 leading-normal">{formData.address} จ.{formData.province} {formData.postalCode}</p>
+                      </div>
+                      {lineProfileName && (
+                        <div className="col-span-2">
+                          <p className="text-[10px] text-outline font-bold uppercase tracking-wider">LINE ID</p>
+                          <p className="text-sm text-primary font-semibold mt-1 flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-[#06C755]"></span>
+                            {lineProfileName}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Registered Units list bento card */}
+                  <div className="lg:col-span-5 bg-white rounded-xl p-6 border border-outline-variant shadow-sm space-y-4 flex flex-col justify-between">
+                    <div>
+                      <h3 className="font-bold text-base text-primary border-b border-outline-variant/40 pb-3 flex items-center gap-2">
+                        <span className="material-symbols-outlined text-secondary">fact_check</span>
+                        {lang === "th" ? "จำนวนชิ้นที่คุ้มครองแล้ว" : "Registered Units"}
+                      </h3>
+                      
+                      <div className="my-4 flex items-center justify-between">
+                        <span className="text-sm text-on-surface-variant font-medium">{lang === "th" ? "บานที่ได้รับประกันสะสม:" : "Active warranty count:"}</span>
+                        <span className="text-2xl font-black text-secondary px-3.5 py-1 bg-secondary-container/20 rounded-full border border-secondary/20">{registrationHistory.length} {lang === "th" ? "บาน" : "Units"}</span>
+                      </div>
+
+                      <div className="max-h-36 overflow-y-auto space-y-2 pr-1 text-xs">
+                        {registrationHistory.map((reg, idx) => (
+                          <div key={reg.id} className="flex justify-between items-center p-2.5 bg-surface-container-low rounded-lg border border-outline-variant/20">
+                            <span className="font-semibold text-primary">{lang === "th" ? `บานที่ ${idx + 1}` : `Unit ${idx + 1}`}</span>
+                            <span className="text-outline font-mono text-[10px]">{reg.id.split("-")[1] || reg.id}</span>
+                            <span className="text-[10px] text-on-surface-variant font-medium">
+                              {new Date(reg.registeredAt).toLocaleDateString(lang === "th" ? "th-TH" : "en-US", { month: "short", day: "numeric" })}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Action: 1-Click register unit */}
+                    <div className="pt-4 border-t border-outline-variant/40 space-y-2">
+                      <button
+                        onClick={handleAddUnit}
+                        disabled={isSubmitting}
+                        className="w-full h-12 bg-secondary text-white font-bold rounded-xl shadow-md hover:opacity-95 active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-50 cursor-pointer"
+                      >
+                        {isSubmitting ? (
+                          <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <>
+                            <span className="material-symbols-outlined text-[18px]">add_circle</span>
+                            <span>{lang === "th" ? "ลงทะเบียนบานเพิ่มเติม (1-Click)" : "Register another unit"}</span>
+                          </>
+                        )}
+                      </button>
+                      {submitError && (
+                        <p className="text-[10px] text-error font-semibold text-center mt-1">{submitError}</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              /* =====================================================================
+                 ORIGINAL REGISTRATION SUCCESS VIEW
+                 ===================================================================== */
+              <>
+                <section className="flex flex-col items-center text-center py-6">
+                  <div className="w-24 h-24 bg-secondary-container rounded-full flex items-center justify-center mb-6 shadow-lg shadow-secondary-container/20">
+                    <span className="material-symbols-outlined text-on-secondary-container !text-5xl" style={{ fontVariationSettings: "'FILL' 1" }}>
+                      check_circle
+                    </span>
+                  </div>
+                  <h2 className="font-bold text-3xl text-primary">{t.successTitle}</h2>
+                  <p className="text-sm text-on-surface-variant max-w-md mt-2 leading-relaxed">
+                    {lang === "th" ? (
+                      <>
+                        ข้อมูลสินค้าและการรับประกันของคุณได้รับการบันทึกในระบบหลักของ{" "}
+                        <span className="whitespace-nowrap">Window&nbsp;Asia&nbsp;PCL.</span> เรียบร้อยแล้ว
+                      </>
+                    ) : (
+                      <>
+                        Your product information and warranty details have been successfully recorded in the{" "}
+                        <span className="whitespace-nowrap">Window&nbsp;Asia&nbsp;PCL.</span> registry.
+                      </>
+                    )}
+                  </p>
+                </section>
+
+                <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+                  <div className="md:col-span-8 bg-white rounded-xl p-6 border border-outline-variant shadow-[0px_4px_12px_rgba(15,23,42,0.05)] relative overflow-hidden">
+                    <div className="absolute top-0 right-0 p-4 opacity-5">
+                      <span className="material-symbols-outlined !text-[120px]">verified</span>
+                    </div>
+                    <p className="text-[10px] text-secondary font-bold uppercase tracking-widest mb-1">{t.refCode}</p>
+                    <h3 className="font-extrabold text-2xl md:text-3xl text-primary tracking-wider font-mono">{refRegNumber}</h3>
+                    
+                    <div className="flex gap-4 mt-8 flex-wrap">
+                      <div className="flex items-center gap-1.5 bg-surface-container-low px-4 py-2 rounded-full text-xs font-semibold text-on-surface">
+                        <span className="material-symbols-outlined text-secondary text-sm">calendar_today</span>
+                        <span>{lang === "th" ? "วันที่ลงทะเบียน: " : "Registered: "}{new Date().toLocaleDateString(lang === "th" ? "th-TH" : "en-US", { year: "numeric", month: "short", day: "numeric" })}</span>
+                      </div>
+                      
+                      {getWarrantyExpiryString(product.warrantyPeriod, new Date(), lang) === "LIFETIME" ? (
+                        <div className="flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/20 px-4 py-2 rounded-full text-xs font-bold text-amber-700">
+                          <span className="material-symbols-outlined text-sm text-amber-600">workspace_premium</span>
+                          <span>{lang === "th" ? "รับประกัน: ตลอดอายุการใช้งาน (Lifetime)" : "Warranty: Lifetime"}</span>
+                        </div>
+                      ) : (
+                        <div className="flex items-center gap-1.5 bg-surface-container-low px-4 py-2 rounded-full text-xs font-semibold text-on-surface">
+                          <span className="material-symbols-outlined text-secondary text-sm">event_busy</span>
+                          <span>{lang === "th" ? "หมดอายุวันที่: " : "Expiry: "}{getWarrantyExpiryString(product.warrantyPeriod, new Date(), lang)}</span>
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-1.5 bg-surface-container-low px-4 py-2 rounded-full text-xs font-semibold text-on-surface">
+                        <span className="material-symbols-outlined text-secondary text-sm">language</span>
+                        <span>{t.intlRegistry}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="md:col-span-4 grid grid-cols-1 gap-4">
+                    <button 
+                      onClick={() => setShowScanner(true)}
+                      className="bg-secondary text-white rounded-xl p-5 flex flex-col justify-between shadow-md active:scale-95 transition-all cursor-pointer text-left group min-h-[120px] border border-secondary/30"
+                    >
+                      <div>
+                        <h4 className="font-bold text-sm text-white flex items-center gap-1.5">
+                          <span className="material-symbols-outlined text-lg">photo_camera</span>
+                          {lang === "th" ? "สแกนบานถัดไปทันที" : "Scan Next Item"}
+                        </h4>
+                        <p className="text-[11px] text-white/80 mt-1 leading-normal">
+                          {lang === "th" 
+                            ? "เปิดกล้องเพื่อสแกน QR Code ของสินค้าบานถัดไปได้ทันทีจากจุดนี้"
+                            : "Open in-app camera to register the next product scan immediately."}
+                        </p>
+                      </div>
+                      <div className="flex justify-end items-center mt-2">
+                        <span className="material-symbols-outlined text-sm font-bold bg-white text-secondary p-1 rounded-full group-hover:translate-x-0.5 transition-transform">
+                          arrow_forward
+                        </span>
+                      </div>
+                    </button>
+
+                    <button 
+                      onClick={() => router.push("/")}
+                      className="bg-primary text-white rounded-xl p-5 flex flex-col justify-between shadow-md active:scale-95 transition-all cursor-pointer text-left group min-h-[120px]"
+                    >
+                      <div>
+                        <h4 className="font-bold text-sm text-white flex items-center gap-1.5">
+                          <span className="material-symbols-outlined text-lg">home</span>
+                          {t.backDashboard}
+                        </h4>
+                        <p className="text-[11px] text-white/80 mt-1 leading-normal">
+                          {t.backDashboardDesc}
+                        </p>
+                      </div>
+                      <div className="flex justify-end items-center mt-2">
+                        <span className="material-symbols-outlined text-sm font-bold bg-white text-primary p-1 rounded-full group-hover:translate-x-0.5 transition-transform">
+                          arrow_forward
+                        </span>
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Backoffice controls, support info and other elements shared by success screen */}
             <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-              {/* Reference ID card */}
-              <div className="md:col-span-8 bg-white rounded-xl p-6 border border-outline-variant shadow-[0px_4px_12px_rgba(15,23,42,0.05)] relative overflow-hidden">
-                <div className="absolute top-0 right-0 p-4 opacity-5">
-                  <span className="material-symbols-outlined !text-[120px]">verified</span>
-                </div>
-                <p className="text-[10px] text-secondary font-bold uppercase tracking-widest mb-1">{t.refCode}</p>
-                <h3 className="font-extrabold text-2xl md:text-3xl text-primary tracking-wider font-mono">{refRegNumber}</h3>
-                
-                <div className="flex gap-4 mt-8 flex-wrap">
-                  <div className="flex items-center gap-1.5 bg-surface-container-low px-4 py-2 rounded-full text-xs font-semibold text-on-surface">
-                    <span className="material-symbols-outlined text-secondary text-sm">calendar_today</span>
-                    <span>{lang === "th" ? "วันที่ลงทะเบียน: " : "Registered: "}{new Date().toLocaleDateString(lang === "th" ? "th-TH" : "en-US", { year: "numeric", month: "short", day: "numeric" })}</span>
-                  </div>
-                  
-                  {getWarrantyExpiryString(product.warrantyPeriod, new Date(), lang) === "LIFETIME" ? (
-                    <div className="flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/20 px-4 py-2 rounded-full text-xs font-bold text-amber-700">
-                      <span className="material-symbols-outlined text-sm text-amber-600">workspace_premium</span>
-                      <span>{lang === "th" ? "รับประกัน: ตลอดอายุการใช้งาน (Lifetime)" : "Warranty: Lifetime"}</span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-1.5 bg-surface-container-low px-4 py-2 rounded-full text-xs font-semibold text-on-surface">
-                      <span className="material-symbols-outlined text-secondary text-sm">event_busy</span>
-                      <span>{lang === "th" ? "หมดอายุวันที่: " : "Expiry: "}{getWarrantyExpiryString(product.warrantyPeriod, new Date(), lang)}</span>
-                    </div>
-                  )}
-
-                  <div className="flex items-center gap-1.5 bg-surface-container-low px-4 py-2 rounded-full text-xs font-semibold text-on-surface">
-                    <span className="material-symbols-outlined text-secondary text-sm">language</span>
-                    <span>{t.intlRegistry}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Action Bento Grid */}
-              <div className="md:col-span-4 grid grid-cols-1 gap-4">
-                {/* Scan Next Item In-App Camera Card */}
-                <button 
-                  onClick={() => setShowScanner(true)}
-                  className="bg-secondary text-white rounded-xl p-5 flex flex-col justify-between shadow-md active:scale-95 transition-all cursor-pointer text-left group min-h-[120px] border border-secondary/30"
-                >
-                  <div>
-                    <h4 className="font-bold text-sm text-white flex items-center gap-1.5">
-                      <span className="material-symbols-outlined text-lg">photo_camera</span>
-                      {lang === "th" ? "สแกนบานถัดไปทันที" : "Scan Next Item"}
-                    </h4>
-                    <p className="text-[11px] text-white/80 mt-1 leading-normal">
-                      {lang === "th" 
-                        ? "เปิดกล้องเพื่อสแกน QR Code ของสินค้าบานถัดไปได้ทันทีจากจุดนี้"
-                        : "Open in-app camera to register the next product scan immediately."}
-                    </p>
-                  </div>
-                  <div className="flex justify-end items-center mt-2">
-                    <span className="material-symbols-outlined text-sm font-bold bg-white text-secondary p-1 rounded-full group-hover:translate-x-0.5 transition-transform">
-                      arrow_forward
-                    </span>
-                  </div>
-                </button>
-
-                {/* Back to Home Card */}
-                <button 
-                  onClick={() => router.push("/")}
-                  className="bg-primary text-white rounded-xl p-5 flex flex-col justify-between shadow-md active:scale-95 transition-all cursor-pointer text-left group min-h-[120px]"
-                >
-                  <div>
-                    <h4 className="font-bold text-sm text-white flex items-center gap-1.5">
-                      <span className="material-symbols-outlined text-lg">home</span>
-                      {t.backDashboard}
-                    </h4>
-                    <p className="text-[11px] text-white/80 mt-1 leading-normal">
-                      {t.backDashboardDesc}
-                    </p>
-                  </div>
-                  <div className="flex justify-end items-center mt-2">
-                    <span className="material-symbols-outlined text-sm font-bold bg-white text-primary p-1 rounded-full group-hover:translate-x-0.5 transition-transform">
-                      arrow_forward
-                    </span>
-                  </div>
-                </button>
-              </div>
-
               {/* Benefits summary list */}
               <div className="md:col-span-12 bg-white rounded-xl p-6 md:p-8 border border-outline-variant shadow-sm space-y-6">
                 <h4 className="font-bold text-lg text-primary">{t.benefitsTitle}</h4>
@@ -1505,7 +1744,7 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
                 </div>
               </div>
 
-              {/* VIP customer support contacts */}
+              {/* VIP Customer Support contacts */}
               <div className="md:col-span-12 bg-surface-container-high rounded-xl p-6 md:p-8 space-y-4">
                 <div>
                   <h4 className="font-bold text-lg text-primary">

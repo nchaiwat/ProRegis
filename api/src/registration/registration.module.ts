@@ -8,10 +8,11 @@ import { TelegramModule } from '../telegram/telegram.module';
 import { OtpModule } from '../otp/otp.module';
 
 import { GenerationLog } from '../backoffice/generation-log.entity';
+import { SystemSetting } from '../backoffice/system-setting.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Registration, ProductionOrder, GenerationLog]),
+    TypeOrmModule.forFeature([Registration, ProductionOrder, GenerationLog, SystemSetting]),
     TelegramModule,
     OtpModule,
   ],

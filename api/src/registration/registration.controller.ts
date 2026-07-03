@@ -1,4 +1,4 @@
-import { Controller, Post, Body } from '@nestjs/common';
+import { Controller, Post, Body, BadRequestException } from '@nestjs/common';
 import { RegistrationService, RegistrationDto } from './registration.service';
 import { OtpService } from '../otp/otp.service';
 
@@ -55,6 +55,24 @@ export class RegistrationController {
   @Post('check-contact')
   async checkContact(@Body() body: { contact: string }) {
     return this.registrationService.checkContactExists(body.contact);
+  }
+
+  @Post('check-status')
+  async checkStatus(
+    @Body() body: { docNum: string; phone: string; latitude?: number; longitude?: number },
+  ) {
+    if (!body.docNum || !body.phone) {
+      throw new BadRequestException('docNum and phone are required');
+    }
+    return this.registrationService.checkStatus(body.docNum, body.phone, body.latitude, body.longitude);
+  }
+
+  @Post('add-unit')
+  async addUnit(@Body() body: { token: string; phone: string }) {
+    if (!body.token || !body.phone) {
+      throw new BadRequestException('token and phone are required');
+    }
+    return this.registrationService.addUnit(body);
   }
 }
 

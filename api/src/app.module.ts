@@ -19,6 +19,7 @@ import { RolePermission } from './users/role-permission.entity';
 import { AuditLog } from './audit/audit-log.entity';
 import { ProductionOrder } from './production-order/production-order.entity';
 import { ProductMetadata } from './products/product-metadata.entity';
+import { SystemSetting } from './backoffice/system-setting.entity';
 
 @Module({
   imports: [
@@ -46,7 +47,7 @@ import { ProductMetadata } from './products/product-metadata.entity';
           username,
           password,
           database,
-          entities: [Registration, GenerationLog, User, AuditLog, ProductionOrder, RolePermission, ProductMetadata],
+          entities: [Registration, GenerationLog, User, AuditLog, ProductionOrder, RolePermission, ProductMetadata, SystemSetting],
           synchronize: true, // Automatically updates tables to match entity schema (Dev mode only)
         };
       },

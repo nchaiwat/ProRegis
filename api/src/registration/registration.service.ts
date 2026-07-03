@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { Registration } from './registration.entity';
 import { ProductionOrder } from '../production-order/production-order.entity';
 import { TelegramService, formatThaiDateTime } from '../telegram/telegram.service';
+import { SystemSetting } from '../backoffice/system-setting.entity';
 import * as crypto from 'crypto';
 
 export class RegistrationDto {
@@ -37,6 +38,8 @@ export class RegistrationService {
     private readonly productionOrderRepository: Repository<ProductionOrder>,
     @InjectRepository(GenerationLog)
     private readonly generationLogRepository: Repository<GenerationLog>,
+    @InjectRepository(SystemSetting)
+    private readonly systemSettingRepository: Repository<SystemSetting>,
     private readonly telegramService: TelegramService,
   ) {}
 
@@ -62,24 +65,64 @@ export class RegistrationService {
     }
   }
 
+  private calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+    const R = 6371; // Earth radius in km
+    const dLat = (lat2 - lat1) * (Math.PI / 180);
+    const dLon = (lon2 - lon1) * (Math.PI / 180);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(lat1 * (Math.PI / 180)) *
+        Math.cos(lat2 * (Math.PI / 180)) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c; // Distance in km
+  }
+
   async registerProduct(dto: RegistrationDto) {
     if (!dto.mandatoryConsent) {
       throw new BadRequestException('Mandatory data consent must be agreed.');
     }
 
+    // 0. Load active settings from DB
+    const qrModeSetting = await this.systemSettingRepository.findOne({ where: { key: 'QR_CODE_MODE' } });
+    const qrMode = qrModeSetting ? qrModeSetting.value : 'STATIC';
+
+    // Normalize phone number (strip non-digits)
+    const cleanPhone = dto.phone.replace(/\D/g, '');
+
     // Resolve docNum & seqNum
     let docNum = dto.docNum;
     let seqNum = dto.seqNum;
-    if (!docNum || !seqNum) {
-      const decoded = this.decryptToken(dto.token);
-      if (decoded) {
-        docNum = decoded.docNum;
-        seqNum = decoded.seqNum;
-      }
-    }
 
-    if (!docNum || !seqNum) {
-      throw new BadRequestException('รหัส QR Code ไม่ถูกต้องหรือเสียหาย');
+    if (qrMode === 'DYNAMIC') {
+      if (!docNum || !seqNum) {
+        const decoded = this.decryptToken(dto.token);
+        if (decoded) {
+          docNum = decoded.docNum;
+          seqNum = decoded.seqNum;
+        }
+      }
+      if (!docNum || !seqNum) {
+        throw new BadRequestException('รหัส QR Code ไม่ถูกต้องหรือเสียหาย');
+      }
+    } else {
+      // STATIC Mode (no seqNum)
+      if (!docNum) {
+        const decoded = this.decryptToken(dto.token);
+        if (decoded) {
+          docNum = decoded.docNum;
+        } else {
+          // Fallback if token is plain 9-digit
+          if (dto.token.length === 9 && /^\d+$/.test(dto.token)) {
+            docNum = dto.token;
+          }
+        }
+      }
+      seqNum = undefined; // Always undefined in STATIC mode
+      if (!docNum) {
+        throw new BadRequestException('รหัส QR Code ไม่ถูกต้องหรือเสียหาย');
+      }
     }
 
     // 1. Check if ProductionOrder is pre-generated in backend (by staff)
@@ -89,9 +132,10 @@ export class RegistrationService {
     }
 
     // 2. Check if already registered (Double Registration Check)
-    const existingRegistration = await this.registrationRepository.findOne({
-      where: { docNum, seqNum }
-    });
+    if (qrMode === 'DYNAMIC') {
+      const existingRegistration = await this.registrationRepository.findOne({
+        where: { docNum, seqNum }
+      });
 
       if (existingRegistration) {
         const timeStr = formatThaiDateTime(new Date());
@@ -138,6 +182,40 @@ export class RegistrationService {
           `สินค้านี้ถูกลงทะเบียนไปแล้วเมื่อวันที่ ${formattedOldDate} น. ที่จังหวัด ${existingRegistration.province} โปรดติดต่อเจ้าหน้าที่ดูแลระบบหากพบปัญหา`
         );
       }
+    } else {
+      // STATIC Mode duplicate check (By location and phone)
+      const existingRegistrations = await this.registrationRepository.find({
+        where: { docNum, phone: cleanPhone }
+      });
+
+      if (existingRegistrations.length > 0) {
+        let isSameSite = true;
+        if (dto.latitude && dto.longitude) {
+          isSameSite = false;
+          for (const reg of existingRegistrations) {
+            if (reg.latitude && reg.longitude) {
+              const distance = this.calculateDistance(
+                dto.latitude,
+                dto.longitude,
+                Number(reg.latitude),
+                Number(reg.longitude)
+              );
+              if (distance <= 0.5) { // 500 meters threshold
+                isSameSite = true;
+                break;
+              }
+            } else {
+              isSameSite = true;
+              break;
+            }
+          }
+        }
+
+        if (isSameSite) {
+          throw new BadRequestException('สินค้ารุ่นนี้ได้รับการลงทะเบียนรับประกันแล้วที่บ้านของคุณ');
+        }
+      }
+    }
 
     // Generate Registration Code
     const cleanToken = dto.token.substring(0, 3).toUpperCase();
@@ -418,6 +496,127 @@ export class RegistrationService {
       email: reg.email,
       maskedPhone: maskPhone(reg.phone),
       maskedEmail: maskEmail(reg.email)
+    };
+  }
+
+  async checkStatus(docNum: string, phone: string, lat?: number, lng?: number) {
+    const cleanPhone = phone.replace(/\D/g, '');
+    const registrations = await this.registrationRepository.find({
+      where: { docNum, phone: cleanPhone },
+      order: { registeredAt: 'ASC' }
+    });
+
+    if (registrations.length === 0) {
+      return { registered: false };
+    }
+
+    let isSameSite = true;
+    if (lat && lng) {
+      isSameSite = false;
+      for (const reg of registrations) {
+        if (reg.latitude && reg.longitude) {
+          const distance = this.calculateDistance(lat, lng, Number(reg.latitude), Number(reg.longitude));
+          if (distance <= 0.5) { // 500 meters
+            isSameSite = true;
+            break;
+          }
+        } else {
+          isSameSite = true;
+          break;
+        }
+      }
+    }
+
+    if (!isSameSite) {
+      return { registered: false, existingAtOtherSite: true };
+    }
+
+    // Load SAP info to show item details
+    const po = await this.productionOrderRepository.findOne({ where: { docNum } });
+    const modelName = po ? (po.itemName || 'กระจกนิรภัยนำเข้า') : 'กระจกนิรภัยนำเข้า';
+
+    return {
+      registered: true,
+      count: registrations.length,
+      modelName,
+      list: registrations.map((r, idx) => ({
+        index: idx + 1,
+        id: r.id,
+        registeredAt: r.registeredAt,
+      }))
+    };
+  }
+
+  async addUnit(dto: { token: string; phone: string }) {
+    // 0. Load active settings from DB
+    const qrModeSetting = await this.systemSettingRepository.findOne({ where: { key: 'QR_CODE_MODE' } });
+    const qrMode = qrModeSetting ? qrModeSetting.value : 'STATIC';
+
+    if (qrMode !== 'STATIC') {
+      throw new BadRequestException('การลงทะเบียนบานเพิ่มเติมแบบด่วนรองรับเฉพาะโหมด Static QR เท่านั้น');
+    }
+
+    // Resolve docNum
+    let docNum: string | null = null;
+    const decoded = this.decryptToken(dto.token);
+    if (decoded) {
+      docNum = decoded.docNum;
+    } else {
+      if (dto.token.length === 9 && /^\d+$/.test(dto.token)) {
+        docNum = dto.token;
+      }
+    }
+
+    if (!docNum) {
+      throw new BadRequestException('รหัส QR Code ไม่ถูกต้องหรือเสียหาย');
+    }
+
+    const cleanPhone = dto.phone.replace(/\D/g, '');
+    const baseReg = await this.registrationRepository.findOne({
+      where: { docNum, phone: cleanPhone },
+      order: { registeredAt: 'DESC' }
+    });
+
+    if (!baseReg) {
+      throw new BadRequestException('ไม่พบข้อมูลการลงทะเบียนต้นแบบสำหรับบานนี้');
+    }
+
+    // Generate new registration ID
+    const cleanToken = dto.token.substring(0, 3).toUpperCase();
+    const registrationId = `REG-${Math.floor(Math.random() * 90000) + 10000}-${cleanToken}`;
+
+    const newRegistration = this.registrationRepository.create({
+      id: registrationId,
+      token: dto.token,
+      docNum: baseReg.docNum,
+      seqNum: null,
+      firstName: baseReg.firstName,
+      lastName: baseReg.lastName,
+      address: baseReg.address,
+      province: baseReg.province,
+      postalCode: baseReg.postalCode,
+      phone: baseReg.phone,
+      email: baseReg.email,
+      mandatoryConsent: baseReg.mandatoryConsent,
+      optionalConsent: baseReg.optionalConsent,
+      latitude: baseReg.latitude,
+      longitude: baseReg.longitude,
+      lineUserId: baseReg.lineUserId,
+      status: 'WARRANTY_ACTIVE',
+    });
+
+    await this.registrationRepository.save(newRegistration);
+    this.logger.log(`[REGISTRATION] Added duplicate static unit successfully: ${registrationId}`);
+
+    // Trigger Telegram Notification
+    this.triggerTelegramNotification(newRegistration).catch((err) => {
+      this.logger.error('[TELEGRAM ALERT ERROR] Failed to send Telegram duplicate registration message:', err);
+    });
+
+    return {
+      success: true,
+      refCode: registrationId,
+      registeredAt: newRegistration.registeredAt || new Date().toISOString(),
     };
   }
 }

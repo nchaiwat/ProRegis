@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { ProductMetadata } from './product-metadata.entity';
 import { ProductionOrder } from '../production-order/production-order.entity';
+import { SystemSetting } from '../backoffice/system-setting.entity';
 import { SapService } from '../sap/sap.service';
 import { BackofficeService } from '../backoffice/backoffice.service';
 
@@ -17,6 +18,8 @@ export interface Product {
   poNo: string;
   imageUrl: string;
   warrantyPeriod: string;
+  qrMode?: string;
+  verificationMode?: string;
   specs: {
     th: { label: string; value: string }[];
     en: { label: string; value: string }[];
@@ -40,6 +43,8 @@ export class ProductsService {
     private readonly productionOrderRepository: Repository<ProductionOrder>,
     @InjectRepository(GenerationLog)
     private readonly generationLogRepository: Repository<GenerationLog>,
+    @InjectRepository(SystemSetting)
+    private readonly systemSettingRepository: Repository<SystemSetting>,
     private readonly sapService: SapService,
     @Inject(forwardRef(() => BackofficeService))
     private readonly backofficeService: BackofficeService,
@@ -310,6 +315,12 @@ export class ProductsService {
     const totalQty = logs.reduce((sum, log) => sum + log.quantity, 0);
     const poNoValue = totalQty > 0 ? `${totalQty}` : 'N/A';
 
+    const qrModeSetting = await this.systemSettingRepository.findOne({ where: { key: 'QR_CODE_MODE' } });
+    const qrMode = qrModeSetting ? qrModeSetting.value : 'STATIC';
+
+    const verificationModeSetting = await this.systemSettingRepository.findOne({ where: { key: 'VERIFICATION_MODE' } });
+    const verificationMode = verificationModeSetting ? verificationModeSetting.value : 'OTP';
+
     return {
       token: token,
       code: itemCode,
@@ -320,6 +331,8 @@ export class ProductsService {
       poNo: poNoValue,
       imageUrl: metadata.imageBase64 || 'https://images.unsplash.com/photo-1513694203232-719a280e022f?q=80&w=800&auto=format&fit=crop',
       warrantyPeriod: 'ตลอดอายุการใช้งาน (Lifetime Warranty)',
+      qrMode,
+      verificationMode,
       specs: {
         th: [
           { label: 'จำนวนที่ผลิต', value: totalQty > 0 ? `${totalQty} ชิ้น` : 'N/A' },
