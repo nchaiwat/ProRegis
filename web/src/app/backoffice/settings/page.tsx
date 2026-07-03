@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { getApiBaseUrl } from "@/lib/api";
 
@@ -17,8 +17,22 @@ export default function SettingsAdminPage() {
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
 
-  // Configuration States
-  const [settings, setSettings] = useState<Record<string, SettingInfo>>({});
+  // DB Settings Metadata (contains values and updatedAt timestamps)
+  const [dbSettings, setDbSettings] = useState<Record<string, SettingInfo>>({});
+
+  // Local Form Input States
+  const [telegramApiBaseUrl, setTelegramApiBaseUrl] = useState("");
+  const [telegramBotToken, setTelegramBotToken] = useState("");
+  const [telegramGroupId, setTelegramGroupId] = useState("");
+  const [sapServiceLayerUrl, setSapServiceLayerUrl] = useState("");
+  const [sapCompanyDb, setSapCompanyDb] = useState("");
+  const [sapUsername, setSapUsername] = useState("");
+  const [sapPassword, setSapPassword] = useState("");
+
+  // Password Visibility Toggle and Timer
+  const [showPassword, setShowPassword] = useState(false);
+  const [passwordTimer, setPasswordTimer] = useState(0);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const stored = sessionStorage.getItem("bo_session");
@@ -41,6 +55,35 @@ export default function SettingsAdminPage() {
     }
   }, [router]);
 
+  // Handle password mask countdown timer
+  useEffect(() => {
+    if (showPassword) {
+      setPasswordTimer(30);
+      if (timerRef.current) clearInterval(timerRef.current);
+      
+      timerRef.current = setInterval(() => {
+        setPasswordTimer((prev) => {
+          if (prev <= 1) {
+            if (timerRef.current) clearInterval(timerRef.current);
+            setShowPassword(false);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } else {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      setPasswordTimer(0);
+    }
+
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [showPassword]);
+
   const fetchSettings = async () => {
     setIsLoading(true);
     setError("");
@@ -55,7 +98,16 @@ export default function SettingsAdminPage() {
 
       if (res.ok) {
         const data = await res.json();
-        setSettings(data);
+        setDbSettings(data);
+        
+        // Populate local states
+        setTelegramApiBaseUrl(data.TELEGRAM_API_BASE_URL?.value || "https://api.telegram.org");
+        setTelegramBotToken(data.TELEGRAM_BOT_TOKEN?.value || "");
+        setTelegramGroupId(data.TELEGRAM_GROUP_ID?.value || "");
+        setSapServiceLayerUrl(data.SAP_SERVICE_LAYER_URL?.value || "");
+        setSapCompanyDb(data.SAP_COMPANY_DB?.value || "");
+        setSapUsername(data.SAP_USERNAME?.value || "");
+        setSapPassword(data.SAP_PASSWORD?.value || "");
       } else {
         const errData = await res.json().catch(() => ({}));
         setError(errData.message || "ไม่สามารถดึงข้อมูลการตั้งค่าได้");
@@ -67,7 +119,57 @@ export default function SettingsAdminPage() {
     }
   };
 
-  const handleUpdateSetting = async (key: string, newValue: string) => {
+  const handleSaveAllSettings = async () => {
+    setIsSaving(true);
+    setSuccessMsg("");
+    setError("");
+    const token = sessionStorage.getItem("bo_token");
+
+    const payload = [
+      { key: "TELEGRAM_API_BASE_URL", value: telegramApiBaseUrl },
+      { key: "TELEGRAM_BOT_TOKEN", value: telegramBotToken },
+      { key: "TELEGRAM_GROUP_ID", value: telegramGroupId },
+      { key: "SAP_SERVICE_LAYER_URL", value: sapServiceLayerUrl },
+      { key: "SAP_COMPANY_DB", value: sapCompanyDb },
+      { key: "SAP_USERNAME", value: sapUsername },
+      { key: "SAP_PASSWORD", value: sapPassword },
+    ];
+
+    try {
+      let allOk = true;
+      for (const item of payload) {
+        // Only update if value changed from DB version to minimize DB writes and audit logs
+        const currentDbVal = dbSettings[item.key]?.value || "";
+        if (item.value !== currentDbVal) {
+          const res = await fetch(`${getApiBaseUrl()}/backoffice/settings`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({ key: item.key, value: item.value }),
+          });
+          if (!res.ok) {
+            allOk = false;
+          }
+        }
+      }
+
+      if (allOk) {
+        setSuccessMsg("บันทึกการเปลี่ยนแปลงการตั้งค่าระบบเรียบร้อยแล้ว!");
+        setTimeout(() => setSuccessMsg(""), 4000);
+        await fetchSettings();
+      } else {
+        setError("ไม่สามารถบันทึกข้อมูลบางค่าได้ โปรดตรวจสอบระบบ");
+      }
+    } catch {
+      setError("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleUpdateMode = async (key: string, modeValue: string) => {
     setIsSaving(true);
     setSuccessMsg("");
     setError("");
@@ -80,20 +182,19 @@ export default function SettingsAdminPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ key, value: newValue }),
+        body: JSON.stringify({ key, value: modeValue }),
       });
 
       if (res.ok) {
-        setSuccessMsg(`อัปเดต ${key} สำเร็จแล้ว!`);
+        setSuccessMsg("อัปเดตโหมดการใช้งานสำเร็จ!");
         setTimeout(() => setSuccessMsg(""), 3000);
-        // Refresh settings from database to get fresh updatedAt timestamps
         await fetchSettings();
       } else {
         const errData = await res.json().catch(() => ({}));
-        setError(errData.message || "ไม่สามารถบันทึกข้อมูลการตั้งค่าได้");
+        setError(errData.message || "ไม่สามารถบันทึกข้อมูลโหมดการใช้งานได้");
       }
     } catch {
-      setError("เกิดข้อผิดพลาดในการบันทึกการตั้งค่า");
+      setError("เกิดข้อผิดพลาดขณะส่งข้อมูลตั้งค่า");
     } finally {
       setIsSaving(false);
     }
@@ -131,27 +232,38 @@ export default function SettingsAdminPage() {
     );
   }
 
-  const qrMode = settings.QR_CODE_MODE?.value || "STATIC";
-  const verificationMode = settings.VERIFICATION_MODE?.value || "OTP";
+  const qrMode = dbSettings.QR_CODE_MODE?.value || "STATIC";
+  const verificationMode = dbSettings.VERIFICATION_MODE?.value || "OTP";
 
   return (
     <div className="space-y-6 max-w-5xl animate-fade-in pb-12">
-      {/* Header Panel */}
-      <div className="flex items-center justify-between">
+      {/* Header Panel with Save Button */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-black text-primary tracking-tight">ตั้งค่าระบบ (System Settings)</h1>
           <p className="text-xs text-on-surface-variant font-medium mt-1">
             ปรับเปลี่ยนโหมดสแกน, สิทธิ์ความปลอดภัย และรหัสการเชื่อมโยงระบบปลายทาง (SAP & Telegram) โดยไม่ต้องแก้ไขไฟล์ .env
           </p>
         </div>
-        <button
-          onClick={fetchSettings}
-          disabled={isSaving}
-          className="flex items-center gap-2 px-4 py-2 border border-outline-variant hover:bg-surface-container-high active:scale-95 duration-100 rounded-xl text-xs font-bold text-primary cursor-pointer transition-all disabled:opacity-50"
-        >
-          <span className="material-symbols-outlined text-[16px]">sync</span>
-          รีเฟรชข้อมูล
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={handleSaveAllSettings}
+            disabled={isSaving}
+            className="h-12 px-6 bg-secondary text-white text-xs font-bold rounded-xl shadow hover:opacity-95 active:scale-[0.98] transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-60"
+          >
+            {isSaving ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <span>กำลังบันทึก...</span>
+              </>
+            ) : (
+              <>
+                <span className="material-symbols-outlined !text-[18px]">save</span>
+                <span>บันทึกการตั้งค่าทั้งหมด</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Notifications */}
@@ -184,12 +296,13 @@ export default function SettingsAdminPage() {
               <div className="flex justify-between items-center">
                 <span className="text-xs font-bold text-primary">รูปแบบสแกน QR Code</span>
                 <span className="text-[10px] text-outline font-semibold">
-                  อัปเดต: {formatDateTime(settings.QR_CODE_MODE?.updatedAt)}
+                  อัปเดต: {formatDateTime(dbSettings.QR_CODE_MODE?.updatedAt)}
                 </span>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <button
-                  onClick={() => handleUpdateSetting("QR_CODE_MODE", "STATIC")}
+                  onClick={() => handleUpdateMode("QR_CODE_MODE", "STATIC")}
+                  disabled={isSaving}
                   className={`py-3 px-4 rounded-xl border text-center font-bold text-xs transition-all cursor-pointer ${
                     qrMode === "STATIC"
                       ? "border-secondary bg-secondary/5 text-secondary ring-1 ring-secondary"
@@ -199,7 +312,8 @@ export default function SettingsAdminPage() {
                   Static QR (9 หลัก)
                 </button>
                 <button
-                  onClick={() => handleUpdateSetting("QR_CODE_MODE", "DYNAMIC")}
+                  onClick={() => handleUpdateMode("QR_CODE_MODE", "DYNAMIC")}
+                  disabled={isSaving}
                   className={`py-3 px-4 rounded-xl border text-center font-bold text-xs transition-all cursor-pointer ${
                     qrMode === "DYNAMIC"
                       ? "border-secondary bg-secondary/5 text-secondary ring-1 ring-secondary"
@@ -216,12 +330,13 @@ export default function SettingsAdminPage() {
               <div className="flex justify-between items-center">
                 <span className="text-xs font-bold text-primary">ระบบยืนยันตัวตน</span>
                 <span className="text-[10px] text-outline font-semibold">
-                  อัปเดต: {formatDateTime(settings.VERIFICATION_MODE?.updatedAt)}
+                  อัปเดต: {formatDateTime(dbSettings.VERIFICATION_MODE?.updatedAt)}
                 </span>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <button
-                  onClick={() => handleUpdateSetting("VERIFICATION_MODE", "OTP")}
+                  onClick={() => handleUpdateMode("VERIFICATION_MODE", "OTP")}
+                  disabled={isSaving}
                   className={`py-3 px-4 rounded-xl border text-center font-bold text-xs transition-all cursor-pointer ${
                     verificationMode === "OTP"
                       ? "border-secondary bg-secondary/5 text-secondary ring-1 ring-secondary"
@@ -231,7 +346,8 @@ export default function SettingsAdminPage() {
                   SMS OTP Verification
                 </button>
                 <button
-                  onClick={() => handleUpdateSetting("VERIFICATION_MODE", "LINE")}
+                  onClick={() => handleUpdateMode("VERIFICATION_MODE", "LINE")}
+                  disabled={isSaving}
                   className={`py-3 px-4 rounded-xl border text-center font-bold text-xs transition-all cursor-pointer ${
                     verificationMode === "LINE"
                       ? "border-secondary bg-secondary/5 text-secondary ring-1 ring-secondary"
@@ -258,20 +374,16 @@ export default function SettingsAdminPage() {
               <div className="md:w-1/4">
                 <label className="text-xs font-bold text-primary">API Base URL</label>
                 <p className="text-[10px] text-outline font-semibold mt-0.5">
-                  อัปเดต: {formatDateTime(settings.TELEGRAM_API_BASE_URL?.updatedAt)}
+                  อัปเดต: {formatDateTime(dbSettings.TELEGRAM_API_BASE_URL?.updatedAt)}
                 </p>
               </div>
-              <div className="flex-1 flex gap-2">
+              <div className="flex-1">
                 <input
                   type="text"
-                  defaultValue={settings.TELEGRAM_API_BASE_URL?.value || ""}
-                  onBlur={(e) => {
-                    if (e.target.value !== (settings.TELEGRAM_API_BASE_URL?.value || "")) {
-                      handleUpdateSetting("TELEGRAM_API_BASE_URL", e.target.value);
-                    }
-                  }}
+                  value={telegramApiBaseUrl}
+                  onChange={(e) => setTelegramApiBaseUrl(e.target.value)}
                   placeholder="https://api.telegram.org"
-                  className="h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary flex-1"
+                  className="w-full h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary"
                 />
               </div>
             </div>
@@ -281,20 +393,16 @@ export default function SettingsAdminPage() {
               <div className="md:w-1/4">
                 <label className="text-xs font-bold text-primary">Bot Token ID</label>
                 <p className="text-[10px] text-outline font-semibold mt-0.5">
-                  อัปเดต: {formatDateTime(settings.TELEGRAM_BOT_TOKEN?.updatedAt)}
+                  อัปเดต: {formatDateTime(dbSettings.TELEGRAM_BOT_TOKEN?.updatedAt)}
                 </p>
               </div>
-              <div className="flex-1 flex gap-2">
+              <div className="flex-1">
                 <input
                   type="text"
-                  defaultValue={settings.TELEGRAM_BOT_TOKEN?.value || ""}
-                  onBlur={(e) => {
-                    if (e.target.value !== (settings.TELEGRAM_BOT_TOKEN?.value || "")) {
-                      handleUpdateSetting("TELEGRAM_BOT_TOKEN", e.target.value);
-                    }
-                  }}
+                  value={telegramBotToken}
+                  onChange={(e) => setTelegramBotToken(e.target.value)}
                   placeholder="8231754616:AAHcITgZR6_..."
-                  className="h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary flex-1"
+                  className="w-full h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary"
                 />
               </div>
             </div>
@@ -304,20 +412,16 @@ export default function SettingsAdminPage() {
               <div className="md:w-1/4">
                 <label className="text-xs font-bold text-primary">Group ID</label>
                 <p className="text-[10px] text-outline font-semibold mt-0.5">
-                  อัปเดต: {formatDateTime(settings.TELEGRAM_GROUP_ID?.updatedAt)}
+                  อัปเดต: {formatDateTime(dbSettings.TELEGRAM_GROUP_ID?.updatedAt)}
                 </p>
               </div>
-              <div className="flex-1 flex gap-2">
+              <div className="flex-1">
                 <input
                   type="text"
-                  defaultValue={settings.TELEGRAM_GROUP_ID?.value || ""}
-                  onBlur={(e) => {
-                    if (e.target.value !== (settings.TELEGRAM_GROUP_ID?.value || "")) {
-                      handleUpdateSetting("TELEGRAM_GROUP_ID", e.target.value);
-                    }
-                  }}
+                  value={telegramGroupId}
+                  onChange={(e) => setTelegramGroupId(e.target.value)}
                   placeholder="-5394050672"
-                  className="h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary flex-1"
+                  className="w-full h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary"
                 />
               </div>
             </div>
@@ -337,20 +441,16 @@ export default function SettingsAdminPage() {
               <div className="md:w-1/4">
                 <label className="text-xs font-bold text-primary">Service Layer URL</label>
                 <p className="text-[10px] text-outline font-semibold mt-0.5">
-                  อัปเดต: {formatDateTime(settings.SAP_SERVICE_LAYER_URL?.updatedAt)}
+                  อัปเดต: {formatDateTime(dbSettings.SAP_SERVICE_LAYER_URL?.updatedAt)}
                 </p>
               </div>
-              <div className="flex-1 flex gap-2">
+              <div className="flex-1">
                 <input
                   type="text"
-                  defaultValue={settings.SAP_SERVICE_LAYER_URL?.value || ""}
-                  onBlur={(e) => {
-                    if (e.target.value !== (settings.SAP_SERVICE_LAYER_URL?.value || "")) {
-                      handleUpdateSetting("SAP_SERVICE_LAYER_URL", e.target.value);
-                    }
-                  }}
+                  value={sapServiceLayerUrl}
+                  onChange={(e) => setSapServiceLayerUrl(e.target.value)}
                   placeholder="http://192.168.1.100:50002/b1s/v2 หรือ mock"
-                  className="h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary flex-1"
+                  className="w-full h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary"
                 />
               </div>
             </div>
@@ -360,20 +460,16 @@ export default function SettingsAdminPage() {
               <div className="md:w-1/4">
                 <label className="text-xs font-bold text-primary">Company Database DB</label>
                 <p className="text-[10px] text-outline font-semibold mt-0.5">
-                  อัปเดต: {formatDateTime(settings.SAP_COMPANY_DB?.updatedAt)}
+                  อัปเดต: {formatDateTime(dbSettings.SAP_COMPANY_DB?.updatedAt)}
                 </p>
               </div>
-              <div className="flex-1 flex gap-2">
+              <div className="flex-1">
                 <input
                   type="text"
-                  defaultValue={settings.SAP_COMPANY_DB?.value || ""}
-                  onBlur={(e) => {
-                    if (e.target.value !== (settings.SAP_COMPANY_DB?.value || "")) {
-                      handleUpdateSetting("SAP_COMPANY_DB", e.target.value);
-                    }
-                  }}
+                  value={sapCompanyDb}
+                  onChange={(e) => setSapCompanyDb(e.target.value)}
                   placeholder="SBO_WA_Test_20260531"
-                  className="h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary flex-1"
+                  className="w-full h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary"
                 />
               </div>
             </div>
@@ -383,20 +479,16 @@ export default function SettingsAdminPage() {
               <div className="md:w-1/4">
                 <label className="text-xs font-bold text-primary">UserName</label>
                 <p className="text-[10px] text-outline font-semibold mt-0.5">
-                  อัปเดต: {formatDateTime(settings.SAP_USERNAME?.updatedAt)}
+                  อัปเดต: {formatDateTime(dbSettings.SAP_USERNAME?.updatedAt)}
                 </p>
               </div>
-              <div className="flex-1 flex gap-2">
+              <div className="flex-1">
                 <input
                   type="text"
-                  defaultValue={settings.SAP_USERNAME?.value || ""}
-                  onBlur={(e) => {
-                    if (e.target.value !== (settings.SAP_USERNAME?.value || "")) {
-                      handleUpdateSetting("SAP_USERNAME", e.target.value);
-                    }
-                  }}
+                  value={sapUsername}
+                  onChange={(e) => setSapUsername(e.target.value)}
                   placeholder="Chaiwat.N"
-                  className="h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary flex-1"
+                  className="w-full h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary"
                 />
               </div>
             </div>
@@ -406,26 +498,57 @@ export default function SettingsAdminPage() {
               <div className="md:w-1/4">
                 <label className="text-xs font-bold text-primary">Password</label>
                 <p className="text-[10px] text-outline font-semibold mt-0.5">
-                  อัปเดต: {formatDateTime(settings.SAP_PASSWORD?.updatedAt)}
+                  อัปเดต: {formatDateTime(dbSettings.SAP_PASSWORD?.updatedAt)}
                 </p>
               </div>
-              <div className="flex-1 flex gap-2">
+              <div className="flex-1 relative flex items-center">
                 <input
-                  type="password"
-                  defaultValue={settings.SAP_PASSWORD?.value || ""}
-                  onBlur={(e) => {
-                    if (e.target.value !== (settings.SAP_PASSWORD?.value || "")) {
-                      handleUpdateSetting("SAP_PASSWORD", e.target.value);
-                    }
-                  }}
+                  type={showPassword ? "text" : "password"}
+                  value={sapPassword}
+                  onChange={(e) => setSapPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary flex-1"
+                  className="w-full h-11 pl-4 pr-12 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 text-outline hover:text-primary transition-all flex items-center justify-center p-1.5 rounded-lg hover:bg-surface-variant cursor-pointer"
+                >
+                  <span className="material-symbols-outlined !text-[20px]">
+                    {showPassword ? "visibility_off" : "visibility"}
+                  </span>
+                </button>
+                {showPassword && (
+                  <span className="absolute right-12 text-[10px] font-bold text-secondary-container px-2 py-0.5 rounded bg-secondary-container/20 border border-secondary-container/10 mr-1 animate-pulse">
+                    {passwordTimer}s
+                  </span>
+                )}
               </div>
             </div>
           </div>
         </div>
 
+      </div>
+
+      {/* Footer Save Actions Button */}
+      <div className="flex justify-end gap-2 pt-4">
+        <button
+          onClick={handleSaveAllSettings}
+          disabled={isSaving}
+          className="h-12 px-8 bg-secondary text-white text-xs font-bold rounded-xl shadow-md hover:opacity-95 active:scale-[0.98] transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-60"
+        >
+          {isSaving ? (
+            <>
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              <span>กำลังบันทึกการตั้งค่าระบบ...</span>
+            </>
+          ) : (
+            <>
+              <span className="material-symbols-outlined !text-[18px]">save</span>
+              <span>บันทึกการตั้งค่าทั้งหมด</span>
+            </>
+          )}
+        </button>
       </div>
     </div>
   );
