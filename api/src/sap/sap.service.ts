@@ -1,5 +1,8 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { SystemSetting } from '../backoffice/system-setting.entity';
 
 export interface SapProductionOrderInfo {
   itemCode: string;
@@ -23,7 +26,12 @@ export class SapService implements OnModuleInit {
   private sessionCookie: string | null = null;
   private isMockMode = false;
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    @InjectRepository(SystemSetting)
+    private readonly systemSettingRepository: Repository<SystemSetting>,
+  ) {
+    // Initial sync from env configs
     this.apiUrl = this.configService.get<string>('SAP_SERVICE_LAYER_URL', '');
     this.companyDb = this.configService.get<string>('SAP_COMPANY_DB', '');
     this.username = this.configService.get<string>('SAP_USERNAME', '');
@@ -34,7 +42,30 @@ export class SapService implements OnModuleInit {
 
     if (!this.apiUrl || this.apiUrl.toLowerCase() === 'mock') {
       this.isMockMode = true;
-      this.logger.warn('[SAP SERVICE] SAP_SERVICE_LAYER_URL is not set or set to "mock". Running in MOCK MODE.');
+    }
+  }
+
+  private async initConfigs() {
+    try {
+      const urlSetting = await this.systemSettingRepository.findOne({ where: { key: 'SAP_SERVICE_LAYER_URL' } });
+      this.apiUrl = urlSetting ? urlSetting.value : this.configService.get<string>('SAP_SERVICE_LAYER_URL', '');
+
+      const dbSetting = await this.systemSettingRepository.findOne({ where: { key: 'SAP_COMPANY_DB' } });
+      this.companyDb = dbSetting ? dbSetting.value : this.configService.get<string>('SAP_COMPANY_DB', '');
+
+      const userSetting = await this.systemSettingRepository.findOne({ where: { key: 'SAP_USERNAME' } });
+      this.username = userSetting ? userSetting.value : this.configService.get<string>('SAP_USERNAME', '');
+
+      const passSetting = await this.systemSettingRepository.findOne({ where: { key: 'SAP_PASSWORD' } });
+      this.password = passSetting ? passSetting.value : this.configService.get<string>('SAP_PASSWORD', '');
+
+      if (!this.apiUrl || this.apiUrl.toLowerCase() === 'mock') {
+        this.isMockMode = true;
+      } else {
+        this.isMockMode = false;
+      }
+    } catch (e) {
+      this.logger.warn('[SAP SERVICE] Failed to load dynamic configs, using defaults', e.message);
     }
   }
 
@@ -49,6 +80,7 @@ export class SapService implements OnModuleInit {
    * Log into SAP Service Layer and save the Session ID/Cookies.
    */
   private async login(): Promise<string> {
+    await this.initConfigs();
     if (this.isMockMode) {
       return 'mock-session-cookie';
     }
@@ -97,6 +129,7 @@ export class SapService implements OnModuleInit {
    * Helper to perform HTTP GET request with automatic login session injection and retry logic.
    */
   private async getRequest(endpoint: string, attempt = 1): Promise<any> {
+    await this.initConfigs();
     if (this.isMockMode) {
       throw new Error('Mock mode enabled');
     }
@@ -140,6 +173,7 @@ export class SapService implements OnModuleInit {
    * Leverages mock fallback if SAP is unreachable.
    */
   async getProductionOrder(docNum: string): Promise<SapProductionOrderInfo | null> {
+    await this.initConfigs();
     if (this.isMockMode) {
       return this.getMockProductionOrder(docNum);
     }

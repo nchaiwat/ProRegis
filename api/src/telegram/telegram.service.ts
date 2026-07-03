@@ -1,5 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { SystemSetting } from '../backoffice/system-setting.entity';
 
 export function formatThaiDateTime(date: Date): string {
   const months = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
@@ -14,31 +17,43 @@ export function formatThaiDateTime(date: Date): string {
 @Injectable()
 export class TelegramService {
   private readonly logger = new Logger(TelegramService.name);
-  private readonly apiBaseUrl: string;
-  private readonly botToken: string;
-  private readonly groupId: string;
 
-  constructor(private readonly configService: ConfigService) {
-    this.apiBaseUrl = (this.configService.get<string>('TELEGRAM_API_BASE_URL', 'https://api.telegram.org') || '').replace(/['"]/g, '');
-    this.botToken = (this.configService.get<string>('TELEGRAM_BOT_TOKEN', '') || '').replace(/['"]/g, '');
-    this.groupId = (this.configService.get<string>('TELEGRAM_GROUP_ID', '-5394050672') || '').replace(/['"]/g, '');
+  constructor(
+    private readonly configService: ConfigService,
+    @InjectRepository(SystemSetting)
+    private readonly systemSettingRepository: Repository<SystemSetting>,
+  ) {}
+
+  private async getConfigs() {
+    const tokenSetting = await this.systemSettingRepository.findOne({ where: { key: 'TELEGRAM_BOT_TOKEN' } });
+    const botToken = (tokenSetting ? tokenSetting.value : this.configService.get<string>('TELEGRAM_BOT_TOKEN', '') || '').replace(/['"]/g, '');
+
+    const groupSetting = await this.systemSettingRepository.findOne({ where: { key: 'TELEGRAM_GROUP_ID' } });
+    const groupId = (groupSetting ? groupSetting.value : this.configService.get<string>('TELEGRAM_GROUP_ID', '-5394050672') || '').replace(/['"]/g, '');
+
+    const urlSetting = await this.systemSettingRepository.findOne({ where: { key: 'TELEGRAM_API_BASE_URL' } });
+    const apiBaseUrl = (urlSetting ? urlSetting.value : this.configService.get<string>('TELEGRAM_API_BASE_URL', 'https://api.telegram.org') || '').replace(/['"]/g, '');
+
+    return { botToken, groupId, apiBaseUrl };
   }
 
   async sendMessage(text: string): Promise<boolean> {
-    if (!this.botToken) {
+    const { botToken, groupId, apiBaseUrl } = await this.getConfigs();
+
+    if (!botToken) {
       this.logger.warn('[TelegramService] TELEGRAM_BOT_TOKEN is not configured. Message skipped.');
       return false;
     }
 
     try {
-      const url = `${this.apiBaseUrl.replace(/\/$/, '')}/bot${this.botToken}/sendMessage`;
+      const url = `${apiBaseUrl.replace(/\/$/, '')}/bot${botToken}/sendMessage`;
       const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          chat_id: this.groupId,
+          chat_id: groupId,
           text,
           parse_mode: 'HTML',
         }),
@@ -50,7 +65,7 @@ export class TelegramService {
         return false;
       }
 
-      this.logger.log(`[TelegramService] Message sent successfully to group ${this.groupId}`);
+      this.logger.log(`[TelegramService] Message sent successfully to group ${groupId}`);
       return true;
     } catch (error) {
       this.logger.error('[TelegramService] Error sending message to Telegram:', error);
@@ -59,7 +74,9 @@ export class TelegramService {
   }
 
   async sendDirectMessage(chatId: string, text: string): Promise<{ success: boolean; error?: string }> {
-    if (!this.botToken) {
+    const { botToken, apiBaseUrl } = await this.getConfigs();
+
+    if (!botToken) {
       this.logger.warn('[TelegramService] TELEGRAM_BOT_TOKEN is not configured. Direct message skipped.');
       return { success: false, error: 'TELEGRAM_BOT_TOKEN is not configured' };
     }
@@ -74,7 +91,7 @@ export class TelegramService {
     }
 
     try {
-      const url = `${this.apiBaseUrl.replace(/\/$/, '')}/bot${this.botToken}/sendMessage`;
+      const url = `${apiBaseUrl.replace(/\/$/, '')}/bot${botToken}/sendMessage`;
       const response = await fetch(url, {
         method: 'POST',
         headers: {

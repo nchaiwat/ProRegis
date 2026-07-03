@@ -60,6 +60,13 @@ export class BackofficeService implements OnModuleInit {
     const defaultSettings = [
       { key: 'QR_CODE_MODE', value: 'STATIC' },
       { key: 'VERIFICATION_MODE', value: 'OTP' },
+      { key: 'TELEGRAM_API_BASE_URL', value: 'https://api.telegram.org' },
+      { key: 'TELEGRAM_BOT_TOKEN', value: '8231754616:AAHcITgZR6_Gc8XJx-6Fxj-Cyy5bZZQG2hw' },
+      { key: 'TELEGRAM_GROUP_ID', value: '-5394050672' },
+      { key: 'SAP_SERVICE_LAYER_URL', value: 'http://wa-dbs2.wa.net:50002/b1s/v2' },
+      { key: 'SAP_COMPANY_DB', value: 'SBO_WA_Test_20260531' },
+      { key: 'SAP_USERNAME', value: 'Chaiwat.N' },
+      { key: 'SAP_PASSWORD', value: 'Ojmcpnna2!' },
     ];
     for (const setting of defaultSettings) {
       try {
@@ -77,15 +84,16 @@ export class BackofficeService implements OnModuleInit {
   // -------------------------------------------------------------------------
   // Settings Management
   // -------------------------------------------------------------------------
-  async getSystemSettings(): Promise<Record<string, string>> {
+  async getSystemSettings(): Promise<Record<string, { value: string; updatedAt: Date }>> {
     const list = await this.systemSettingRepository.find();
-    const result: Record<string, string> = {};
+    const result: Record<string, { value: string; updatedAt: Date }> = {};
     for (const item of list) {
-      result[item.key] = item.value;
+      result[item.key] = { value: item.value, updatedAt: item.updatedAt };
     }
     // Fallbacks
-    if (!result['QR_CODE_MODE']) result['QR_CODE_MODE'] = 'STATIC';
-    if (!result['VERIFICATION_MODE']) result['VERIFICATION_MODE'] = 'OTP';
+    const now = new Date();
+    if (!result['QR_CODE_MODE']) result['QR_CODE_MODE'] = { value: 'STATIC', updatedAt: now };
+    if (!result['VERIFICATION_MODE']) result['VERIFICATION_MODE'] = { value: 'OTP', updatedAt: now };
     return result;
   }
 

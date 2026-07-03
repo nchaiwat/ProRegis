@@ -1,4 +1,4 @@
-import { Entity, Column, PrimaryColumn } from 'typeorm';
+import { Entity, Column, PrimaryColumn, UpdateDateColumn } from 'typeorm';
 
 @Entity('system_settings')
 export class SystemSetting {
@@ -7,4 +7,7 @@ export class SystemSetting {
 
   @Column({ type: 'varchar' })
   value: string;
+
+  @UpdateDateColumn()
+  updatedAt: Date;
 }

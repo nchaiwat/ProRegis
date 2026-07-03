@@ -4,6 +4,11 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getApiBaseUrl } from "@/lib/api";
 
+interface SettingInfo {
+  value: string;
+  updatedAt: string;
+}
+
 export default function SettingsAdminPage() {
   const router = useRouter();
   const [isAdmin, setIsAdmin] = useState(false);
@@ -12,9 +17,8 @@ export default function SettingsAdminPage() {
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
 
-  // Settings states
-  const [qrMode, setQrMode] = useState<"STATIC" | "DYNAMIC">("STATIC");
-  const [verificationMode, setVerificationMode] = useState<"OTP" | "LINE">("OTP");
+  // Configuration States
+  const [settings, setSettings] = useState<Record<string, SettingInfo>>({});
 
   useEffect(() => {
     const stored = sessionStorage.getItem("bo_session");
@@ -51,12 +55,7 @@ export default function SettingsAdminPage() {
 
       if (res.ok) {
         const data = await res.json();
-        if (data.QR_CODE_MODE) {
-          setQrMode(data.QR_CODE_MODE as "STATIC" | "DYNAMIC");
-        }
-        if (data.VERIFICATION_MODE) {
-          setVerificationMode(data.VERIFICATION_MODE as "OTP" | "LINE");
-        }
+        setSettings(data);
       } else {
         const errData = await res.json().catch(() => ({}));
         setError(errData.message || "ไม่สามารถดึงข้อมูลการตั้งค่าได้");
@@ -68,7 +67,7 @@ export default function SettingsAdminPage() {
     }
   };
 
-  const handleToggleQrMode = async (mode: "STATIC" | "DYNAMIC") => {
+  const handleUpdateSetting = async (key: string, newValue: string) => {
     setIsSaving(true);
     setSuccessMsg("");
     setError("");
@@ -81,13 +80,14 @@ export default function SettingsAdminPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ key: "QR_CODE_MODE", value: mode }),
+        body: JSON.stringify({ key, value: newValue }),
       });
 
       if (res.ok) {
-        setQrMode(mode);
-        setSuccessMsg("อัปเดตโหมด QR Code สำเร็จ");
+        setSuccessMsg(`อัปเดต ${key} สำเร็จแล้ว!`);
         setTimeout(() => setSuccessMsg(""), 3000);
+        // Refresh settings from database to get fresh updatedAt timestamps
+        await fetchSettings();
       } else {
         const errData = await res.json().catch(() => ({}));
         setError(errData.message || "ไม่สามารถบันทึกข้อมูลการตั้งค่าได้");
@@ -99,35 +99,18 @@ export default function SettingsAdminPage() {
     }
   };
 
-  const handleToggleVerificationMode = async (mode: "OTP" | "LINE") => {
-    setIsSaving(true);
-    setSuccessMsg("");
-    setError("");
-    const token = sessionStorage.getItem("bo_token");
-
-    try {
-      const res = await fetch(`${getApiBaseUrl()}/backoffice/settings`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ key: "VERIFICATION_MODE", value: mode }),
-      });
-
-      if (res.ok) {
-        setVerificationMode(mode);
-        setSuccessMsg("อัปเดตระบบยืนยันตัวตนสำเร็จ");
-        setTimeout(() => setSuccessMsg(""), 3000);
-      } else {
-        const errData = await res.json().catch(() => ({}));
-        setError(errData.message || "ไม่สามารถบันทึกข้อมูลการตั้งค่าได้");
-      }
-    } catch {
-      setError("เกิดข้อผิดพลาดในการบันทึกการตั้งค่า");
-    } finally {
-      setIsSaving(false);
-    }
+  const formatDateTime = (dateStr?: string) => {
+    if (!dateStr) return "-";
+    const date = new Date(dateStr);
+    return (
+      date.toLocaleDateString("th-TH", {
+        year: "numeric",
+        month: "short",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+      }) + " น."
+    );
   };
 
   if (isLoading) {
@@ -148,14 +131,17 @@ export default function SettingsAdminPage() {
     );
   }
 
+  const qrMode = settings.QR_CODE_MODE?.value || "STATIC";
+  const verificationMode = settings.VERIFICATION_MODE?.value || "OTP";
+
   return (
-    <div className="space-y-6 max-w-4xl animate-fade-in">
-      {/* Header Title */}
+    <div className="space-y-6 max-w-5xl animate-fade-in pb-12">
+      {/* Header Panel */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-black text-primary tracking-tight">ตั้งค่าระบบ (System Settings)</h1>
           <p className="text-xs text-on-surface-variant font-medium mt-1">
-            ปรับเปลี่ยนโหมดการสแกนและระบบยืนยันตัวตนของแอปพลิเคชัน ProRegis ในแบบเรียลไทม์
+            ปรับเปลี่ยนโหมดสแกน, สิทธิ์ความปลอดภัย และรหัสการเชื่อมโยงระบบปลายทาง (SAP & Telegram) โดยไม่ต้องแก้ไขไฟล์ .env
           </p>
         </div>
         <button
@@ -182,164 +168,264 @@ export default function SettingsAdminPage() {
         </div>
       )}
 
-      {/* Settings Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* QR CODE MODE SETTING */}
+      {/* Grouping Cards */}
+      <div className="space-y-6">
+        
+        {/* SECTION 1: CORE FUNCTION SYSTEM */}
         <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm p-6 space-y-6">
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center text-primary flex-shrink-0">
-              <span className="material-symbols-outlined text-[24px]">qr_code_2</span>
-            </div>
-            <div>
-              <h3 className="font-bold text-base text-primary">โหมดรูปแบบ QR Code</h3>
-              <p className="text-xs text-on-surface-variant/80 mt-1 leading-relaxed">
-                สวิตช์รูปแบบการพิมพ์สติกเกอร์บาร์โค้ดสแกนรับประกัน
-              </p>
-            </div>
-          </div>
+          <h2 className="font-bold text-base text-primary border-b border-outline-variant/40 pb-3 flex items-center gap-2">
+            <span className="material-symbols-outlined text-secondary">tune</span>
+            โหมดการทำงานและฟังก์ชันหลัก
+          </h2>
 
-          <div className="grid grid-cols-2 gap-3">
-            {/* STATIC MODE CARD */}
-            <button
-              onClick={() => handleToggleQrMode("STATIC")}
-              disabled={isSaving}
-              className={`p-4 rounded-xl border text-left flex flex-col justify-between h-36 transition-all active:scale-98 cursor-pointer ${
-                qrMode === "STATIC"
-                  ? "border-secondary bg-secondary/5 ring-1 ring-secondary"
-                  : "border-outline-variant/60 hover:bg-surface-container-lowest"
-              }`}
-            >
-              <div className="flex items-center justify-between w-full">
-                <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full ${
-                  qrMode === "STATIC" ? "bg-secondary text-white" : "bg-surface-variant text-outline"
-                }`}>
-                  Static
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* QR CODE MODE */}
+            <div className="space-y-3">
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-bold text-primary">รูปแบบสแกน QR Code</span>
+                <span className="text-[10px] text-outline font-semibold">
+                  อัปเดต: {formatDateTime(settings.QR_CODE_MODE?.updatedAt)}
                 </span>
-                {qrMode === "STATIC" && (
-                  <span className="material-symbols-outlined text-secondary text-[18px]">check_circle</span>
-                )}
               </div>
-              <div>
-                <h4 className="font-bold text-xs text-primary">Static QR (9 หลัก)</h4>
-                <p className="text-[10px] text-on-surface-variant/65 mt-1 leading-normal">
-                  พิมพ์รหัสใบสั่งผลิต 9 หลักอันเดียวกันทั้งล็อต ง่ายต่อการผลิตในโรงงาน
-                </p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => handleUpdateSetting("QR_CODE_MODE", "STATIC")}
+                  className={`py-3 px-4 rounded-xl border text-center font-bold text-xs transition-all cursor-pointer ${
+                    qrMode === "STATIC"
+                      ? "border-secondary bg-secondary/5 text-secondary ring-1 ring-secondary"
+                      : "border-outline-variant/60 text-outline hover:bg-surface-container-lowest"
+                  }`}
+                >
+                  Static QR (9 หลัก)
+                </button>
+                <button
+                  onClick={() => handleUpdateSetting("QR_CODE_MODE", "DYNAMIC")}
+                  className={`py-3 px-4 rounded-xl border text-center font-bold text-xs transition-all cursor-pointer ${
+                    qrMode === "DYNAMIC"
+                      ? "border-secondary bg-secondary/5 text-secondary ring-1 ring-secondary"
+                      : "border-outline-variant/60 text-outline hover:bg-surface-container-lowest"
+                  }`}
+                >
+                  Dynamic QR (AES)
+                </button>
               </div>
-            </button>
+            </div>
 
-            {/* DYNAMIC MODE CARD */}
-            <button
-              onClick={() => handleToggleQrMode("DYNAMIC")}
-              disabled={isSaving}
-              className={`p-4 rounded-xl border text-left flex flex-col justify-between h-36 transition-all active:scale-98 cursor-pointer ${
-                qrMode === "DYNAMIC"
-                  ? "border-secondary bg-secondary/5 ring-1 ring-secondary"
-                  : "border-outline-variant/60 hover:bg-surface-container-lowest"
-              }`}
-            >
-              <div className="flex items-center justify-between w-full">
-                <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full ${
-                  qrMode === "DYNAMIC" ? "bg-secondary text-white" : "bg-surface-variant text-outline"
-                }`}>
-                  Dynamic
+            {/* VERIFICATION MODE */}
+            <div className="space-y-3">
+              <div className="flex justify-between items-center">
+                <span className="text-xs font-bold text-primary">ระบบยืนยันตัวตน</span>
+                <span className="text-[10px] text-outline font-semibold">
+                  อัปเดต: {formatDateTime(settings.VERIFICATION_MODE?.updatedAt)}
                 </span>
-                {qrMode === "DYNAMIC" && (
-                  <span className="material-symbols-outlined text-secondary text-[18px]">check_circle</span>
-                )}
               </div>
-              <div>
-                <h4 className="font-bold text-xs text-primary">Dynamic QR (AES)</h4>
-                <p className="text-[10px] text-on-surface-variant/65 mt-1 leading-normal">
-                  เข้ารหัสลับไม่ซ้ำชิ้น ยับยั้งการลงทะเบียนซ้ำสวมสิทธิ์ได้สมบูรณ์แบบ
-                </p>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => handleUpdateSetting("VERIFICATION_MODE", "OTP")}
+                  className={`py-3 px-4 rounded-xl border text-center font-bold text-xs transition-all cursor-pointer ${
+                    verificationMode === "OTP"
+                      ? "border-secondary bg-secondary/5 text-secondary ring-1 ring-secondary"
+                      : "border-outline-variant/60 text-outline hover:bg-surface-container-lowest"
+                  }`}
+                >
+                  SMS OTP Verification
+                </button>
+                <button
+                  onClick={() => handleUpdateSetting("VERIFICATION_MODE", "LINE")}
+                  className={`py-3 px-4 rounded-xl border text-center font-bold text-xs transition-all cursor-pointer ${
+                    verificationMode === "LINE"
+                      ? "border-secondary bg-secondary/5 text-secondary ring-1 ring-secondary"
+                      : "border-outline-variant/60 text-outline hover:bg-surface-container-lowest"
+                  }`}
+                >
+                  LINE Login (LIFF)
+                </button>
               </div>
-            </button>
+            </div>
           </div>
         </div>
 
-        {/* VERIFICATION MODE SETTING */}
+        {/* SECTION 2: TELEGRAM CONFIGURATIONS */}
         <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm p-6 space-y-6">
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center text-primary flex-shrink-0">
-              <span className="material-symbols-outlined text-[24px]">verified_user</span>
-            </div>
-            <div>
-              <h3 className="font-bold text-base text-primary">ระบบยืนยันตัวตนลูกค้า</h3>
-              <p className="text-xs text-on-surface-variant/80 mt-1 leading-relaxed">
-                สวิตช์ช่องทางการตรวจสอบสิทธิ์ลูกค้าในขั้นตอนที่ 4
-              </p>
-            </div>
-          </div>
+          <h2 className="font-bold text-base text-primary border-b border-outline-variant/40 pb-3 flex items-center gap-2">
+            <span className="material-symbols-outlined text-secondary">send</span>
+            ระบบแจ้งเตือนผ่าน Telegram (Notifications)
+          </h2>
 
-          <div className="grid grid-cols-2 gap-3">
-            {/* SMS OTP CARD */}
-            <button
-              onClick={() => handleToggleVerificationMode("OTP")}
-              disabled={isSaving}
-              className={`p-4 rounded-xl border text-left flex flex-col justify-between h-36 transition-all active:scale-98 cursor-pointer ${
-                verificationMode === "OTP"
-                  ? "border-secondary bg-secondary/5 ring-1 ring-secondary"
-                  : "border-outline-variant/60 hover:bg-surface-container-lowest"
-              }`}
-            >
-              <div className="flex items-center justify-between w-full">
-                <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full ${
-                  verificationMode === "OTP" ? "bg-secondary text-white" : "bg-surface-variant text-outline"
-                }`}>
-                  SMS OTP
-                </span>
-                {verificationMode === "OTP" && (
-                  <span className="material-symbols-outlined text-secondary text-[18px]">check_circle</span>
-                )}
-              </div>
-              <div>
-                <h4 className="font-bold text-xs text-primary">ยืนยันทางเบอร์โทร SMS</h4>
-                <p className="text-[10px] text-on-surface-variant/65 mt-1 leading-normal">
-                  ป้อนหมายเลขโทรศัพท์และรับรหัส OTP 6 หลักเพื่อกดยืนยันใบลงทะเบียน
+          <div className="space-y-4">
+            {/* Telegram API Base URL */}
+            <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6">
+              <div className="md:w-1/4">
+                <label className="text-xs font-bold text-primary">API Base URL</label>
+                <p className="text-[10px] text-outline font-semibold mt-0.5">
+                  อัปเดต: {formatDateTime(settings.TELEGRAM_API_BASE_URL?.updatedAt)}
                 </p>
               </div>
-            </button>
-
-            {/* LINE LIFF CARD */}
-            <button
-              onClick={() => handleToggleVerificationMode("LINE")}
-              disabled={isSaving}
-              className={`p-4 rounded-xl border text-left flex flex-col justify-between h-36 transition-all active:scale-98 cursor-pointer ${
-                verificationMode === "LINE"
-                  ? "border-secondary bg-secondary/5 ring-1 ring-secondary"
-                  : "border-outline-variant/60 hover:bg-surface-container-lowest"
-              }`}
-            >
-              <div className="flex items-center justify-between w-full">
-                <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full ${
-                  verificationMode === "LINE" ? "bg-secondary text-white" : "bg-surface-variant text-outline"
-                }`}>
-                  LINE Login
-                </span>
-                {verificationMode === "LINE" && (
-                  <span className="material-symbols-outlined text-secondary text-[18px]">check_circle</span>
-                )}
+              <div className="flex-1 flex gap-2">
+                <input
+                  type="text"
+                  defaultValue={settings.TELEGRAM_API_BASE_URL?.value || ""}
+                  onBlur={(e) => {
+                    if (e.target.value !== (settings.TELEGRAM_API_BASE_URL?.value || "")) {
+                      handleUpdateSetting("TELEGRAM_API_BASE_URL", e.target.value);
+                    }
+                  }}
+                  placeholder="https://api.telegram.org"
+                  className="h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary flex-1"
+                />
               </div>
-              <div>
-                <h4 className="font-bold text-xs text-primary">ข้ามทาง LINE User ID</h4>
-                <p className="text-[10px] text-on-surface-variant/65 mt-1 leading-normal">
-                  ดึงประวัติตัวตนลูกค้าผ่าน LINE LIFF อัตโนมัติ ปลอดภัย และสะดวกสูงสุด
+            </div>
+
+            {/* Telegram Bot Token */}
+            <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6">
+              <div className="md:w-1/4">
+                <label className="text-xs font-bold text-primary">Bot Token ID</label>
+                <p className="text-[10px] text-outline font-semibold mt-0.5">
+                  อัปเดต: {formatDateTime(settings.TELEGRAM_BOT_TOKEN?.updatedAt)}
                 </p>
               </div>
-            </button>
+              <div className="flex-1 flex gap-2">
+                <input
+                  type="text"
+                  defaultValue={settings.TELEGRAM_BOT_TOKEN?.value || ""}
+                  onBlur={(e) => {
+                    if (e.target.value !== (settings.TELEGRAM_BOT_TOKEN?.value || "")) {
+                      handleUpdateSetting("TELEGRAM_BOT_TOKEN", e.target.value);
+                    }
+                  }}
+                  placeholder="8231754616:AAHcITgZR6_..."
+                  className="h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary flex-1"
+                />
+              </div>
+            </div>
+
+            {/* Telegram Group ID */}
+            <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6">
+              <div className="md:w-1/4">
+                <label className="text-xs font-bold text-primary">Group ID</label>
+                <p className="text-[10px] text-outline font-semibold mt-0.5">
+                  อัปเดต: {formatDateTime(settings.TELEGRAM_GROUP_ID?.updatedAt)}
+                </p>
+              </div>
+              <div className="flex-1 flex gap-2">
+                <input
+                  type="text"
+                  defaultValue={settings.TELEGRAM_GROUP_ID?.value || ""}
+                  onBlur={(e) => {
+                    if (e.target.value !== (settings.TELEGRAM_GROUP_ID?.value || "")) {
+                      handleUpdateSetting("TELEGRAM_GROUP_ID", e.target.value);
+                    }
+                  }}
+                  placeholder="-5394050672"
+                  className="h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary flex-1"
+                />
+              </div>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Admin Actions Panel */}
-      <div className="p-5 bg-surface-container-low border border-outline-variant/20 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <span className="material-symbols-outlined text-outline">info</span>
-          <p className="text-[11px] text-on-surface-variant font-medium max-w-lg leading-relaxed">
-            ระบบจัดเก็บประวัติการปรับการตั้งค่าไว้ที่ **Audit Log** เสมอเพื่อตรวจสอบย้อนหลัง 
-            การสลับโหมดจะมีผลต่อหน้าสแกนลงทะเบียนของลูกค้าในทันทีโดยไม่ต้องรีสตาร์ทบริการ
-          </p>
+        {/* SECTION 3: SAP BUSINESS ONE SERVICE LAYER */}
+        <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm p-6 space-y-6">
+          <h2 className="font-bold text-base text-primary border-b border-outline-variant/40 pb-3 flex items-center gap-2">
+            <span className="material-symbols-outlined text-secondary">database</span>
+            การเชื่อมต่อ SAP Business One Service Layer
+          </h2>
+
+          <div className="space-y-4">
+            {/* SAP URL */}
+            <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6">
+              <div className="md:w-1/4">
+                <label className="text-xs font-bold text-primary">Service Layer URL</label>
+                <p className="text-[10px] text-outline font-semibold mt-0.5">
+                  อัปเดต: {formatDateTime(settings.SAP_SERVICE_LAYER_URL?.updatedAt)}
+                </p>
+              </div>
+              <div className="flex-1 flex gap-2">
+                <input
+                  type="text"
+                  defaultValue={settings.SAP_SERVICE_LAYER_URL?.value || ""}
+                  onBlur={(e) => {
+                    if (e.target.value !== (settings.SAP_SERVICE_LAYER_URL?.value || "")) {
+                      handleUpdateSetting("SAP_SERVICE_LAYER_URL", e.target.value);
+                    }
+                  }}
+                  placeholder="http://192.168.1.100:50002/b1s/v2 หรือ mock"
+                  className="h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary flex-1"
+                />
+              </div>
+            </div>
+
+            {/* SAP Company DB */}
+            <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6">
+              <div className="md:w-1/4">
+                <label className="text-xs font-bold text-primary">Company Database DB</label>
+                <p className="text-[10px] text-outline font-semibold mt-0.5">
+                  อัปเดต: {formatDateTime(settings.SAP_COMPANY_DB?.updatedAt)}
+                </p>
+              </div>
+              <div className="flex-1 flex gap-2">
+                <input
+                  type="text"
+                  defaultValue={settings.SAP_COMPANY_DB?.value || ""}
+                  onBlur={(e) => {
+                    if (e.target.value !== (settings.SAP_COMPANY_DB?.value || "")) {
+                      handleUpdateSetting("SAP_COMPANY_DB", e.target.value);
+                    }
+                  }}
+                  placeholder="SBO_WA_Test_20260531"
+                  className="h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary flex-1"
+                />
+              </div>
+            </div>
+
+            {/* SAP Username */}
+            <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6">
+              <div className="md:w-1/4">
+                <label className="text-xs font-bold text-primary">UserName</label>
+                <p className="text-[10px] text-outline font-semibold mt-0.5">
+                  อัปเดต: {formatDateTime(settings.SAP_USERNAME?.updatedAt)}
+                </p>
+              </div>
+              <div className="flex-1 flex gap-2">
+                <input
+                  type="text"
+                  defaultValue={settings.SAP_USERNAME?.value || ""}
+                  onBlur={(e) => {
+                    if (e.target.value !== (settings.SAP_USERNAME?.value || "")) {
+                      handleUpdateSetting("SAP_USERNAME", e.target.value);
+                    }
+                  }}
+                  placeholder="Chaiwat.N"
+                  className="h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary flex-1"
+                />
+              </div>
+            </div>
+
+            {/* SAP Password */}
+            <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6">
+              <div className="md:w-1/4">
+                <label className="text-xs font-bold text-primary">Password</label>
+                <p className="text-[10px] text-outline font-semibold mt-0.5">
+                  อัปเดต: {formatDateTime(settings.SAP_PASSWORD?.updatedAt)}
+                </p>
+              </div>
+              <div className="flex-1 flex gap-2">
+                <input
+                  type="password"
+                  defaultValue={settings.SAP_PASSWORD?.value || ""}
+                  onBlur={(e) => {
+                    if (e.target.value !== (settings.SAP_PASSWORD?.value || "")) {
+                      handleUpdateSetting("SAP_PASSWORD", e.target.value);
+                    }
+                  }}
+                  placeholder="••••••••"
+                  className="h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary flex-1"
+                />
+              </div>
+            </div>
+          </div>
         </div>
+
       </div>
     </div>
   );
