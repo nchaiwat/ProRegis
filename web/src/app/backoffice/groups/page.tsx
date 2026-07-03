@@ -16,7 +16,7 @@ export default function GroupManagementPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
-  const [savingRole, setSavingRole] = useState<string | null>(null);
+  const [isSavingAll, setIsSavingAll] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
 
   const menuList = [
@@ -31,10 +31,24 @@ export default function GroupManagementPage() {
     { key: "settings", name: "ตั้งค่าระบบ (System Settings)", group: "admin" },
   ];
 
+  const menuIcons: Record<string, string> = {
+    dashboard: "dashboard",
+    checker: "verified_user",
+    generate: "qr_code",
+    "production-tracker": "factory",
+    crm: "groups",
+    users: "manage_accounts",
+    groups: "admin_panel_settings",
+    logs: "history_toggle_off",
+    settings: "settings",
+  };
+
+  const roles = ["CRM_MANAGER", "QR_GENERATOR", "SYSTEM_ADMIN"];
+
   const roleFriendlyNames: Record<string, string> = {
-    SYSTEM_ADMIN: "กลุ่มผู้ดูแลระบบสูงสุด (System Administrator)",
-    QR_GENERATOR: "กลุ่มเจ้าหน้าที่ฝ่ายผลิต (Factory & QR Builder)",
-    CRM_MANAGER: "กลุ่มผู้จัดการข้อมูลลูกค้า (CRM Manager)",
+    CRM_MANAGER: "CRM Manager",
+    QR_GENERATOR: "Factory & QR Builder",
+    SYSTEM_ADMIN: "System Admin",
   };
 
   useEffect(() => {
@@ -99,45 +113,50 @@ export default function GroupManagementPage() {
     );
   };
 
-  const handleSavePermissions = async (role: string, allowedMenus: string[]) => {
-    setSavingRole(role);
+  const handleSaveAllPermissions = async () => {
+    setIsSavingAll(true);
     setSuccessMsg("");
     setError("");
 
     try {
       const token = sessionStorage.getItem("bo_token") || "";
-      const res = await fetch(`${getApiBaseUrl()}/users/roles/${role}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ allowedMenus }),
-      });
+      const promises = rolePermissions.map(rp =>
+        fetch(`${getApiBaseUrl()}/users/roles/${rp.role}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ allowedMenus: rp.allowedMenus }),
+        })
+      );
 
-      const data = await res.json();
-      if (res.ok) {
-        setSuccessMsg(`บันทึกสิทธิ์สำหรับกลุ่ม ${role} สำเร็จแล้ว!`);
+      const results = await Promise.all(promises);
+      const allOk = results.every(res => res.ok);
+
+      if (allOk) {
+        setSuccessMsg("บันทึกสิทธิ์การใช้งานของทุกกลุ่มสำเร็จเรียบร้อยแล้ว!");
         setTimeout(() => setSuccessMsg(""), 3500);
 
         // Update local session storage if current user is admin and modified admin permissions
         const stored = sessionStorage.getItem("bo_session");
         if (stored) {
           const s = JSON.parse(stored);
-          if (s.role === role) {
-            s.allowedMenus = allowedMenus;
+          const currentRolePerm = rolePermissions.find(rp => rp.role === s.role);
+          if (currentRolePerm) {
+            s.allowedMenus = currentRolePerm.allowedMenus;
             sessionStorage.setItem("bo_session", JSON.stringify(s));
             // Trigger storage event so layout sidebar updates immediately
             window.dispatchEvent(new Event("storage"));
           }
         }
       } else {
-        setError(data?.message || "เกิดข้อผิดพลาดในการบันทึกสิทธิ์");
+        setError("มีบางบทบาทที่ไม่สามารถบันทึกสิทธิ์ได้ โปรดลองอีกครั้ง");
       }
     } catch {
       setError("เชื่อมต่อระบบล้มเหลว");
     } finally {
-      setSavingRole(null);
+      setIsSavingAll(false);
     }
   };
 
@@ -158,12 +177,32 @@ export default function GroupManagementPage() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6 animate-success">
-      <div>
-        <h2 className="font-bold text-2xl text-primary font-bold">จัดการกลุ่มผู้ใช้งาน (Group Management)</h2>
-        <p className="text-sm text-on-surface-variant">
-          กำหนดบทบาทกลุ่มใช้งานระบบหลังบ้าน และจัดการสิทธิ์เข้าถึงเมนูต่างๆ
-        </p>
+    <div className="max-w-6xl mx-auto space-y-6 animate-success">
+      {/* Header Panel */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="font-bold text-2xl text-primary font-bold">จัดการกลุ่มผู้ใช้งาน (Group Management)</h2>
+          <p className="text-sm text-on-surface-variant">
+            กำหนดบทบาทกลุ่มใช้งานระบบหลังบ้าน และจัดการสิทธิ์เข้าถึงเมนูต่างๆ
+          </p>
+        </div>
+        <button
+          onClick={handleSaveAllPermissions}
+          disabled={isSavingAll || isLoading}
+          className="h-12 px-6 bg-secondary text-white text-xs font-bold rounded-xl shadow hover:opacity-95 active:scale-[0.98] transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-60"
+        >
+          {isSavingAll ? (
+            <>
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              <span>กำลังบันทึกทั้งหมด...</span>
+            </>
+          ) : (
+            <>
+              <span className="material-symbols-outlined !text-[18px]">save</span>
+              <span>บันทึกสิทธิ์การใช้งานทั้งหมด</span>
+            </>
+          )}
+        </button>
       </div>
 
       {/* Notifications */}
@@ -181,118 +220,92 @@ export default function GroupManagementPage() {
         </div>
       )}
 
+      {/* Permissions Grid Table */}
       {isLoading ? (
         <div className="flex justify-center py-20">
           <div className="w-10 h-10 border-4 border-secondary border-t-transparent rounded-full animate-spin" />
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {rolePermissions.map((rp) => {
-            const friendlyName = roleFriendlyNames[rp.role] || rp.role;
-            const isSavingThis = savingRole === rp.role;
+        <div className="bg-white border border-outline-variant/40 rounded-2xl shadow-sm overflow-hidden">
+          <table className="table-auto w-full text-xs">
+            <thead>
+              <tr className="bg-surface-container-lowest border-b border-outline-variant/60">
+                <th className="px-6 py-4 text-left font-bold text-primary tracking-wide w-2/5">เมนู</th>
+                {roles.map(role => (
+                  <th key={role} className="px-6 py-4 text-center font-bold text-primary tracking-wide">
+                    {roleFriendlyNames[role]}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-outline-variant/30">
+              {/* General Menus Section */}
+              <tr className="bg-surface-container-low/40">
+                <td colSpan={1 + roles.length} className="px-6 py-2.5 font-extrabold text-[10px] text-outline uppercase tracking-wider">
+                  เมนูทั่วไป (General Menus)
+                </td>
+              </tr>
+              {menuList
+                .filter(m => m.group === "general")
+                .map(menu => (
+                  <tr key={menu.key} className="hover:bg-surface-container-lowest/50 transition-colors">
+                    <td className="px-6 py-4 font-semibold text-primary flex items-center gap-3">
+                      <span className="material-symbols-outlined text-outline text-[18px]">
+                        {menuIcons[menu.key] || "circle"}
+                      </span>
+                      <span>{menu.name}</span>
+                    </td>
+                    {roles.map(role => {
+                      const rp = rolePermissions.find(x => x.role === role);
+                      const isChecked = rp ? rp.allowedMenus.includes(menu.key) : false;
+                      return (
+                        <td key={role} className="px-6 py-4 text-center">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => handleCheckboxChange(role, menu.key, e.target.checked)}
+                            className="h-5 w-5 rounded border-outline-variant text-secondary focus:ring-secondary transition-all cursor-pointer inline-block"
+                          />
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
 
-            return (
-              <div
-                key={rp.id}
-                className="bg-white border border-outline-variant rounded-2xl shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between"
-              >
-                {/* Card Header */}
-                <div className="p-5 border-b border-outline-variant/60 bg-surface-container-lowest rounded-t-2xl">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="material-symbols-outlined text-secondary text-[20px]">group</span>
-                    <span className="text-[10px] font-extrabold uppercase bg-secondary-container/20 text-secondary-container px-2 py-0.5 rounded border border-secondary-container/10">
-                      {rp.role}
-                    </span>
-                  </div>
-                  <h3 className="font-bold text-sm text-primary leading-tight mt-1.5">{friendlyName}</h3>
-                </div>
-
-                {/* Card Body - Checkboxes */}
-                <div className="p-5 flex-1 space-y-4">
-                  {/* General Menu Items */}
-                  <div className="space-y-2.5">
-                    <span className="block text-[10px] font-bold text-outline uppercase tracking-wider">
-                      เมนูทั่วไป (General Menus)
-                    </span>
-                    <div className="space-y-2">
-                      {menuList
-                        .filter((m) => m.group === "general")
-                        .map((menu) => {
-                          const isChecked = rp.allowedMenus.includes(menu.key);
-                          return (
-                            <label
-                              key={menu.key}
-                              className="flex items-start gap-2.5 text-xs text-on-surface-variant hover:text-primary transition-colors cursor-pointer select-none"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={isChecked}
-                                onChange={(e) =>
-                                  handleCheckboxChange(rp.role, menu.key, e.target.checked)
-                                }
-                                className="mt-0.5 h-4 w-4 rounded border-outline-variant text-secondary focus:ring-secondary transition-all"
-                              />
-                              <span>{menu.name}</span>
-                            </label>
-                          );
-                        })}
-                    </div>
-                  </div>
-
-                  {/* Admin Menu Items */}
-                  <div className="space-y-2.5 pt-2 border-t border-outline-variant/40">
-                    <span className="block text-[10px] font-bold text-outline uppercase tracking-wider">
-                      เมนูแอดมิน (Admin Menus)
-                    </span>
-                    <div className="space-y-2">
-                      {menuList
-                        .filter((m) => m.group === "admin")
-                        .map((menu) => {
-                          const isChecked = rp.allowedMenus.includes(menu.key);
-                          return (
-                            <label
-                              key={menu.key}
-                              className="flex items-start gap-2.5 text-xs text-on-surface-variant hover:text-primary transition-colors cursor-pointer select-none"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={isChecked}
-                                onChange={(e) =>
-                                  handleCheckboxChange(rp.role, menu.key, e.target.checked)
-                                }
-                                className="mt-0.5 h-4 w-4 rounded border-outline-variant text-secondary focus:ring-secondary transition-all"
-                              />
-                              <span>{menu.name}</span>
-                            </label>
-                          );
-                        })}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Card Footer - Save Button */}
-                <div className="p-5 border-t border-outline-variant/60 bg-surface-container-low rounded-b-2xl">
-                  <button
-                    onClick={() => handleSavePermissions(rp.role, rp.allowedMenus)}
-                    disabled={isSavingThis}
-                    className="w-full h-11 bg-secondary text-white text-xs font-bold rounded-xl shadow hover:opacity-95 active:scale-[0.98] transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-60"
-                  >
-                    {isSavingThis ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        <span>กำลังบันทึก...</span>
-                      </>
-                    ) : (
-                      <>
-                        <span className="material-symbols-outlined !text-[18px]">save</span>
-                        <span>บันทึกสิทธิ์สแกน/ใช้งาน</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            );
-          })}
+              {/* Admin Menus Section */}
+              <tr className="bg-surface-container-low/40">
+                <td colSpan={1 + roles.length} className="px-6 py-2.5 font-extrabold text-[10px] text-outline uppercase tracking-wider">
+                  ผู้ดูแลระบบ (Admin Menus)
+                </td>
+              </tr>
+              {menuList
+                .filter(m => m.group === "admin")
+                .map(menu => (
+                  <tr key={menu.key} className="hover:bg-surface-container-lowest/50 transition-colors">
+                    <td className="px-6 py-4 font-semibold text-primary flex items-center gap-3">
+                      <span className="material-symbols-outlined text-outline text-[18px]">
+                        {menuIcons[menu.key] || "circle"}
+                      </span>
+                      <span>{menu.name}</span>
+                    </td>
+                    {roles.map(role => {
+                      const rp = rolePermissions.find(x => x.role === role);
+                      const isChecked = rp ? rp.allowedMenus.includes(menu.key) : false;
+                      return (
+                        <td key={role} className="px-6 py-4 text-center">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => handleCheckboxChange(role, menu.key, e.target.checked)}
+                            className="h-5 w-5 rounded border-outline-variant text-secondary focus:ring-secondary transition-all cursor-pointer inline-block"
+                          />
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>

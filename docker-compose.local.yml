@@ -30,9 +30,11 @@ services:
       - DB_USERNAME=postgres
       - DB_PASSWORD=postgrespassword
       - DB_DATABASE=proregis
+      # TELEGRAM CONFIGURATION - Updated on 2026-07-03T21:42:00
       - TELEGRAM_API_BASE_URL=https://api.telegram.org
       - TELEGRAM_BOT_TOKEN=8231754616:AAHcITgZR6_Gc8XJx-6Fxj-Cyy5bZZQG2hw
       - TELEGRAM_GROUP_ID=-5394050672
+      # SAP B1 CONFIGURATION - Updated on 2026-07-03T21:42:00
       - SAP_SERVICE_LAYER_URL=http://wa-dbs2.wa.net:50002/b1s/v2
       - SAP_COMPANY_DB=SBO_WA_Test_20260531
       - SAP_USERNAME=Chaiwat.N
