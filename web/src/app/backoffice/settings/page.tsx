@@ -21,6 +21,8 @@ export default function SettingsAdminPage() {
   const [dbSettings, setDbSettings] = useState<Record<string, SettingInfo>>({});
 
   // Local Form Input States
+  const [qrMode, setQrMode] = useState("STATIC");
+  const [verificationMode, setVerificationMode] = useState("OTP");
   const [telegramApiBaseUrl, setTelegramApiBaseUrl] = useState("");
   const [telegramBotToken, setTelegramBotToken] = useState("");
   const [telegramGroupId, setTelegramGroupId] = useState("");
@@ -101,6 +103,8 @@ export default function SettingsAdminPage() {
         setDbSettings(data);
         
         // Populate local states
+        setQrMode(data.QR_CODE_MODE?.value || "STATIC");
+        setVerificationMode(data.VERIFICATION_MODE?.value || "OTP");
         setTelegramApiBaseUrl(data.TELEGRAM_API_BASE_URL?.value || "https://api.telegram.org");
         setTelegramBotToken(data.TELEGRAM_BOT_TOKEN?.value || "");
         setTelegramGroupId(data.TELEGRAM_GROUP_ID?.value || "");
@@ -126,6 +130,8 @@ export default function SettingsAdminPage() {
     const token = sessionStorage.getItem("bo_token");
 
     const payload = [
+      { key: "QR_CODE_MODE", value: qrMode },
+      { key: "VERIFICATION_MODE", value: verificationMode },
       { key: "TELEGRAM_API_BASE_URL", value: telegramApiBaseUrl },
       { key: "TELEGRAM_BOT_TOKEN", value: telegramBotToken },
       { key: "TELEGRAM_GROUP_ID", value: telegramGroupId },
@@ -138,7 +144,6 @@ export default function SettingsAdminPage() {
     try {
       let allOk = true;
       for (const item of payload) {
-        // Only update if value changed from DB version to minimize DB writes and audit logs
         const currentDbVal = dbSettings[item.key]?.value || "";
         if (item.value !== currentDbVal) {
           const res = await fetch(`${getApiBaseUrl()}/backoffice/settings`, {
@@ -164,37 +169,6 @@ export default function SettingsAdminPage() {
       }
     } catch {
       setError("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์");
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleUpdateMode = async (key: string, modeValue: string) => {
-    setIsSaving(true);
-    setSuccessMsg("");
-    setError("");
-    const token = sessionStorage.getItem("bo_token");
-
-    try {
-      const res = await fetch(`${getApiBaseUrl()}/backoffice/settings`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ key, value: modeValue }),
-      });
-
-      if (res.ok) {
-        setSuccessMsg("อัปเดตโหมดการใช้งานสำเร็จ!");
-        setTimeout(() => setSuccessMsg(""), 3000);
-        await fetchSettings();
-      } else {
-        const errData = await res.json().catch(() => ({}));
-        setError(errData.message || "ไม่สามารถบันทึกข้อมูลโหมดการใช้งานได้");
-      }
-    } catch {
-      setError("เกิดข้อผิดพลาดขณะส่งข้อมูลตั้งค่า");
     } finally {
       setIsSaving(false);
     }
@@ -231,9 +205,6 @@ export default function SettingsAdminPage() {
       </div>
     );
   }
-
-  const qrMode = dbSettings.QR_CODE_MODE?.value || "STATIC";
-  const verificationMode = dbSettings.VERIFICATION_MODE?.value || "OTP";
 
   return (
     <div className="space-y-6 max-w-5xl animate-fade-in pb-12">
@@ -301,8 +272,8 @@ export default function SettingsAdminPage() {
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <button
-                  onClick={() => handleUpdateMode("QR_CODE_MODE", "STATIC")}
-                  disabled={isSaving}
+                  type="button"
+                  onClick={() => setQrMode("STATIC")}
                   className={`py-3 px-4 rounded-xl border text-center font-bold text-xs transition-all cursor-pointer ${
                     qrMode === "STATIC"
                       ? "border-secondary bg-secondary/5 text-secondary ring-1 ring-secondary"
@@ -312,8 +283,8 @@ export default function SettingsAdminPage() {
                   Static QR (9 หลัก)
                 </button>
                 <button
-                  onClick={() => handleUpdateMode("QR_CODE_MODE", "DYNAMIC")}
-                  disabled={isSaving}
+                  type="button"
+                  onClick={() => setQrMode("DYNAMIC")}
                   className={`py-3 px-4 rounded-xl border text-center font-bold text-xs transition-all cursor-pointer ${
                     qrMode === "DYNAMIC"
                       ? "border-secondary bg-secondary/5 text-secondary ring-1 ring-secondary"
@@ -335,8 +306,8 @@ export default function SettingsAdminPage() {
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <button
-                  onClick={() => handleUpdateMode("VERIFICATION_MODE", "OTP")}
-                  disabled={isSaving}
+                  type="button"
+                  onClick={() => setVerificationMode("OTP")}
                   className={`py-3 px-4 rounded-xl border text-center font-bold text-xs transition-all cursor-pointer ${
                     verificationMode === "OTP"
                       ? "border-secondary bg-secondary/5 text-secondary ring-1 ring-secondary"
@@ -346,8 +317,8 @@ export default function SettingsAdminPage() {
                   SMS OTP Verification
                 </button>
                 <button
-                  onClick={() => handleUpdateMode("VERIFICATION_MODE", "LINE")}
-                  disabled={isSaving}
+                  type="button"
+                  onClick={() => setVerificationMode("LINE")}
                   className={`py-3 px-4 rounded-xl border text-center font-bold text-xs transition-all cursor-pointer ${
                     verificationMode === "LINE"
                       ? "border-secondary bg-secondary/5 text-secondary ring-1 ring-secondary"
@@ -512,7 +483,7 @@ export default function SettingsAdminPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 text-outline hover:text-primary transition-all flex items-center justify-center p-1.5 rounded-lg hover:bg-surface-variant cursor-pointer"
+                  className="absolute right-3 text-outline hover:text-primary transition-all flex items-center justify-center p-1.5 rounded-lg hover:bg-surface-variant cursor-pointer animate-fade-in"
                 >
                   <span className="material-symbols-outlined !text-[20px]">
                     {showPassword ? "visibility_off" : "visibility"}
