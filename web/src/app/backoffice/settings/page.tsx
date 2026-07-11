@@ -31,6 +31,15 @@ export default function SettingsAdminPage() {
   const [sapUsername, setSapUsername] = useState("");
   const [sapPassword, setSapPassword] = useState("");
 
+  // SMS Gateway settings
+  const [smsProviderName, setSmsProviderName] = useState("SMSMKT");
+  const [smsApiKey, setSmsApiKey] = useState("");
+  const [smsApiSecret, setSmsApiSecret] = useState("");
+  const [smsSendUrl, setSmsSendUrl] = useState("");
+  const [smsValidateUrl, setSmsValidateUrl] = useState("");
+  const [smsProjectKey, setSmsProjectKey] = useState("");
+  const [smsOtpMode, setSmsOtpMode] = useState("TEST");
+
   // Password Visibility Toggle and Timer
   const [showPassword, setShowPassword] = useState(false);
   const [passwordTimer, setPasswordTimer] = useState(0);
@@ -112,6 +121,15 @@ export default function SettingsAdminPage() {
         setSapCompanyDb(data.SAP_COMPANY_DB?.value || "");
         setSapUsername(data.SAP_USERNAME?.value || "");
         setSapPassword(data.SAP_PASSWORD?.value || "");
+        
+        // Populate SMS Gateway settings
+        setSmsProviderName(data.SMS_PROVIDER_NAME?.value || "SMSMKT");
+        setSmsApiKey(data.SMS_API_KEY?.value || "");
+        setSmsApiSecret(data.SMS_API_SECRET?.value || "");
+        setSmsSendUrl(data.SMS_SEND_URL?.value || "https://portal-otp.smsmkt.com/api/otp-send");
+        setSmsValidateUrl(data.SMS_VALIDATE_URL?.value || "https://portal-otp.smsmkt.com/api/otp-validate");
+        setSmsProjectKey(data.SMS_PROJECT_KEY?.value || "");
+        setSmsOtpMode(data.SMS_OTP_MODE?.value || "TEST");
       } else {
         const errData = await res.json().catch(() => ({}));
         setError(errData.message || "ไม่สามารถดึงข้อมูลการตั้งค่าได้");
@@ -139,6 +157,13 @@ export default function SettingsAdminPage() {
       { key: "SAP_COMPANY_DB", value: sapCompanyDb },
       { key: "SAP_USERNAME", value: sapUsername },
       { key: "SAP_PASSWORD", value: sapPassword },
+      { key: "SMS_PROVIDER_NAME", value: smsProviderName },
+      { key: "SMS_API_KEY", value: smsApiKey },
+      { key: "SMS_API_SECRET", value: smsApiSecret },
+      { key: "SMS_SEND_URL", value: smsSendUrl },
+      { key: "SMS_VALIDATE_URL", value: smsValidateUrl },
+      { key: "SMS_PROJECT_KEY", value: smsProjectKey },
+      { key: "SMS_OTP_MODE", value: smsOtpMode },
     ];
 
     try {
@@ -164,6 +189,7 @@ export default function SettingsAdminPage() {
         setSuccessMsg("บันทึกการเปลี่ยนแปลงการตั้งค่าระบบเรียบร้อยแล้ว!");
         setTimeout(() => setSuccessMsg(""), 4000);
         await fetchSettings();
+        window.dispatchEvent(new Event("settings-updated"));
       } else {
         setError("ไม่สามารถบันทึกข้อมูลบางค่าได้ โปรดตรวจสอบระบบ");
       }
@@ -327,6 +353,173 @@ export default function SettingsAdminPage() {
                 >
                   LINE Login (LIFF)
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* SECTION: SMS OTP GATEWAY CONFIGURATIONS */}
+        <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm p-6 space-y-6">
+          <h2 className="font-bold text-base text-primary border-b border-outline-variant/40 pb-3 flex items-center gap-2">
+            <span className="material-symbols-outlined text-secondary">sms</span>
+            ระบบส่งและยืนยัน SMS OTP (SMS Gateway - SMSMKT)
+          </h2>
+
+          <div className="space-y-4">
+            {/* SMS OTP MODE (REAL / TEST) */}
+            <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6">
+              <div className="md:w-1/4">
+                <label className="text-xs font-bold text-primary">การทำงานของ OTP (OTP Mode)</label>
+                <p className="text-[10px] text-outline font-semibold mt-0.5">
+                  อัปเดต: {formatDateTime(dbSettings.SMS_OTP_MODE?.updatedAt)}
+                </p>
+              </div>
+              <div className="flex-1">
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSmsOtpMode("REAL")}
+                    className={`py-3 px-4 rounded-xl border text-center font-bold text-xs transition-all cursor-pointer ${
+                      smsOtpMode === "REAL"
+                        ? "border-secondary bg-secondary/5 text-secondary ring-1 ring-secondary"
+                        : "border-outline-variant/60 text-outline hover:bg-surface-container-lowest"
+                    }`}
+                  >
+                    เปิดใช้งาน (ส่ง SMS OTP จริง)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSmsOtpMode("TEST")}
+                    className={`py-3 px-4 rounded-xl border text-center font-bold text-xs transition-all cursor-pointer ${
+                      smsOtpMode === "TEST"
+                        ? "border-secondary bg-secondary/5 text-secondary ring-1 ring-secondary"
+                        : "border-outline-variant/60 text-outline hover:bg-surface-container-lowest"
+                    }`}
+                  >
+                    ปิดใช้งาน (ทดสอบ / บังคับใช้รหัส 123456)
+                  </button>
+                </div>
+              </div>
+            </div>
+            {/* SMS Provider Name */}
+            <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6">
+              <div className="md:w-1/4">
+                <label className="text-xs font-bold text-primary">ผู้ให้บริการ SMS (Provider)</label>
+                <p className="text-[10px] text-outline font-semibold mt-0.5">
+                  อัปเดต: {formatDateTime(dbSettings.SMS_PROVIDER_NAME?.updatedAt)}
+                </p>
+              </div>
+              <div className="flex-1">
+                <select
+                  value={smsProviderName}
+                  onChange={(e) => setSmsProviderName(e.target.value)}
+                  className="w-full h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-semibold bg-surface-container-low focus:border-secondary"
+                >
+                  <option value="SMSMKT">SMSMKT (Real Gateway)</option>
+                  <option value="MOCK">MOCK System (สำหรับทดสอบ / รหัสคงที่ 123456)</option>
+                </select>
+              </div>
+            </div>
+
+            {/* SMS API Key */}
+            <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6">
+              <div className="md:w-1/4">
+                <label className="text-xs font-bold text-primary">API Key</label>
+                <p className="text-[10px] text-outline font-semibold mt-0.5">
+                  อัปเดต: {formatDateTime(dbSettings.SMS_API_KEY?.updatedAt)}
+                </p>
+              </div>
+              <div className="flex-1">
+                <input
+                  type="text"
+                  value={smsApiKey}
+                  onChange={(e) => setSmsApiKey(e.target.value)}
+                  placeholder="เช่น a7aa2b729a72af46265ea2a15b15e708"
+                  className="w-full h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary"
+                />
+              </div>
+            </div>
+
+            {/* SMS API Secret */}
+            <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6">
+              <div className="md:w-1/4">
+                <label className="text-xs font-bold text-primary">API Secret (Secret Key)</label>
+                <p className="text-[10px] text-outline font-semibold mt-0.5">
+                  อัปเดต: {formatDateTime(dbSettings.SMS_API_SECRET?.updatedAt)}
+                </p>
+              </div>
+              <div className="flex-1 relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  value={smsApiSecret}
+                  onChange={(e) => setSmsApiSecret(e.target.value)}
+                  placeholder="เช่น 4bu6uRdNlUKq10ZI"
+                  className="w-full h-11 pl-4 pr-12 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-outline hover:text-primary material-symbols-outlined !text-[18px] cursor-pointer"
+                >
+                  {showPassword ? "visibility_off" : "visibility"}
+                </button>
+              </div>
+            </div>
+
+            {/* SMS Project Key */}
+            <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6">
+              <div className="md:w-1/4">
+                <label className="text-xs font-bold text-primary">Project Key</label>
+                <p className="text-[10px] text-outline font-semibold mt-0.5">
+                  อัปเดต: {formatDateTime(dbSettings.SMS_PROJECT_KEY?.updatedAt)}
+                </p>
+              </div>
+              <div className="flex-1">
+                <input
+                  type="text"
+                  value={smsProjectKey}
+                  onChange={(e) => setSmsProjectKey(e.target.value)}
+                  placeholder="เช่น mZP-------"
+                  className="w-full h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary"
+                />
+              </div>
+            </div>
+
+            {/* SMS API Send URL */}
+            <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6">
+              <div className="md:w-1/4">
+                <label className="text-xs font-bold text-primary">API Send URL (ขอ OTP)</label>
+                <p className="text-[10px] text-outline font-semibold mt-0.5">
+                  อัปเดต: {formatDateTime(dbSettings.SMS_SEND_URL?.updatedAt)}
+                </p>
+              </div>
+              <div className="flex-1">
+                <input
+                  type="text"
+                  value={smsSendUrl}
+                  onChange={(e) => setSmsSendUrl(e.target.value)}
+                  placeholder="https://portal-otp.smsmkt.com/api/otp-send"
+                  className="w-full h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary"
+                />
+              </div>
+            </div>
+
+            {/* SMS API Validate URL */}
+            <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6">
+              <div className="md:w-1/4">
+                <label className="text-xs font-bold text-primary">API Validate URL (ยืนยัน OTP)</label>
+                <p className="text-[10px] text-outline font-semibold mt-0.5">
+                  อัปเดต: {formatDateTime(dbSettings.SMS_VALIDATE_URL?.updatedAt)}
+                </p>
+              </div>
+              <div className="flex-1">
+                <input
+                  type="text"
+                  value={smsValidateUrl}
+                  onChange={(e) => setSmsValidateUrl(e.target.value)}
+                  placeholder="https://portal-otp.smsmkt.com/api/otp-validate"
+                  className="w-full h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary"
+                />
               </div>
             </div>
           </div>

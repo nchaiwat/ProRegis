@@ -275,14 +275,14 @@ export class UsersService implements OnApplicationBootstrap {
     const timeStr = formatThaiDateTime(new Date());
 
     const message = [
-      `📱 <b>ProRegis</b> · ${timeStr}`,
+      `🪟 <b>ProRegis</b> · ${timeStr}`,
       `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
       `📝 <b>ข้อความทดสอบการเชื่อมต่อ (Test Connection)</b>\n`,
-      `• 👤 <b>ผู้รับทดสอบ:</b> ${user.firstName} ${user.lastName} (${user.username})`,
-      `• 🔑 <b>User ID:</b> ${user.username}`,
-      `• 🏢 <b>แผนก:</b> ${user.department || '-'}`,
-      `• 📧 <b>อีเมล:</b> ${user.email || '-'}`,
-      `• 📞 <b>เบอร์โทร:</b> ${user.mobile || '-'}`,
+      `👤 <b>ผู้รับทดสอบ:</b> ${user.firstName} ${user.lastName} (${user.username})`,
+      `🔑 <b>User ID:</b> ${user.username}`,
+      `🏢 <b>แผนก:</b> ${user.department || '-'}`,
+      `📧 <b>อีเมล:</b> ${user.email || '-'}`,
+      `📞 <b>เบอร์โทร:</b> ${user.mobile || '-'}`,
       `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
       `🔍 <i>นี่คือการทดสอบการเชื่อมต่อระบบ หากได้รับข้อความนี้แสดงว่าบอทพร้อมทำงานแล้ว</i>`
     ].join('\n');

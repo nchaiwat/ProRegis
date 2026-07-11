@@ -55,5 +55,8 @@ export class Registration {
 
   @Column({ type: 'varchar', name: 'line_user_id', nullable: true })
   lineUserId: string | null; // LINE User ID (รองรับ LIFF ในอนาคต)
+
+  @Column({ type: 'varchar', name: 'installation_position', nullable: true })
+  installationPosition: string | null; // ตำแหน่งการติดตั้งตัวสินค้า เช่น ห้องนอนใหญ่
 }
 

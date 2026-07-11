@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
+import { getApiBaseUrl } from "@/lib/api";
 
 interface SessionInfo {
   username: string;
@@ -16,11 +17,14 @@ export default function BackofficeLayout({ children }: { children: React.ReactNo
   const [session, setSession] = useState<SessionInfo | null>(null);
   const [mounted, setMounted] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [qrMode, setQrMode] = useState<string>("STATIC");
   
   // Mobile sidebar state
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   // Accordion for Administrator group
   const [isAdminExpanded, setIsAdminExpanded] = useState(true);
+  // Accordion for Production Tracker
+  const [isTrackerExpanded, setIsTrackerExpanded] = useState(true);
 
   const isLoginPage = pathname === "/backoffice" || pathname === "/backoffice/";
 
@@ -86,6 +90,45 @@ export default function BackofficeLayout({ children }: { children: React.ReactNo
     setIsMobileOpen(false);
   }, [pathname]);
 
+  const fetchSettings = async () => {
+    try {
+      const token = sessionStorage.getItem("bo_token");
+      if (!token) return;
+      
+      const res = await fetch(`${getApiBaseUrl()}/backoffice/settings`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const mode = data.QR_CODE_MODE?.value || "STATIC";
+        setQrMode(mode);
+        
+        // Guard redirection
+        if (pathname === "/backoffice/generate" && mode === "STATIC") {
+          router.replace("/backoffice/dashboard");
+        }
+      }
+    } catch (err) {
+      console.warn("Failed to fetch settings for layout:", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchSettings();
+  }, [pathname]);
+
+  useEffect(() => {
+    const handleSettingsUpdated = () => {
+      fetchSettings();
+    };
+    window.addEventListener("settings-updated", handleSettingsUpdated);
+    return () => {
+      window.removeEventListener("settings-updated", handleSettingsUpdated);
+    };
+  }, [pathname]);
+
   const handleLogout = () => {
     sessionStorage.clear();
     router.replace("/backoffice");
@@ -133,12 +176,6 @@ export default function BackofficeLayout({ children }: { children: React.ReactNo
       icon: "qr_code",
     },
     {
-      key: "production-tracker",
-      name: "รายการสั่งผลิต (Production Tracker)",
-      path: "/backoffice/production-tracker",
-      icon: "factory",
-    },
-    {
       key: "crm",
       name: "ฐานข้อมูลลูกค้า (CRM Database)",
       path: "/backoffice/crm",
@@ -174,11 +211,14 @@ export default function BackofficeLayout({ children }: { children: React.ReactNo
     },
   ];
 
-  // Filter menus based on dynamic allowedMenus array
-  const allowedGeneralMenu = menuItems.filter(item => 
-    session?.allowedMenus?.includes(item.key) || 
-    (session?.role === "SYSTEM_ADMIN" && (!session.allowedMenus || session.allowedMenus.length === 0))
-  );
+  // Filter menus based on dynamic allowedMenus array and active QR Mode
+  const allowedGeneralMenu = menuItems.filter(item => {
+    if (item.key === "generate" && qrMode === "STATIC") {
+      return false;
+    }
+    return session?.allowedMenus?.includes(item.key) || 
+      (session?.role === "SYSTEM_ADMIN" && (!session.allowedMenus || session.allowedMenus.length === 0));
+  });
 
   const allowedAdminMenu = adminMenuItems.filter(item => 
     session?.allowedMenus?.includes(item.key) || 
@@ -247,6 +287,51 @@ export default function BackofficeLayout({ children }: { children: React.ReactNo
             </Link>
           );
         })}
+
+        {/* Accordion Group for Production Tracker */}
+        {(session?.allowedMenus?.includes("production-tracker") || 
+          (session?.role === "SYSTEM_ADMIN" && (!session?.allowedMenus || session?.allowedMenus.length === 0))) && (
+          <div className="mt-2 pt-2 border-t border-white/5">
+            <button
+              onClick={() => setIsTrackerExpanded(!isTrackerExpanded)}
+              className="w-full flex items-center justify-between px-3 py-2 text-[10px] font-extrabold text-on-primary-container/45 uppercase tracking-wider hover:text-white transition-colors cursor-pointer text-left"
+            >
+              <span>รายการสั่งผลิต (Production Tracker)</span>
+              <span className="material-symbols-outlined !text-[16px] transition-transform duration-200" style={{
+                transform: isTrackerExpanded ? "rotate(0deg)" : "rotate(-90deg)"
+              }}>
+                expand_more
+              </span>
+            </button>
+            
+            <div className={`space-y-1 mt-1 overflow-hidden transition-all duration-300 ease-in-out ${
+              isTrackerExpanded ? "max-h-[150px] opacity-100" : "max-h-0 opacity-0 pointer-events-none"
+            }`}>
+              <Link
+                href="/backoffice/production-tracker/dynamic"
+                className={`flex items-center gap-3 px-4 h-11 rounded-xl text-xs font-bold transition-all pl-6 ${
+                  pathname === "/backoffice/production-tracker/dynamic"
+                    ? "bg-secondary text-white shadow-md shadow-secondary/15"
+                    : "hover:bg-white/5 text-on-primary-container hover:text-white"
+                }`}
+              >
+                <span className="material-symbols-outlined !text-[18px]" style={{ fontVariationSettings: pathname === "/backoffice/production-tracker/dynamic" ? "'FILL' 1" : "'FILL' 0" }}>lock</span>
+                <span>Product Tracker (Dynamic QR)</span>
+              </Link>
+              <Link
+                href="/backoffice/production-tracker/static"
+                className={`flex items-center gap-3 px-4 h-11 rounded-xl text-xs font-bold transition-all pl-6 ${
+                  pathname === "/backoffice/production-tracker/static"
+                    ? "bg-secondary text-white shadow-md shadow-secondary/15"
+                    : "hover:bg-white/5 text-on-primary-container hover:text-white"
+                }`}
+              >
+                <span className="material-symbols-outlined !text-[18px]" style={{ fontVariationSettings: pathname === "/backoffice/production-tracker/static" ? "'FILL' 1" : "'FILL' 0" }}>qr_code</span>
+                <span>Product Tracker (Static QR)</span>
+              </Link>
+            </div>
+          </div>
+        )}
 
         {/* Accordion Group for Administrator */}
         {showAdminSection && (

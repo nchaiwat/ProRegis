@@ -42,6 +42,7 @@ interface LotItem {
   registeredAt?: string;
   province?: string;
   phone?: string;
+  registrationId?: string;
 }
 
 interface LotSummaryResponse {
@@ -81,7 +82,7 @@ export default function CheckerPage() {
     setError(null);
   }, [activeTab]);
 
-  const performCheck = async (payload: { token?: string; label?: string }) => {
+  const performCheck = async (payload: { token?: string; label?: string; registrationId?: string }) => {
     setLoading(true);
     setError(null);
     setCheckResult(null);
@@ -106,8 +107,8 @@ export default function CheckerPage() {
       const data: SingleCheckResponse = await res.json();
       setCheckResult(data);
 
-      // If checking via label and we have docNum, load lot summary too
-      if (payload.label && data.docNum) {
+      // Load lot summary for any check that resolves a docNum (including scan)
+      if (data.docNum) {
         fetchLotSummary(data.docNum);
       }
     } catch (err: any) {
@@ -146,8 +147,8 @@ export default function CheckerPage() {
   const handleLabelSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const clean = labelInput.trim().replace(/[-]/g, "");
-    if (clean.length !== 12 || !/^\d+$/.test(clean)) {
-      setError("รหัสสินค้าต้องเป็นตัวเลข 12 หลัก (รหัสล็อต 9 หลัก + ลำดับสินค้า 3 หลัก)");
+    if ((clean.length !== 9 && clean.length !== 12) || !/^\d+$/.test(clean)) {
+      setError("รหัสสินค้าต้องเป็นตัวเลข 9 หลัก หรือ 12 หลัก");
       return;
     }
     performCheck({ label: clean });
@@ -230,13 +231,13 @@ export default function CheckerPage() {
               <form onSubmit={handleLabelSubmit} className="space-y-4">
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">
-                    รหัสป้ายสินค้า (12 หลัก)
+                    รหัสสินค้า (9 หลัก หรือ 12 หลัก)
                   </label>
                   <input
                     type="text"
                     value={labelInput}
                     onChange={(e) => setLabelInput(e.target.value)}
-                    placeholder="เช่น 260600007001"
+                    placeholder="เช่น 260503702 หรือ 260600007001"
                     maxLength={12}
                     className="w-full h-12 px-4 bg-surface-container-low border border-outline-variant rounded-lg text-sm font-mono outline-none focus:border-secondary transition-all"
                   />
@@ -517,7 +518,13 @@ export default function CheckerPage() {
                           <td className="px-4 py-3 text-right">
                             {item.registered ? (
                               <button
-                                onClick={() => performCheck({ label: `${lotSummary.docNum}${item.seqNum}` })}
+                                onClick={() => {
+                                  if (item.registrationId) {
+                                    performCheck({ registrationId: item.registrationId });
+                                  } else {
+                                    performCheck({ label: `${lotSummary.docNum}${item.seqNum}` });
+                                  }
+                                }}
                                 className="h-7 px-3 bg-secondary/10 hover:bg-secondary/15 text-secondary font-extrabold text-[10px] rounded-md transition-all cursor-pointer"
                               >
                                 ตรวจสอบสิทธิ์

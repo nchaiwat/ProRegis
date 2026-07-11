@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Registration } from '../registration/registration.entity';
+import { ProductionOrder } from '../production-order/production-order.entity';
 
 export class CrmFilterDto {
   page?: number;
@@ -48,11 +49,11 @@ export class CrmService {
 
     const query = this.registrationRepository.createQueryBuilder('reg');
 
-    // Text search (search in first name, last name, phone, or token)
+    // Text search (search in first name, last name, phone, token, email, address, or docNum)
     if (filters.search && filters.search.trim()) {
       const searchNormalized = `%${filters.search.trim()}%`;
       query.andWhere(
-        '(reg.firstName ILIKE :search OR reg.lastName ILIKE :search OR reg.phone ILIKE :search OR reg.token ILIKE :search OR reg.id ILIKE :search)',
+        '(reg.firstName ILIKE :search OR reg.lastName ILIKE :search OR reg.phone ILIKE :search OR reg.token ILIKE :search OR reg.id ILIKE :search OR reg.email ILIKE :search OR reg.address ILIKE :search OR reg.docNum ILIKE :search)',
         { search: searchNormalized },
       );
     }
@@ -93,12 +94,42 @@ export class CrmService {
   }
 
   // Fetch full details of one registration (unmasked - triggers audit view logs)
-  async getRegistrationDetails(id: string): Promise<Registration> {
+  async getRegistrationDetails(id: string): Promise<any> {
     const registration = await this.registrationRepository.findOne({ where: { id } });
     if (!registration) {
       throw new NotFoundException('ไม่พบข้อมูลการลงทะเบียนที่ระบุ');
     }
-    return registration;
+
+    // Fetch all registrations for this phone
+    const allUserRegistrations = await this.registrationRepository.find({
+      where: { phone: registration.phone },
+      order: { registeredAt: 'DESC' }
+    });
+
+    const detailedRegistrations: any[] = [];
+    for (const reg of allUserRegistrations) {
+      let itemName = 'สินค้าทั่วไป';
+      let itemCode = 'ไม่ระบุ';
+      if (reg.docNum) {
+        const po = await this.registrationRepository.manager.findOne(ProductionOrder, {
+          where: { docNum: reg.docNum }
+        });
+        if (po) {
+          itemName = po.itemName || 'สินค้าทั่วไป';
+          itemCode = po.itemCode;
+        }
+      }
+      detailedRegistrations.push({
+        ...reg,
+        itemName,
+        itemCode,
+      });
+    }
+
+    return {
+      ...registration,
+      allRegistrations: detailedRegistrations,
+    };
   }
 
   // Export full customer data (strictly monitored, logged in audit logs)
@@ -108,7 +139,7 @@ export class CrmService {
     if (filters.search && filters.search.trim()) {
       const searchNormalized = `%${filters.search.trim()}%`;
       query.andWhere(
-        '(reg.firstName ILIKE :search OR reg.lastName ILIKE :search OR reg.phone ILIKE :search OR reg.token ILIKE :search OR reg.id ILIKE :search)',
+        '(reg.firstName ILIKE :search OR reg.lastName ILIKE :search OR reg.phone ILIKE :search OR reg.token ILIKE :search OR reg.id ILIKE :search OR reg.email ILIKE :search OR reg.address ILIKE :search OR reg.docNum ILIKE :search)',
         { search: searchNormalized },
       );
     }

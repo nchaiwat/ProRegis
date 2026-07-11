@@ -1,7 +1,7 @@
 import { Injectable, UnauthorizedException, BadRequestException, Inject, forwardRef, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, IsNull } from 'typeorm';
 import { GenerationLog } from './generation-log.entity';
 import { ProductionOrder } from '../production-order/production-order.entity';
 import { Registration } from '../registration/registration.entity';
@@ -25,6 +25,22 @@ const IV = crypto
   .update(process.env.AES_IV_KEY || 'WindowAsiaIV2026')
   .digest()
   .slice(0, 16); // 16 bytes IV
+
+const provinceMapping: Record<string, string> = {
+  'bangkok': 'กรุงเทพมหานคร',
+  'nonthaburi': 'นนทบุรี',
+  'samut prakan': 'สมุทรปราการ',
+  'samutprakan': 'สมุทรปราการ',
+  'chiang mai': 'เชียงใหม่',
+  'chiangmai': 'เชียงใหม่',
+  'chonburi': 'ชลบุรี',
+  'phuket': 'ภูเก็ต',
+  'khon kaen': 'ขอนแก่น',
+  'khonkaen': 'ขอนแก่น',
+  'nakhon ratchasima': 'นครราชสีมา',
+  'nakhonratchasima': 'นครราชสีมา',
+  'korat': 'นครราชสีมา',
+};
 
 // ---------------------------------------------------------------------------
 // Interfaces
@@ -67,6 +83,13 @@ export class BackofficeService implements OnModuleInit {
       { key: 'SAP_COMPANY_DB', value: 'SBO_WA_Test_20260531' },
       { key: 'SAP_USERNAME', value: 'Chaiwat.N' },
       { key: 'SAP_PASSWORD', value: 'Ojmcpnna2!' },
+      { key: 'SMS_PROVIDER_NAME', value: 'SMSMKT' },
+      { key: 'SMS_API_KEY', value: 'a7aa2b729a72af46265ea2a15b15e708' },
+      { key: 'SMS_API_SECRET', value: '4bu6uRdNlUKq10ZI' },
+      { key: 'SMS_SEND_URL', value: 'https://portal-otp.smsmkt.com/api/otp-send' },
+      { key: 'SMS_VALIDATE_URL', value: 'https://portal-otp.smsmkt.com/api/otp-validate' },
+      { key: 'SMS_PROJECT_KEY', value: 'mZP-------' },
+      { key: 'SMS_OTP_MODE', value: 'TEST' },
     ];
     for (const setting of defaultSettings) {
       try {
@@ -204,14 +227,14 @@ export class BackofficeService implements OnModuleInit {
       // Trigger Telegram Alert
       const timeStr = formatThaiDateTime(new Date());
       const alertMsg = [
-        `📱 <b>ProRegis</b> · ${timeStr}`,
+        `🪟 <b>ProRegis</b> · ${timeStr}`,
         `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-        `⚠️ <b>แจ้งเตือน: ตรวจพบการพยายามสร้าง QR Code ซ้ำซ้อน!</b>\n`,
-        `• 👤 <b>ผู้ส่งคำขอ:</b> <code>${actor}</code>`,
-        `• 📦 <b>Production Order (PD):</b> <code>${docNum}</code>`,
-        `• 🔢 <b>ช่วงรหัสที่ขอ:</b> <code>${startSeq}</code> ถึง <code>${requestedEndSeq}</code> (จำนวน: ${quantity})`,
-        `• 🖥️ <b>IP Address:</b> <code>${ipAddress}</code>`,
-        `• ❌ <b>ผลลัพธ์:</b> <i>ถูกระงับเนื่องจากลำดับตัวเลขนี้เคยถูกสร้างคิวอาร์โค้ดแล้วในระบบ</i>`,
+        `⚠️ <b>ตรวจพบการพยายามสร้าง QR Code ซ้ำซ้อน!</b>\n`,
+        `👤 <b>ผู้ส่งคำขอ:</b> <code>${actor}</code>`,
+        `📦 <b>Production Order (PD):</b> <code>${docNum}</code>`,
+        `🔢 <b>ช่วงรหัสที่ขอ:</b> <code>${startSeq}</code> ถึง <code>${requestedEndSeq}</code> (จำนวน: ${quantity})`,
+        `🖥️ <b>IP Address:</b> <code>${ipAddress}</code>`,
+        `❌ <b>ผลลัพธ์:</b> <i>ถูกระงับเนื่องจากลำดับตัวเลขนี้เคยถูกสร้างคิวอาร์โค้ดแล้วในระบบ</i>`,
         `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
         `🔍 <i>โปรดตรวจสอบช่วง Running Number ของ Production Order ดังกล่าว</i>`
       ].join('\n');
@@ -341,16 +364,16 @@ export class BackofficeService implements OnModuleInit {
     // ส่งแจ้งเตือนการสร้างคิวอาร์โค้ดกลุ่มใหม่ไปที่ Telegram Group
     const timeStr = formatThaiDateTime(new Date());
     const alertMsg = [
-      `📱 <b>ProRegis</b> · ${timeStr}`,
+      `🪟 <b>ProRegis</b> · ${timeStr}`,
       `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-      `📦 <b>แจ้งเตือน: มีการสร้างรหัส QR Code Batch ใหม่! (New QR Batch)</b>\n`,
-      `• 👤 <b>ผู้ดำเนินการ:</b> <code>${actor}</code>`,
-      `• 📦 <b>Production Order (PD):</b> <code>${docNum}</code>`,
-      `• 🔢 <b>จำนวน QR ที่สร้าง:</b> <code>${quantity}</code> ชิ้น`,
-      `• 🔢 <b>ช่วงลำดับ (Sequence):</b> <code>${startSeq}</code> ถึง <code>${requestedEndSeq}</code>`,
-      `• 🏷️ <b>รหัสสินค้า (SAP B1):</b> <code>${activePoInfo.itemCode}</code>`,
-      `• 📋 <b>ชื่อสินค้า:</b> ${activePoInfo.itemName}`,
-      `• 💻 <b>IP Address:</b> <code>${ipAddress}</code>`,
+      `📦 <b>มีการสร้างรหัส QR Code Batch ใหม่! (New QR Batch)</b>\n`,
+      `👤 <b>ผู้ดำเนินการ:</b> <code>${actor}</code>`,
+      `📦 <b>Production Order (PD):</b> <code>${docNum}</code>`,
+      `🔢 <b>จำนวน QR ที่สร้าง:</b> <code>${quantity}</code> ชิ้น`,
+      `🔢 <b>ช่วงลำดับ (Sequence):</b> <code>${startSeq}</code> ถึง <code>${requestedEndSeq}</code>`,
+      `🏷️ <b>รหัสสินค้า (SAP B1):</b> <code>${activePoInfo.itemCode}</code>`,
+      `📋 <b>ชื่อสินค้า:</b> ${activePoInfo.itemName}`,
+      `💻 <b>IP Address:</b> <code>${ipAddress}</code>`,
       `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
       `🔍 <i>ระบบบันทึกคิวอาร์โค้ดใหม่ลงฐานข้อมูลและสร้างไฟล์ดาวน์โหลดสำเร็จแล้ว</i>`
     ].join('\n');
@@ -418,10 +441,25 @@ export class BackofficeService implements OnModuleInit {
       provinceQuery.andWhere('reg.registeredAt <= :endDate', { endDate: new Date(endDate) });
     }
     const provincesRaw = await provinceQuery.getRawMany();
-    const provinceStats = provincesRaw.map(p => ({
-      province: p.province,
-      count: parseInt(p.count, 10),
-    }));
+    const provinceMap = new Map<string, number>();
+    for (const p of provincesRaw) {
+      let name = (p.province || '').trim();
+      const lowerName = name.toLowerCase();
+      if (provinceMapping[lowerName]) {
+        name = provinceMapping[lowerName];
+      } else if (/^bangkok$/i.test(name)) {
+        name = 'กรุงเทพมหานคร';
+      }
+      if (!name) {
+        name = 'ไม่ระบุ';
+      }
+      const count = parseInt(p.count, 10) || 0;
+      provinceMap.set(name, (provinceMap.get(name) || 0) + count);
+    }
+    const provinceStats = Array.from(provinceMap.entries()).map(([province, count]) => ({
+      province,
+      count,
+    })).sort((a, b) => b.count - a.count);
 
     // 4. Map markers (all registrations that have coordinates)
     const markerQuery = this.registrationRepository.createQueryBuilder('reg')
@@ -434,6 +472,16 @@ export class BackofficeService implements OnModuleInit {
       markerQuery.andWhere('reg.registeredAt <= :endDate', { endDate: new Date(endDate) });
     }
     const markers = await markerQuery.getMany();
+    for (const m of markers) {
+      if (m.province) {
+        const cleanName = m.province.trim().toLowerCase();
+        if (provinceMapping[cleanName]) {
+          m.province = provinceMapping[cleanName];
+        } else if (/^bangkok$/i.test(cleanName)) {
+          m.province = 'กรุงเทพมหานคร';
+        }
+      }
+    }
 
     // 5. Product registrations grouped by ItemCode (joining with ProductionOrder)
     const productQuery = this.registrationRepository.createQueryBuilder('reg')
@@ -489,7 +537,7 @@ export class BackofficeService implements OnModuleInit {
   // -------------------------------------------------------------------------
   // Get Production Tracker List
   // -------------------------------------------------------------------------
-  async getProductionTrackerList() {
+  async getProductionTrackerList(mode?: 'STATIC' | 'DYNAMIC') {
     const productionOrders = await this.productionOrderRepository.find({
       order: { createdAt: 'DESC' },
     });
@@ -504,38 +552,68 @@ export class BackofficeService implements OnModuleInit {
         order: { generatedAt: 'ASC' },
       });
       
-      if (genLogs.length === 0) {
+      const hasLogs = genLogs.length > 0;
+      
+      // Filter based on mode parameter
+      if (mode === 'DYNAMIC' && !hasLogs) {
+        continue;
+      }
+      if (mode === 'STATIC' && hasLogs) {
         continue;
       }
       
-      const requestCount = genLogs.length;
-      const latestLog = genLogs[genLogs.length - 1];
-      
-      const historyLogs = genLogs.slice(0, genLogs.length - 1).map((log, index) => ({
-        attemptNumber: index + 1,
-        generatedAt: log.generatedAt,
-        username: log.username,
-        quantity: log.quantity,
-      }));
-      
       const registeredCount = await this.registrationRepository.count({ where: { docNum } });
       
-      trackerList.push({
-        docNum,
-        itemCode: po.itemCode,
-        itemName: po.itemName,
-        requestCount,
-        latestRequestDate: latestLog.generatedAt,
-        latestRequestUser: latestLog.username,
-        latestRequestQty: latestLog.quantity,
-        history: historyLogs,
-        registeredCount,
-        plannedQty: po.plannedQty,
-        completedQty: po.completedQty,
-        orderDate: po.orderDate,
-        startDate: po.startDate,
-        status: po.status,
-      });
+      if (hasLogs) {
+        const requestCount = genLogs.length;
+        const latestLog = genLogs[genLogs.length - 1];
+        
+        const historyLogs = genLogs.slice(0, genLogs.length - 1).map((log, index) => ({
+          attemptNumber: index + 1,
+          generatedAt: log.generatedAt,
+          username: log.username,
+          quantity: log.quantity,
+        }));
+        
+        trackerList.push({
+          type: 'DYNAMIC',
+          docNum,
+          itemCode: po.itemCode,
+          itemName: po.itemName,
+          requestCount,
+          latestRequestDate: latestLog.generatedAt,
+          latestRequestUser: latestLog.username,
+          latestRequestQty: latestLog.quantity,
+          history: historyLogs,
+          registeredCount,
+          plannedQty: po.plannedQty,
+          completedQty: po.completedQty,
+          orderDate: po.orderDate,
+          startDate: po.startDate,
+          status: po.status,
+          createdAt: po.createdAt,
+        });
+      } else {
+        // Static PO (no logs)
+        trackerList.push({
+          type: 'STATIC',
+          docNum,
+          itemCode: po.itemCode,
+          itemName: po.itemName,
+          requestCount: 0,
+          latestRequestDate: po.createdAt ? po.createdAt.toISOString() : new Date().toISOString(),
+          latestRequestUser: 'System (Scan)',
+          latestRequestQty: 0,
+          history: [],
+          registeredCount,
+          plannedQty: po.plannedQty,
+          completedQty: po.completedQty,
+          orderDate: po.orderDate,
+          startDate: po.startDate,
+          status: po.status,
+          createdAt: po.createdAt,
+        });
+      }
     }
     
     // Sort tracker list by latest request date descending
@@ -549,40 +627,61 @@ export class BackofficeService implements OnModuleInit {
   // -------------------------------------------------------------------------
   // Check Product (for Scan QR and Label input)
   // -------------------------------------------------------------------------
-  async checkProduct(token?: string, label?: string) {
+  async checkProduct(token?: string, label?: string, registrationId?: string) {
     let docNum: string | null = null;
     let seqNum: string | null = null;
+    let registration: Registration | null = null;
 
-    if (token) {
-      const decoded = this.decryptToken(token);
-      if (decoded) {
-        docNum = decoded.docNum;
-        seqNum = decoded.seqNum;
-      } else {
-        // Fallback if token is actually in "docNum:seqNum" or plain docNum+seqNum format
-        if (token.length === 12 && /^\d+$/.test(token)) {
-          docNum = token.substring(0, 9);
-          seqNum = token.substring(9, 12);
-        } else {
-          throw new BadRequestException('รหัส Token ไม่ถูกต้องหรือไม่สามารถถอดรหัสได้');
-        }
-      }
-    } else if (label) {
-      const cleanLabel = label.trim().replace(/[-]/g, '');
-      if (cleanLabel.length === 12 && /^\d+$/.test(cleanLabel)) {
-        docNum = cleanLabel.substring(0, 9);
-        seqNum = cleanLabel.substring(9, 12);
-      } else {
-        throw new BadRequestException('รหัสสินค้าต้องเป็นตัวเลข 12 หลัก (Lot 9 หลัก + running 3 หลัก)');
+    if (registrationId) {
+      registration = await this.registrationRepository.findOne({
+        where: { id: registrationId }
+      });
+      if (registration) {
+        docNum = registration.docNum;
+        seqNum = registration.seqNum;
       }
     } else {
-      throw new BadRequestException('กรุณาระบุ Token หรือรหัส Label ของสินค้า');
-    }
+      if (token) {
+        const decoded = this.decryptToken(token);
+        if (decoded) {
+          docNum = decoded.docNum;
+          seqNum = decoded.seqNum;
+        } else {
+          const cleanToken = token.trim();
+          if (cleanToken.length === 12 && /^\d+$/.test(cleanToken)) {
+            docNum = cleanToken.substring(0, 9);
+            seqNum = cleanToken.substring(9, 12);
+          } else if (cleanToken.length === 9 && /^\d+$/.test(cleanToken)) {
+            docNum = cleanToken;
+            seqNum = null;
+          } else {
+            throw new BadRequestException('รหัส Token ไม่ถูกต้องหรือไม่สามารถถอดรหัสได้');
+          }
+        }
+      } else if (label) {
+        const cleanLabel = label.trim().replace(/[-]/g, '');
+        if (cleanLabel.length === 12 && /^\d+$/.test(cleanLabel)) {
+          docNum = cleanLabel.substring(0, 9);
+          seqNum = cleanLabel.substring(9, 12);
+        } else if (cleanLabel.length === 9 && /^\d+$/.test(cleanLabel)) {
+          docNum = cleanLabel;
+          seqNum = null;
+        } else {
+          throw new BadRequestException('รหัสสินค้าต้องเป็นตัวเลข 9 หลัก หรือ 12 หลัก');
+        }
+      } else {
+        throw new BadRequestException('กรุณาระบุ Token หรือรหัส Label ของสินค้า');
+      }
 
-    // Get registration if exists
-    const registration = await this.registrationRepository.findOne({
-      where: { docNum: docNum || '', seqNum: seqNum || '' }
-    });
+      // Get registration if exists
+      registration = await this.registrationRepository.findOne({
+        where: { 
+          docNum: docNum || '', 
+          seqNum: seqNum ? seqNum : IsNull()
+        },
+        order: { registeredAt: 'DESC' }
+      });
+    }
 
     // Get production order (cache-aside)
     let itemCode = 'ไม่พบรหัสสินค้า';
@@ -693,35 +792,67 @@ export class BackofficeService implements OnModuleInit {
       where: { docNum }
     });
 
-    const regMap = new Map<string, Registration>();
-    for (const r of registrations) {
-      if (r.seqNum) {
-        regMap.set(String(parseInt(r.seqNum, 10)), r);
-      }
-    }
+    const qrModeSetting = await this.systemSettingRepository.findOne({ where: { key: 'QR_CODE_MODE' } });
+    const qrMode = qrModeSetting ? qrModeSetting.value : 'STATIC';
 
     const items: any[] = [];
-    let registeredCount = 0;
+    let registeredCount = registrations.length;
 
-    for (let i = 1; i <= totalQty; i++) {
-      const seqStr = String(i).padStart(3, '0');
-      const reg = regMap.get(String(i));
+    if (qrMode === 'DYNAMIC') {
+      const regMap = new Map<string, Registration>();
+      for (const r of registrations) {
+        if (r.seqNum) {
+          regMap.set(String(parseInt(r.seqNum, 10)), r);
+        }
+      }
+      registeredCount = 0;
+      for (let i = 1; i <= totalQty; i++) {
+        const seqStr = String(i).padStart(3, '0');
+        const reg = regMap.get(String(i));
 
-      if (reg) {
-        registeredCount++;
-        items.push({
-          seqNum: seqStr,
-          registered: true,
-          registeredBy: `${reg.firstName} ${reg.lastName}`,
-          registeredAt: reg.registeredAt,
-          province: reg.province,
-          phone: reg.phone,
-        });
-      } else {
-        items.push({
-          seqNum: seqStr,
-          registered: false,
-        });
+        if (reg) {
+          registeredCount++;
+          items.push({
+            seqNum: seqStr,
+            registered: true,
+            registeredBy: `${reg.firstName} ${reg.lastName}`,
+            registeredAt: reg.registeredAt,
+            province: reg.province,
+            phone: reg.phone,
+            registrationId: reg.id,
+          });
+        } else {
+          items.push({
+            seqNum: seqStr,
+            registered: false,
+          });
+        }
+      }
+    } else {
+      // STATIC Mode: list all registrations sequentially, then pad with empty items up to totalQty
+      registrations.sort((a, b) => new Date(a.registeredAt).getTime() - new Date(b.registeredAt).getTime());
+      
+      const limit = Math.max(totalQty, registrations.length);
+      for (let i = 1; i <= limit; i++) {
+        const seqStr = String(i).padStart(3, '0');
+        const reg = registrations[i - 1];
+
+        if (reg) {
+          items.push({
+            seqNum: seqStr,
+            registered: true,
+            registeredBy: `${reg.firstName} ${reg.lastName}`,
+            registeredAt: reg.registeredAt,
+            province: reg.province,
+            phone: reg.phone,
+            registrationId: reg.id,
+          });
+        } else {
+          items.push({
+            seqNum: seqStr,
+            registered: false,
+          });
+        }
       }
     }
 
@@ -731,7 +862,7 @@ export class BackofficeService implements OnModuleInit {
       itemName: po.itemName,
       totalQty,
       registeredCount,
-      unregisteredCount: totalQty - registeredCount,
+      unregisteredCount: Math.max(0, totalQty - registeredCount),
       items,
     };
   }

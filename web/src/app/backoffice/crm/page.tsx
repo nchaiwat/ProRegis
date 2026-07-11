@@ -40,11 +40,7 @@ export default function CrmPage() {
   const [status, setStatus] = useState("");
   const [page, setPage] = useState(1);
 
-  // Detail Modal / Drawer state (Unmasked detailed info)
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [details, setDetails] = useState<any>(null);
-  const [detailsLoading, setDetailsLoading] = useState(false);
-  const [detailsError, setDetailsError] = useState("");
+
 
   // Export CSV state
   const [isExporting, setIsExporting] = useState(false);
@@ -98,32 +94,6 @@ export default function CrmPage() {
     fetchCustomers();
   };
 
-  const fetchCustomerDetails = async (id: string) => {
-    setSelectedId(id);
-    setDetailsLoading(true);
-    setDetailsError("");
-    setDetails(null);
-
-    try {
-      const token = sessionStorage.getItem("bo_token") || "";
-      const res = await fetch(`${getApiBaseUrl()}/crm/registrations/${id}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-
-      if (!res.ok) {
-        throw new Error("Failed to load details");
-      }
-
-      const detailsData = await res.json();
-      setDetails(detailsData);
-    } catch {
-      setDetailsError("ไม่สามารถดึงข้อมูลรายละเอียดลูกค้าได้ (ระบบได้บันทึกความล้มเหลวลงใน Log)");
-    } finally {
-      setDetailsLoading(false);
-    }
-  };
 
   const handleExportCsv = async () => {
     setIsExporting(true);
@@ -290,7 +260,7 @@ export default function CrmPage() {
                       </td>
                       <td className="px-4 py-3.5 text-right">
                         <button
-                          onClick={() => fetchCustomerDetails(cust.id)}
+                          onClick={() => router.push(`/backoffice/crm/${cust.id}`)}
                           className="h-9 px-4 bg-secondary/10 hover:bg-secondary/15 text-secondary font-bold text-[11px] rounded-lg transition-all cursor-pointer inline-flex items-center gap-1 active:scale-95"
                         >
                           <span className="material-symbols-outlined !text-[14px]">visibility</span>
@@ -329,146 +299,6 @@ export default function CrmPage() {
         </div>
       )}
 
-      {/* DETAIL DRAWER / OVERLAY */}
-      {selectedId && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-end bg-black/50 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-md h-full bg-white shadow-2xl flex flex-col animate-slide-left border-l border-outline-variant">
-            {/* Header */}
-            <div className="p-5 border-b border-outline-variant flex justify-between items-center bg-surface-container-low">
-              <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-secondary">verified_user</span>
-                <h3 className="font-bold text-base text-primary">ตรวจสอบสิทธิ์การรับประกัน</h3>
-              </div>
-              <button
-                onClick={() => setSelectedId(null)}
-                className="material-symbols-outlined text-outline hover:text-primary transition-colors p-1 rounded-full hover:bg-surface-container cursor-pointer"
-              >
-                close
-              </button>
-            </div>
-
-            {/* Content Body */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              {detailsLoading ? (
-                <div className="flex flex-col items-center justify-center py-20 gap-3">
-                  <div className="w-8 h-8 border-3 border-secondary border-t-transparent rounded-full animate-spin" />
-                  <p className="text-xs text-outline font-semibold">กำลังตรวจสอบและบันทึกบันทึกการดึงข้อมูลส่วนบุคคล...</p>
-                </div>
-              ) : detailsError ? (
-                <div className="p-4 bg-error/10 border border-error/20 rounded-xl flex gap-2.5 text-xs text-error font-semibold leading-relaxed">
-                  <span className="material-symbols-outlined flex-shrink-0">error</span>
-                  <span>{detailsError}</span>
-                </div>
-              ) : details ? (
-                <div className="space-y-6 animate-success text-sm">
-                  {/* PII Audited Alert */}
-                  <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex gap-2 text-xs font-semibold text-emerald-800 leading-relaxed shadow-sm">
-                    <span className="material-symbols-outlined text-emerald-600 mt-0.5" style={{ fontVariationSettings: "'FILL' 1" }}>
-                      security
-                    </span>
-                    <p>ระบบได้เปิดพรางข้อมูลส่วนบุคคล (PII) และบันทึกประวัติการขอดึงข้อมูลของคุณลงในหน่วยงานตรวจสอบ (Audit Logs) เรียบร้อยแล้ว</p>
-                  </div>
-
-                  {/* Ref Code Box */}
-                  <div className="p-4 bg-surface-container rounded-2xl border border-outline-variant flex justify-between items-center">
-                    <div>
-                      <p className="text-[10px] text-outline font-bold uppercase tracking-wider">รหัสอ้างอิง (Ref Code)</p>
-                      <p className="text-lg font-bold text-primary font-mono">{details.id}</p>
-                    </div>
-                    <span className="inline-block px-3 py-1 bg-green-500/10 border border-green-500/20 text-green-700 text-xs font-bold rounded-full">
-                      คุ้มครองอยู่
-                    </span>
-                  </div>
-
-                  {/* Customer Info Group */}
-                  <div className="space-y-3">
-                    <h4 className="font-bold text-xs text-outline uppercase tracking-wider border-b pb-1">ข้อมูลส่วนบุคคลลูกค้า</h4>
-                    <div className="grid grid-cols-2 gap-y-3 gap-x-4">
-                      <div>
-                        <p className="text-[10px] text-outline font-medium">ชื่อ-นามสกุล</p>
-                        <p className="font-bold text-primary">{details.firstName} {details.lastName}</p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] text-outline font-medium">เบอร์โทรศัพท์ (เบอร์ตรง)</p>
-                        <p className="font-mono font-bold text-primary">{details.phone}</p>
-                      </div>
-                      <div className="col-span-2">
-                        <p className="text-[10px] text-outline font-medium">อีเมล</p>
-                        <p className="font-semibold text-primary">{details.email || "-"}</p>
-                      </div>
-                      <div className="col-span-2">
-                        <p className="text-[10px] text-outline font-medium">สถานที่ติดตั้ง</p>
-                        <p className="font-semibold text-primary leading-relaxed">{details.address}</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Product Group */}
-                  <div className="space-y-3">
-                    <h4 className="font-bold text-xs text-outline uppercase tracking-wider border-b pb-1">รายละเอียดตัวสินค้า</h4>
-                    <div className="grid grid-cols-2 gap-y-3 gap-x-4">
-                      <div>
-                        <p className="text-[10px] text-outline font-medium">เลขที่สั่งผลิต (DocNum)</p>
-                        <p className="font-mono font-bold text-primary">{details.docNum || "-"}</p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] text-outline font-medium">ลำดับที่สินค้า (SeqNum)</p>
-                        <p className="font-mono font-bold text-primary">
-                          {details.seqNum ? `ชิ้นที่ ${parseInt(details.seqNum)}` : "-"}
-                        </p>
-                      </div>
-                      <div className="col-span-2">
-                        <p className="text-[10px] text-outline font-medium">รหัส Token ประจำสินค้า</p>
-                        <p className="font-mono text-xs text-on-surface-variant font-semibold select-all break-all bg-surface-container-low p-2 rounded-lg border border-outline-variant/30">
-                          {details.token}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* GPS & Map */}
-                  <div className="space-y-3">
-                    <h4 className="font-bold text-xs text-outline uppercase tracking-wider border-b pb-1">พิกัดจีพีเอส (GPS Location)</h4>
-                    {details.latitude && details.longitude ? (
-                      <div className="space-y-3">
-                        <div className="flex justify-between items-center bg-surface-container-low p-3.5 rounded-xl border border-outline-variant/40">
-                          <div>
-                            <p className="text-[10px] text-outline font-medium">Latitude / Longitude</p>
-                            <p className="font-mono font-bold text-primary text-xs mt-0.5">
-                              {details.latitude}, {details.longitude}
-                            </p>
-                          </div>
-                          <a
-                            href={`https://www.google.com/maps?q=${details.latitude},${details.longitude}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="h-10 px-4 bg-secondary text-white font-bold text-xs rounded-lg shadow inline-flex items-center gap-1.5 active:scale-95 transition-all"
-                          >
-                            <span className="material-symbols-outlined !text-sm">map</span>
-                            เปิดแผนที่
-                          </a>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="text-xs text-outline italic">ลูกค้าไม่ได้กดบันทึกพิกัด GPS ณ วันที่ลงทะเบียน</p>
-                    )}
-                  </div>
-                </div>
-              ) : null}
-            </div>
-
-            {/* Footer Close */}
-            <div className="p-4 border-t border-outline-variant bg-surface-container-low flex">
-              <button
-                onClick={() => setSelectedId(null)}
-                className="w-full h-12 bg-primary text-white text-xs font-bold rounded-xl active:scale-[0.98] transition-all cursor-pointer"
-              >
-                ปิดหน้าต่าง
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

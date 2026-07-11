@@ -126,8 +126,8 @@ export class BackofficeController {
   // -------------------------------------------------------------------------
   @Get('production-tracker')
   @UseGuards(JwtAuthGuard)
-  async getProductionTracker() {
-    const data = await this.backofficeService.getProductionTrackerList();
+  async getProductionTracker(@Query('mode') mode?: 'STATIC' | 'DYNAMIC') {
+    const data = await this.backofficeService.getProductionTrackerList(mode);
     return { success: true, data };
   }
 
@@ -137,8 +137,8 @@ export class BackofficeController {
   @Post('check-product')
   @HttpCode(200)
   @UseGuards(JwtAuthGuard)
-  async checkProduct(@Body() body: { token?: string; label?: string }) {
-    return this.backofficeService.checkProduct(body.token, body.label);
+  async checkProduct(@Body() body: { token?: string; label?: string; registrationId?: string }) {
+    return this.backofficeService.checkProduct(body.token, body.label, body.registrationId);
   }
 
   // -------------------------------------------------------------------------

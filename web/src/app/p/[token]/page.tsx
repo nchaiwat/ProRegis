@@ -244,6 +244,8 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
   const [isRegisteredAtSite, setIsRegisteredAtSite] = useState(false);
   const [registrationHistory, setRegistrationHistory] = useState<any[]>([]);
   const [isCheckingStatus, setIsCheckingStatus] = useState(false);
+  const [showDuplicateConfirmModal, setShowDuplicateConfirmModal] = useState(false);
+  const [duplicateCount, setDuplicateCount] = useState(0);
 
   // Step 2 Form State
   const [mandatoryConsent, setMandatoryConsent] = useState(false);
@@ -257,7 +259,8 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
     province: "",
     postalCode: "",
     phone: "",
-    email: ""
+    email: "",
+    installationPosition: ""
   });
   const [gpsLocation, setGpsLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [isGpsLoading, setIsGpsLoading] = useState(false);
@@ -274,6 +277,33 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
   const [hasActiveSession, setHasActiveSession] = useState(false);
   const [showScanner, setShowScanner] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [otpRefCode, setOtpRefCode] = useState("");
+  const [smsOtpMode, setSmsOtpMode] = useState("TEST");
+  const [isPhoneVerified, setIsPhoneVerified] = useState(false);
+  const [autofilledProfile, setAutofilledProfile] = useState<any>(null);
+  const [showAutofillPrompt, setShowAutofillPrompt] = useState(false);
+  const [isUsingExistingAddress, setIsUsingExistingAddress] = useState(false);
+
+  const getProvinceLabel = (prov: string, currentLang: "th" | "en") => {
+    if (!prov) return "";
+    const pMap: Record<string, { th: string; en: string }> = {
+      bangkok: { th: "กรุงเทพมหานคร", en: "Bangkok" },
+      nonthaburi: { th: "นนทบุรี", en: "Nonthaburi" },
+      "samut prakan": { th: "สมุทรปราการ", en: "Samut Prakan" },
+      "chiang mai": { th: "เชียงใหม่", en: "Chiang Mai" },
+      chonburi: { th: "ชลบุรี", en: "Chonburi" },
+      phuket: { th: "ภูเก็ต", en: "Phuket" },
+      "khon kaen": { th: "ขอนแก่น", en: "Khon Kaen" },
+      "nakhon ratchasima": { th: "นครราชสีมา", en: "Nakhon Ratchasima" },
+    };
+    const key = prov.trim().toLowerCase();
+    if (pMap[key]) {
+      return currentLang === "th" ? pMap[key].th : pMap[key].en;
+    }
+    return prov;
+  };
+
+  const canShowFullForm = isPhoneVerified || verificationMode === "LINE" || hasActiveSession;
 
   const t = translations[lang];
 
@@ -293,15 +323,38 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
             province: session.province || "",
             postalCode: session.postalCode || "",
             phone: session.phone || "",
-            email: session.email || ""
+            email: session.email || "",
+            installationPosition: ""
           });
           setHasActiveSession(true);
+          setIsPhoneVerified(true);
           storedPhone = session.phone;
         } else {
           localStorage.removeItem("proregis_customer_session");
         }
       } catch (e) {
         console.warn("Failed to retrieve local session data:", e);
+      }
+    }
+
+    // If no full profile session, check lightweight OTP session (30 min)
+    // This avoids re-requesting OTP for the same phone within the session window
+    if (!storedPhone) {
+      const otpSessionStr = localStorage.getItem("proregis_otp_session");
+      if (otpSessionStr) {
+        try {
+          const otpSession = JSON.parse(otpSessionStr);
+          // OTP session valid for 30 minutes (1,800,000 ms)
+          if (Date.now() - otpSession.verifiedAt < 1800000 && otpSession.phone) {
+            setFormData((prev) => ({ ...prev, phone: otpSession.phone }));
+            setIsPhoneVerified(true);
+            storedPhone = otpSession.phone;
+          } else {
+            localStorage.removeItem("proregis_otp_session");
+          }
+        } catch (e) {
+          console.warn("Failed to retrieve OTP session data:", e);
+        }
       }
     }
 
@@ -383,6 +436,11 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
     if (t === "PR-2024-X1" || t === "WA-GLASS-7729" || t === "WA-LIFETIME-GLASS") {
       return true;
     }
+    // Allow 9-digit or 12-digit numeric static tokens
+    if (/^\d{9}$/.test(t) || /^\d{12}$/.test(t)) {
+      return true;
+    }
+    // Dynamic token checks
     const base64UrlRegex = /^[A-Za-z0-9\-_]+$/;
     return base64UrlRegex.test(t) && t.length >= 20 && t.length <= 40;
   };
@@ -397,30 +455,43 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
       let resolvedDocNum: string | null = null;
       let resolvedSeqNum: string | null = null;
 
-      // Step 1: Try to decrypt the token (AES-128-CBC + Base64URL)
-      try {
-        const decryptRes = await fetch(`${getApiBaseUrl()}/backoffice/decrypt`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token }),
-        });
-        if (decryptRes.ok) {
-          const decryptData = await decryptRes.json();
-          if (decryptData.success) {
-            resolvedDocNum = decryptData.docNum;
-            resolvedSeqNum = decryptData.seqNum;
-            setDocNum(decryptData.docNum);
-            setSeqNum(decryptData.seqNum);
+      // Check if it's a plain static token (e.g. 9 or 12 digit number, or predefined mock codes)
+      const isPlainStatic = /^\d{9}$/.test(token) || /^\d{12}$/.test(token) || token === "PR-2024-X1" || token === "WA-GLASS-7729" || token === "WA-LIFETIME-GLASS";
+
+      if (!isPlainStatic) {
+        // Step 1: Try to decrypt the token (AES-128-CBC + Base64URL)
+        try {
+          const decryptRes = await fetch(`${getApiBaseUrl()}/backoffice/decrypt`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ token }),
+          });
+          if (decryptRes.ok) {
+            const decryptData = await decryptRes.json();
+            if (decryptData.success) {
+              resolvedDocNum = decryptData.docNum;
+              resolvedSeqNum = decryptData.seqNum;
+              setDocNum(decryptData.docNum);
+              setSeqNum(decryptData.seqNum);
+            } else {
+              setDecryptError("INVALID_TOKEN");
+              return;
+            }
           } else {
             setDecryptError("INVALID_TOKEN");
             return;
           }
-        } else {
-          setDecryptError("INVALID_TOKEN");
-          return;
+        } catch (err) {
+          console.warn("Decrypt API not reachable, treating token as plain.", err);
         }
-      } catch (err) {
-        console.warn("Decrypt API not reachable, treating token as plain.", err);
+      } else {
+        // It's a plain static token
+        if (token.length === 12) {
+          setDocNum(token.substring(0, 9));
+          setSeqNum(token.substring(9, 12));
+        } else if (token.length === 9) {
+          setDocNum(token);
+        }
       }
 
       // Step 2: Fetch product — use docNum if decrypted, else use raw token as fallback
@@ -432,6 +503,7 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
           setProduct(data);
           if (data.qrMode) setQrMode(data.qrMode as "STATIC" | "DYNAMIC");
           if (data.verificationMode) setVerificationMode(data.verificationMode as "OTP" | "LINE");
+          if (data.smsOtpMode) setSmsOtpMode(data.smsOtpMode);
 
           // If QR Mode is STATIC and we have phone number, immediately trigger registration status check
           const storedSession = localStorage.getItem("proregis_customer_session");
@@ -626,14 +698,40 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
     return Object.keys(newErrors).length === 0;
   };
 
+  const validatePhoneOnly = () => {
+    const newErrors: Record<string, string> = {};
+    if (!formData.phone.trim() || !/^0\d{9}$/.test(formData.phone.replace(/[-]/g, ""))) {
+      newErrors.phone = lang === "th" ? "โปรดระบุเบอร์โทรศัพท์ 10 หลัก (เช่น 0891234567)" : "Valid 10-digit mobile number required";
+    }
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const handleRequestOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validateStep3()) return;
+    if (!validatePhoneOnly()) return;
 
-    // Bypass OTP if LINE Mode is active or we have active session
+    // Bypass OTP if LINE Mode is active or we have active full-profile session
     if (verificationMode === "LINE" || hasActiveSession) {
-      await handleDirectRegistration();
+      setIsPhoneVerified(true);
       return;
+    }
+
+    // Bypass OTP if a lightweight OTP session for this phone is still valid (30 min)
+    const otpSessionStr = localStorage.getItem("proregis_otp_session");
+    if (otpSessionStr) {
+      try {
+        const otpSession = JSON.parse(otpSessionStr);
+        if (
+          otpSession.phone === formData.phone &&
+          Date.now() - otpSession.verifiedAt < 1800000
+        ) {
+          setIsPhoneVerified(true);
+          return;
+        }
+      } catch (e) {
+        console.warn("Failed to parse OTP session:", e);
+      }
     }
 
     setIsSubmitting(true);
@@ -644,22 +742,30 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
         body: JSON.stringify({ phone: formData.phone })
       });
       if (res.ok) {
+        const resData = await res.json();
         setIsSubmitting(false);
         setShowOtpModal(true);
         setOtpTimer(60);
         setOtpError("");
+        setOtpRefCode(resData.refCode || "");
+        return;
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        setIsSubmitting(false);
+        setSubmitError(errData.message || (lang === "th" ? "ไม่สามารถส่งรหัส OTP ได้ โปรดตรวจสอบการตั้งค่า" : "Failed to send OTP. Please check your settings."));
         return;
       }
     } catch (err) {
       console.warn("Backend not running, simulating OTP request.", err);
     }
 
-    // Fallback simulation
+    // Fallback simulation (only run if network/fetch exception was thrown)
     setTimeout(() => {
       setIsSubmitting(false);
       setShowOtpModal(true);
       setOtpTimer(60);
       setOtpError("");
+      setOtpRefCode("MOCK");
     }, 800);
   };
 
@@ -685,7 +791,8 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
           optionalConsent: optionalConsent,
           latitude: gpsLocation?.latitude || undefined,
           longitude: gpsLocation?.longitude || undefined,
-          lineUserId: lineUserId || undefined
+          lineUserId: lineUserId || undefined,
+          installationPosition: formData.installationPosition || undefined
         })
       });
       if (res.ok) {
@@ -704,6 +811,14 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
           timestamp: Date.now()
         }));
 
+        // Static QR Mode: load registered units to transition straight to Dashboard
+        if (qrMode === "STATIC") {
+          const actualDocNum = docNum || (token.length === 9 ? token : null);
+          if (actualDocNum) {
+            await checkRegistrationStatus(actualDocNum, formData.phone, gpsLocation?.latitude, gpsLocation?.longitude);
+          }
+        }
+
         setIsSubmitting(false);
         setStep(4);
         return;
@@ -718,7 +833,8 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
       if (err instanceof TypeError) {
         // Fallback simulation when API server is unreachable
         setTimeout(() => {
-          const randomRef = `REG-${Math.floor(Math.random() * 90000) + 10000}-${product.lotNo.split("-")[1] || "WIN"}`;
+          const cleanLotSuffix = (product?.lotNo && product.lotNo.includes("-")) ? product.lotNo.split("-")[1] : "WIN";
+          const randomRef = `REG-${Math.floor(Math.random() * 90000) + 10000}-${cleanLotSuffix}`;
           setRefRegNumber(randomRef);
 
           localStorage.setItem("proregis_customer_session", JSON.stringify({
@@ -744,115 +860,175 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
     }
   };
 
+  const handleUseAutofilled = () => {
+    if (autofilledProfile) {
+      setFormData((prev) => ({
+        ...prev,
+        firstName: autofilledProfile.firstName,
+        lastName: autofilledProfile.lastName,
+        address: autofilledProfile.address,
+        province: autofilledProfile.province,
+        postalCode: autofilledProfile.postalCode,
+        email: autofilledProfile.email
+      }));
+      if (autofilledProfile.latitude && autofilledProfile.longitude) {
+        setGpsLocation({
+          latitude: Number(autofilledProfile.latitude),
+          longitude: Number(autofilledProfile.longitude)
+        });
+      } else {
+        setGpsLocation(null);
+      }
+      setIsUsingExistingAddress(true);
+      setShowAutofillPrompt(false);
+    }
+  };
+
+  const handleClearAddressForNew = () => {
+    setFormData((prev) => ({
+      ...prev,
+      address: "",
+      province: "",
+      postalCode: ""
+    }));
+    setGpsLocation(null);
+    setIsUsingExistingAddress(false);
+    setShowAutofillPrompt(false);
+  };
+
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!validateStep3()) return;
+    await handleDirectRegistration();
+  };
+
   const handleVerifyOtp = async () => {
     setIsSubmitting(true);
     let verifySuccess = false;
 
     try {
-      const res = await fetch(`${getApiBaseUrl()}/otp/verify`, {
+      const res = await fetch(`${getApiBaseUrl()}/registration/by-phone`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: formData.phone, code: otpCode })
+        body: JSON.stringify({ phone: formData.phone, otpCode: otpCode })
       });
       if (res.ok) {
-        const data = await res.json();
-        verifySuccess = data.success;
+        verifySuccess = true;
+        const list = await res.json();
+        if (list && list.length > 0) {
+          const latest = list[0]; // most recent registration
+          const profile = {
+            firstName: latest.firstName || "",
+            lastName: latest.lastName || "",
+            address: latest.address || "",
+            province: latest.province || "",
+            postalCode: latest.postalCode || "",
+            email: latest.email || "",
+            latitude: latest.latitude || null,
+            longitude: latest.longitude || null
+          };
+          setAutofilledProfile(profile);
+          setFormData((prev) => ({
+            ...prev,
+            firstName: profile.firstName,
+            lastName: profile.lastName,
+            address: profile.address,
+            province: profile.province,
+            postalCode: profile.postalCode,
+            email: profile.email
+          }));
+          setShowAutofillPrompt(true);
+        }
+      } else {
+        if (smsOtpMode === "TEST" && (otpCode === "123456" || otpCode === "654321")) {
+          verifySuccess = true;
+          try {
+            const bypassRes = await fetch(`${getApiBaseUrl()}/registration/by-phone`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ phone: formData.phone, otpCode: "SESSION_BYPASS" })
+            });
+            if (bypassRes.ok) {
+              const list = await bypassRes.json();
+              if (list && list.length > 0) {
+                const latest = list[list.length - 1];
+                const profile = {
+                  firstName: latest.firstName || "",
+                  lastName: latest.lastName || "",
+                  address: latest.address || "",
+                  province: latest.province || "",
+                  postalCode: latest.postalCode || "",
+                  email: latest.email || ""
+                };
+                setAutofilledProfile(profile);
+                setFormData((prev) => ({
+                  ...prev,
+                  firstName: profile.firstName,
+                  lastName: profile.lastName,
+                  address: profile.address,
+                  province: profile.province,
+                  postalCode: profile.postalCode,
+                  email: profile.email
+                }));
+                setShowAutofillPrompt(true);
+              }
+            }
+          } catch (e) {
+            console.warn("Failed retrieving mock profile:", e);
+          }
+        }
       }
     } catch (err) {
-      console.warn("Backend not running, simulating OTP verification.", err);
-      // fallback simulation
+      console.warn("Backend not running, simulating verification", err);
       verifySuccess = otpCode === "123456" || otpCode === "654321";
     }
 
     if (!verifySuccess) {
       setIsSubmitting(false);
-      setOtpError(lang === "th" ? "รหัส OTP ไม่ถูกต้อง โปรดทดสอบด้วยเลข '123456'" : "Invalid OTP code. Please test with '123456'");
+      setOtpError(lang === "th" ? "รหัส OTP ไม่ถูกต้อง โปรดป้อนรหัสที่ได้รับจาก SMS" : "Invalid OTP code. Enter the code received via SMS.");
       return;
     }
 
-    // Finalize registration
-    setSubmitError(null);
-    try {
-      const res = await fetch(`${getApiBaseUrl()}/registration`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          token: token,
-          docNum: docNum || undefined,
-          seqNum: seqNum || undefined,
-          firstName: formData.firstName,
-          lastName: formData.lastName,
-          address: formData.address,
-          province: formData.province,
-          postalCode: formData.postalCode,
-          phone: formData.phone,
-          email: formData.email || undefined,
-          mandatoryConsent: mandatoryConsent,
-          optionalConsent: optionalConsent,
-          latitude: gpsLocation?.latitude || undefined,
-          longitude: gpsLocation?.longitude || undefined,
-          lineUserId: lineUserId || undefined
-        })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setRefRegNumber(data.refCode);
+    setShowOtpModal(false);
 
-        // Save session details to localStorage
-        localStorage.setItem("proregis_customer_session", JSON.stringify({
-          firstName: formData.firstName,
-          lastName: formData.lastName,
-          address: formData.address,
-          province: formData.province,
-          postalCode: formData.postalCode,
-          phone: formData.phone,
-          email: formData.email,
-          timestamp: Date.now()
-        }));
+    // Save lightweight OTP session so same phone won't need OTP again within 30 min
+    localStorage.setItem("proregis_otp_session", JSON.stringify({
+      phone: formData.phone,
+      verifiedAt: Date.now()
+    }));
 
-        setIsSubmitting(false);
-        setShowOtpModal(false);
-        setStep(4);
-        return;
-      } else {
-        const data = await res.json();
-        setSubmitError(data.message || (lang === "th" ? "เกิดข้อผิดพลาดในการลงทะเบียน" : "Failed to register product"));
-        setIsSubmitting(false);
-        setShowOtpModal(false);
-        return;
-      }
-    } catch (err) {
-      console.warn("Backend not running, checking connection.", err);
-      if (err instanceof TypeError) {
-        // Fallback simulation when API server is unreachable
-        setTimeout(() => {
-          const randomRef = `REG-${Math.floor(Math.random() * 90000) + 10000}-${product.lotNo.split("-")[1] || "WIN"}`;
-          setRefRegNumber(randomRef);
-
-          // Save session details to localStorage
-          localStorage.setItem("proregis_customer_session", JSON.stringify({
-            firstName: formData.firstName,
-            lastName: formData.lastName,
-            address: formData.address,
-            province: formData.province,
-            postalCode: formData.postalCode,
-            phone: formData.phone,
-            email: formData.email,
-            timestamp: Date.now()
-          }));
-
-          setIsSubmitting(false);
-          setShowOtpModal(false);
-          setStep(4);
-        }, 1000);
-        return;
-      } else {
-        setSubmitError(lang === "th" ? "เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์" : "Server connection failed");
-        setIsSubmitting(false);
-        setShowOtpModal(false);
-        return;
+    // Check duplicate status AFTER successful OTP verification
+    if (qrMode === "STATIC") {
+      try {
+        const actualDocNum = docNum || (token.length === 9 ? token : null);
+        if (actualDocNum) {
+          const res = await fetch(`${getApiBaseUrl()}/registration/check-status`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              docNum: actualDocNum,
+              phone: formData.phone,
+              latitude: gpsLocation?.latitude,
+              longitude: gpsLocation?.longitude
+            })
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.registered && data.count > 0) {
+              setDuplicateCount(data.count);
+              setShowDuplicateConfirmModal(true);
+              setIsSubmitting(false);
+              return;
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("Failed checking status after verification:", err);
       }
     }
+
+    setIsPhoneVerified(true);
+    setIsSubmitting(false);
   };
 
   const handleAddUnit = async () => {
@@ -865,6 +1041,7 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
         body: JSON.stringify({ token, phone: formData.phone })
       });
       if (res.ok) {
+        setShowDuplicateConfirmModal(false);
         const actualDocNum = docNum || (token.length === 9 ? token : null);
         if (actualDocNum) {
           await checkRegistrationStatus(actualDocNum, formData.phone, gpsLocation?.latitude, gpsLocation?.longitude);
@@ -979,10 +1156,12 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
                     <p className="text-[10px] text-outline font-bold uppercase tracking-wider">{t.prodDate}</p>
                     <p className="text-sm text-primary font-semibold">{product.manufactureDate}</p>
                   </div>
-                  <div>
-                    <p className="text-[10px] text-outline font-bold uppercase tracking-wider">{t.lotNo}</p>
-                    <p className="text-sm text-primary font-semibold tracking-mono">{product.lotNo}</p>
-                  </div>
+                  {product.lotNo && (
+                    <div>
+                      <p className="text-[10px] text-outline font-bold uppercase tracking-wider">{t.lotNo}</p>
+                      <p className="text-sm text-primary font-semibold tracking-mono">{product.lotNo}</p>
+                    </div>
+                  )}
                   <div>
                     <p className="text-[10px] text-outline font-bold uppercase tracking-wider">{t.poNo}</p>
                     <p className="text-sm text-primary font-semibold tracking-mono">{product.poNo}</p>
@@ -1119,7 +1298,7 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
 
               <div className="relative h-60 w-full rounded-xl overflow-hidden shadow-sm group">
                 <img 
-                  src="https://images.unsplash.com/photo-1557597774-9d273605dfa9?q=80&w=800&auto=format&fit=crop" 
+                  src="https://images.unsplash.com/photo-1563986768609-322da13575f3?q=80&w=800&auto=format&fit=crop" 
                   alt="Security and Trust" 
                   className="w-full h-full object-cover transition-transform duration-75 group-hover:scale-105" 
                 />
@@ -1157,7 +1336,7 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
 
                 <div className="pt-4 border-t border-outline-variant flex justify-between items-center">
                   <a 
-                    href="https://windowasia.com/wp-content/uploads/2024/02/%E0%B8%99%E0%B9%82%E0%B8%A2%E0%B8%9A%E0%B8%B2%E0%B8%A2%E0%B8%81%E0%B8%B2%E0%B8%A3%E0%B8%84%E0%B8%B8%E0%B9%89%E0%B8%A1%E0%B8%84%E0%B8%A3%E0%B8%AD%E0%B8%87%E0%B8%82%E0%B9%85%E0%B8%AD%E0%B8%A1%E0%B8%B9%E0%B8%A5%E0%B8%AA%E0%B9%88%E0%B8%A7%E0%B8%99%E0%B8%9A%E0%B8%B8%E0%B8%84%E0%B8%84%E0%B8%A5-.pdf"
+                    href="https://windowasia.com/wp-content/uploads/2024/02/%E0%B8%99%E0%B9%82%E0%B8%A2%E0%B8%9A%E0%B8%B2%E0%B8%A2%E0%B8%81%E0%B8%B2%E0%B8%A3%E0%B8%84%E0%B8%B8%E0%B9%89%E0%B8%A1%E0%B8%84%E0%B8%A3%E0%B8%AD%E0%B8%87%E0%B8%82%E0%B9%89%E0%B8%AD%E0%B8%A1%E0%B8%B9%E0%B8%A5%E0%B8%AA%E0%B9%88%E0%B8%A7%E0%B8%99%E0%B8%9A%E0%B8%B8%E0%B8%84%E0%B8%84%E0%B8%A5-.pdf"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1.5 text-xs font-bold text-secondary hover:underline"
@@ -1241,208 +1420,362 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
                 </div>
               )}
 
-              <form onSubmit={handleRequestOtp} className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {!canShowFullForm ? (
+                <form onSubmit={handleRequestOtp} className="space-y-6">
                   <div className="flex flex-col gap-2">
-                    <label className="text-xs font-bold text-on-surface" htmlFor="firstName">{t.firstName} <span className="text-error font-bold">*</span></label>
-                    <input 
-                      type="text"
-                      id="firstName"
-                      name="firstName"
-                      value={formData.firstName}
-                      onChange={handleInputChange}
-                      placeholder={lang === "th" ? "สมชาย" : "John"}
-                      className="h-12 px-4 bg-surface-container-low border-b-2 border-transparent focus:border-secondary focus:ring-0 rounded-t outline-none text-sm font-medium"
-                    />
-                    {errors.firstName && <span className="text-xs text-error font-semibold">{errors.firstName}</span>}
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <label className="text-xs font-bold text-on-surface" htmlFor="lastName">{t.lastName} <span className="text-error font-bold">*</span></label>
-                    <input 
-                      type="text"
-                      id="lastName"
-                      name="lastName"
-                      value={formData.lastName}
-                      onChange={handleInputChange}
-                      placeholder={lang === "th" ? "ดีใจ" : "Doe"}
-                      className="h-12 px-4 bg-surface-container-low border-b-2 border-transparent focus:border-secondary focus:ring-0 rounded-t outline-none text-sm font-medium"
-                    />
-                    {errors.lastName && <span className="text-xs text-error font-semibold">{errors.lastName}</span>}
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-2">
-                  <label className="text-xs font-bold text-on-surface" htmlFor="address">{t.address} <span className="text-error font-bold">*</span></label>
-                  <textarea 
-                    id="address"
-                    name="address"
-                    value={formData.address}
-                    onChange={handleInputChange}
-                    placeholder={lang === "th" ? "เช่น 123/45 หมู่บ้านวินโดว์ ซอย 4 ถนนสุขุมวิท..." : "e.g. 123/45 Suite 4B, Grand Residence..."}
-                    rows={3}
-                    className="p-4 bg-surface-container-low border-b-2 border-transparent focus:border-secondary focus:ring-0 rounded-t outline-none text-sm font-medium resize-none"
-                  />
-                  {errors.address && <span className="text-xs text-error font-semibold">{errors.address}</span>}
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="flex flex-col gap-2">
-                    <label className="text-xs font-bold text-on-surface" htmlFor="province">{t.province} <span className="text-error font-bold">*</span></label>
-                    <select 
-                      id="province"
-                      name="province"
-                      value={formData.province}
-                      onChange={handleInputChange}
-                      className="h-12 px-4 bg-surface-container-low border-b-2 border-transparent focus:border-secondary focus:ring-0 rounded-t outline-none text-sm font-medium"
-                    >
-                      <option value="">-- {t.selectProvince} --</option>
-                      <option value="Bangkok">{lang === "th" ? "กรุงเทพมหานคร" : "Bangkok"}</option>
-                      <option value="Nonthaburi">{lang === "th" ? "นนทบุรี" : "Nonthaburi"}</option>
-                      <option value="Samut Prakan">{lang === "th" ? "สมุทรปราการ" : "Samut Prakan"}</option>
-                      <option value="Chiang Mai">{lang === "th" ? "เชียงใหม่" : "Chiang Mai"}</option>
-                      <option value="Chonburi">{lang === "th" ? "ชลบุรี" : "Chonburi"}</option>
-                      <option value="Phuket">{lang === "th" ? "ภูเก็ต" : "Phuket"}</option>
-                      <option value="Khon Kaen">{lang === "th" ? "ขอนแก่น" : "Khon Kaen"}</option>
-                      <option value="Nakhon Ratchasima">{lang === "th" ? "นครราชสีมา" : "Nakhon Ratchasima"}</option>
-                    </select>
-                    {errors.province && <span className="text-xs text-error font-semibold">{errors.province}</span>}
-                  </div>
-                  <div className="flex flex-col gap-2">
-                    <label className="text-xs font-bold text-on-surface" htmlFor="postalCode">{t.postalCode} <span className="text-error font-bold">*</span></label>
-                    <input 
-                      type="text"
-                      id="postalCode"
-                      name="postalCode"
-                      value={formData.postalCode}
-                      onChange={handleInputChange}
-                      placeholder="10110"
-                      maxLength={5}
-                      className="h-12 px-4 bg-surface-container-low border-b-2 border-transparent focus:border-secondary focus:ring-0 rounded-t outline-none text-sm font-medium"
-                    />
-                    {errors.postalCode && <span className="text-xs text-error font-semibold">{errors.postalCode}</span>}
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="flex flex-col gap-2">
-                    <label className="text-xs font-bold text-on-surface" htmlFor="phone">{t.phone} <span className="text-error font-bold">*</span></label>
-                    <input 
-                      type="tel"
-                      id="phone"
-                      name="phone"
-                      value={formData.phone}
-                      onChange={handleInputChange}
-                      placeholder="0891234567"
-                      maxLength={10}
-                      className="h-12 px-4 bg-surface-container-low border-b-2 border-transparent focus:border-secondary focus:ring-0 rounded-t outline-none text-sm font-medium"
-                    />
+                    <label className="text-sm font-bold text-on-surface" htmlFor="phone">
+                      {lang === "th" ? "โปรดระบุเบอร์โทรศัพท์เพื่อยืนยันตัวตนก่อนกรอกที่อยู่ติดตั้ง" : "Enter your phone number to verify identity before entering address"} <span className="text-error font-bold">*</span>
+                    </label>
+                    <div className="relative">
+                      <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline-variant">phone</span>
+                      <input 
+                        type="tel"
+                        id="phone"
+                        name="phone"
+                        value={formData.phone}
+                        onChange={handleInputChange}
+                        placeholder="0891234567"
+                        maxLength={10}
+                        className="w-full h-14 pl-12 pr-4 bg-surface-container-low border-b-2 border-transparent focus:border-secondary focus:ring-0 rounded-t outline-none text-base font-semibold"
+                      />
+                    </div>
                     {errors.phone && <span className="text-xs text-error font-semibold">{errors.phone}</span>}
                   </div>
-                  <div className="flex flex-col gap-2">
-                    <label className="text-xs font-bold text-on-surface" htmlFor="email">{t.email} (Optional)</label>
-                    <input 
-                      type="email"
-                      id="email"
-                      name="email"
-                      value={formData.email}
-                      onChange={handleInputChange}
-                      placeholder="john.doe@example.com"
-                      className="h-12 px-4 bg-surface-container-low border-b-2 border-transparent focus:border-secondary focus:ring-0 rounded-t outline-none text-sm font-medium"
-                    />
-                    {errors.email && <span className="text-xs text-error font-semibold">{errors.email}</span>}
-                  </div>
-                </div>
 
-                {/* GPS Location Section */}
-                <div className="bg-surface-container-low rounded-xl p-5 border border-outline-variant space-y-3">
-                  <div className="flex items-start gap-3.5">
-                    <span className="material-symbols-outlined text-secondary text-2xl mt-0.5">
-                      location_on
-                    </span>
-                    <div className="space-y-1 flex-1">
-                      <h3 className="font-bold text-sm text-primary">{t.gpsLabel}</h3>
-                      <p className="text-xs text-on-surface-variant leading-relaxed">
-                        {t.gpsDesc}
-                      </p>
+                  {submitError && (
+                    <div className="p-4 bg-error/10 border border-error/20 rounded-xl flex gap-2.5 text-xs text-error font-semibold leading-relaxed animate-success">
+                      <span className="material-symbols-outlined flex-shrink-0 text-[18px]">error</span>
+                      <span>{submitError}</span>
                     </div>
-                  </div>
-                  
-                  <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center pt-2">
-                    <button
-                      type="button"
-                      onClick={handleFetchGps}
-                      disabled={isGpsLoading}
-                      className={`inline-flex items-center gap-2 px-5 h-11 rounded-lg text-xs font-bold transition-all active:scale-[0.98] cursor-pointer ${
-                        gpsLocation
-                          ? "bg-emerald-50 text-emerald-700 border border-emerald-300"
-                          : isGpsLoading
-                          ? "bg-surface-variant text-outline-variant cursor-not-allowed border border-transparent"
-                          : "bg-secondary/10 hover:bg-secondary/15 text-secondary border border-secondary/25"
-                      }`}
+                  )}
+
+                  <div className="pt-6 flex flex-col md:flex-row gap-4">
+                    <button 
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="w-full md:flex-1 h-14 bg-secondary text-white font-bold rounded-xl shadow-md hover:opacity-95 transition-all active:scale-[0.98] flex items-center justify-center gap-2 text-base cursor-pointer"
                     >
-                      {isGpsLoading ? (
-                        <>
-                          <div className="w-4 h-4 border-2 border-secondary border-t-transparent rounded-full animate-spin"></div>
-                          <span>{t.gpsLoading}</span>
-                        </>
-                      ) : gpsLocation ? (
-                        <>
-                          <span className="material-symbols-outlined text-lg">check_circle</span>
-                          <span>{t.gpsSuccess}</span>
-                        </>
+                      {isSubmitting ? (
+                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                       ) : (
                         <>
-                          <span className="material-symbols-outlined text-lg">my_location</span>
-                          <span>{t.gpsButton}</span>
+                          <span>{lang === "th" ? "ขอรหัส OTP" : "Request OTP"}</span>
+                          <span className="material-symbols-outlined text-[20px]">arrow_forward</span>
                         </>
                       )}
                     </button>
-
-                    {gpsLocation && (
-                      <span className="text-[11px] font-semibold text-emerald-600 bg-emerald-50/50 px-3 py-1.5 rounded-md border border-emerald-100">
-                        Lat: {gpsLocation.latitude.toFixed(6)}, Lng: {gpsLocation.longitude.toFixed(6)}
-                      </span>
-                    )}
-
-                    {gpsErrorMsg && (
-                      <span className="text-[11px] font-medium text-error leading-normal">
-                        {gpsErrorMsg}
-                      </span>
-                    )}
+                    <button 
+                      type="button"
+                      onClick={() => setStep(2)}
+                      className="w-full md:flex-1 h-14 border-2 border-outline-variant text-secondary font-bold rounded-xl hover:bg-surface-container-low transition-all active:scale-[0.98] flex items-center justify-center gap-2 text-base cursor-pointer"
+                    >
+                      <span className="material-symbols-outlined text-[20px]">arrow_back</span>
+                      {t.back}
+                    </button>
                   </div>
-                </div>
-
-                {submitError && (
-                  <div className="p-4 mb-4 bg-error/10 border border-error/20 rounded-xl flex gap-2.5 text-xs text-error font-semibold leading-relaxed animate-success">
-                    <span className="material-symbols-outlined flex-shrink-0 text-[18px]">error</span>
-                    <span>{submitError}</span>
+                </form>
+              ) : (
+                <form onSubmit={handleRegisterSubmit} className="space-y-6">
+                  {/* Name section is always shown */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="flex flex-col gap-2">
+                      <label className="text-xs font-bold text-on-surface" htmlFor="firstName">{t.firstName} <span className="text-error font-bold">*</span></label>
+                      <input 
+                        type="text"
+                        id="firstName"
+                        name="firstName"
+                        value={formData.firstName}
+                        onChange={handleInputChange}
+                        placeholder={lang === "th" ? "สมชาย" : "John"}
+                        disabled={showAutofillPrompt || hasActiveSession}
+                        className="h-12 px-4 bg-surface-container-low border-b-2 border-transparent focus:border-secondary focus:ring-0 rounded-t outline-none text-sm font-medium disabled:opacity-75 disabled:cursor-not-allowed"
+                      />
+                      {errors.firstName && <span className="text-xs text-error font-semibold">{errors.firstName}</span>}
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <label className="text-xs font-bold text-on-surface" htmlFor="lastName">{t.lastName} <span className="text-error font-bold">*</span></label>
+                      <input 
+                        type="text"
+                        id="lastName"
+                        name="lastName"
+                        value={formData.lastName}
+                        onChange={handleInputChange}
+                        placeholder={lang === "th" ? "ดีใจ" : "Doe"}
+                        disabled={showAutofillPrompt || hasActiveSession}
+                        className="h-12 px-4 bg-surface-container-low border-b-2 border-transparent focus:border-secondary focus:ring-0 rounded-t outline-none text-sm font-medium disabled:opacity-75 disabled:cursor-not-allowed"
+                      />
+                      {errors.lastName && <span className="text-xs text-error font-semibold">{errors.lastName}</span>}
+                    </div>
                   </div>
-                )}
 
-                <div className="pt-8 border-t border-outline-variant flex flex-col md:flex-row gap-4">
-                  <button 
-                    type="submit"
-                    className="flex-1 h-14 bg-secondary text-white font-bold rounded-xl shadow-md hover:opacity-95 transition-all active:scale-[0.98] flex items-center justify-center gap-2 text-base cursor-pointer"
-                  >
-                    {isSubmitting ? (
-                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    ) : (
-                      <>
-                        <span>{hasActiveSession ? (lang === "th" ? "ลงทะเบียนด่วนทันที" : "Register Instantly") : t.submitReg}</span>
-                        <span className="material-symbols-outlined text-[20px]">{hasActiveSession ? "flash_on" : "arrow_forward"}</span>
-                      </>
-                    )}
-                  </button>
-                  <button 
-                    type="button"
-                    onClick={() => setStep(2)}
-                    className="flex-1 h-14 border-2 border-outline-variant text-secondary font-bold rounded-xl hover:bg-surface-container-low transition-all active:scale-[0.98] flex items-center justify-center gap-2 text-base cursor-pointer"
-                  >
-                    <span className="material-symbols-outlined text-[20px]">arrow_back</span>
-                    {t.back}
-                  </button>
-                </div>
-              </form>
+                  {/* Returning Customer Autofill Prompt - visible only when prompt is active */}
+                  {autofilledProfile && showAutofillPrompt ? (
+                    <div className="p-5 bg-secondary-container/5 border border-secondary/20 rounded-2xl space-y-4 shadow-sm animate-success">
+                      <div className="flex gap-3">
+                        <span className="material-symbols-outlined text-secondary text-2xl">account_circle</span>
+                        <div className="space-y-1">
+                          <h4 className="font-bold text-sm text-primary">
+                            {lang === "th" ? "พบข้อมูลที่อยู่ลงทะเบียนเดิมของคุณในระบบ" : "Found your previously registered profile"}
+                          </h4>
+                          <p className="text-xs text-on-surface-variant leading-relaxed font-semibold mt-0.5">
+                            ที่อยู่ติดตั้งล่าสุด: {autofilledProfile.address} จ.{getProvinceLabel(autofilledProfile.province, lang)} {autofilledProfile.postalCode}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                        <button
+                          type="button"
+                          onClick={handleUseAutofilled}
+                          className="h-12 bg-secondary text-white font-extrabold text-xs rounded-xl shadow hover:opacity-95 active:scale-[0.98] transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                        >
+                          <span className="material-symbols-outlined text-base">check_circle</span>
+                          <span>{lang === "th" ? "ใช้ที่อยู่ติดตั้งหลังเดิม" : "Use existing address"}</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleClearAddressForNew}
+                          className="h-12 border border-outline-variant text-outline hover:text-primary font-extrabold text-xs rounded-xl hover:bg-surface-container-low active:scale-[0.98] transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                        >
+                          <span className="material-symbols-outlined text-base">add_home</span>
+                          <span>{lang === "th" ? "ระบุที่อยู่ติดตั้งหลังใหม่" : "Register at a new location"}</span>
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    // The rest of the form - visible when prompt is answered or completely new customer
+                    <>
+                      <div className="flex flex-col gap-2">
+                        <div className="flex justify-between items-center">
+                          <label className="text-xs font-bold text-on-surface" htmlFor="address">{t.address} <span className="text-error font-bold">*</span></label>
+                          {isUsingExistingAddress && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsUsingExistingAddress(false);
+                                setFormData(prev => ({ ...prev, address: "", province: "", postalCode: "" }));
+                                setGpsLocation(null);
+                              }}
+                              className="text-xs font-bold text-secondary hover:underline cursor-pointer flex items-center gap-0.5 animate-success"
+                            >
+                              <span className="material-symbols-outlined !text-[12px]">edit</span>
+                              ลงทะเบียนบ้านหลังใหม่
+                            </button>
+                          )}
+                        </div>
+                        <textarea 
+                          id="address"
+                          name="address"
+                          value={formData.address}
+                          onChange={handleInputChange}
+                          disabled={hasActiveSession || isUsingExistingAddress}
+                          placeholder={lang === "th" ? "เช่น 123/45 หมู่บ้านวินโดว์ ซอย 4 ถนนสุขุมวิท..." : "e.g. 123/45 Suite 4B, Grand Residence..."}
+                          rows={3}
+                          className="p-4 bg-surface-container-low border-b-2 border-transparent focus:border-secondary focus:ring-0 rounded-t outline-none text-sm font-medium resize-none disabled:opacity-75 disabled:cursor-not-allowed"
+                        />
+                        {errors.address && <span className="text-xs text-error font-semibold">{errors.address}</span>}
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="flex flex-col gap-2">
+                          <label className="text-xs font-bold text-on-surface" htmlFor="province">{t.province} <span className="text-error font-bold">*</span></label>
+                          <select 
+                            id="province"
+                            name="province"
+                            value={formData.province}
+                            onChange={handleInputChange}
+                            disabled={hasActiveSession || isUsingExistingAddress}
+                            className="h-12 px-4 bg-surface-container-low border-b-2 border-transparent focus:border-secondary focus:ring-0 rounded-t outline-none text-sm font-medium disabled:opacity-75 disabled:cursor-not-allowed"
+                          >
+                            <option value="">-- {t.selectProvince} --</option>
+                            <option value={lang === "th" ? "กรุงเทพมหานคร" : "Bangkok"}>{lang === "th" ? "กรุงเทพมหานคร" : "Bangkok"}</option>
+                            <option value={lang === "th" ? "นนทบุรี" : "Nonthaburi"}>{lang === "th" ? "นนทบุรี" : "Nonthaburi"}</option>
+                            <option value={lang === "th" ? "สมุทรปราการ" : "Samut Prakan"}>{lang === "th" ? "สมุทรปราการ" : "Samut Prakan"}</option>
+                            <option value={lang === "th" ? "เชียงใหม่" : "Chiang Mai"}>{lang === "th" ? "เชียงใหม่" : "Chiang Mai"}</option>
+                            <option value={lang === "th" ? "ชลบุรี" : "Chonburi"}>{lang === "th" ? "ชลบุรี" : "Chonburi"}</option>
+                            <option value={lang === "th" ? "ภูเก็ต" : "Phuket"}>{lang === "th" ? "ภูเก็ต" : "Phuket"}</option>
+                            <option value={lang === "th" ? "ขอนแก่น" : "Khon Kaen"}>{lang === "th" ? "ขอนแก่น" : "Khon Kaen"}</option>
+                            <option value={lang === "th" ? "นครราชสีมา" : "Nakhon Ratchasima"}>{lang === "th" ? "นครราชสีมา" : "Nakhon Ratchasima"}</option>
+                          </select>
+                          {errors.province && <span className="text-xs text-error font-semibold">{errors.province}</span>}
+                        </div>
+                        <div className="flex flex-col gap-2">
+                          <label className="text-xs font-bold text-on-surface" htmlFor="postalCode">{t.postalCode} <span className="text-error font-bold">*</span></label>
+                          <input 
+                            type="text"
+                            id="postalCode"
+                            name="postalCode"
+                            value={formData.postalCode}
+                            onChange={handleInputChange}
+                            disabled={hasActiveSession || isUsingExistingAddress}
+                            placeholder="10110"
+                            maxLength={5}
+                            className="h-12 px-4 bg-surface-container-low border-b-2 border-transparent focus:border-secondary focus:ring-0 rounded-t outline-none text-sm font-medium disabled:opacity-75 disabled:cursor-not-allowed"
+                          />
+                          {errors.postalCode && <span className="text-xs text-error font-semibold">{errors.postalCode}</span>}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="flex flex-col gap-2">
+                          <label className="text-xs font-bold text-on-surface" htmlFor="phone">{t.phone} <span className="text-error font-bold">*</span></label>
+                          <input 
+                            type="tel"
+                            id="phone"
+                            name="phone"
+                            value={formData.phone}
+                            disabled={verificationMode === "OTP"}
+                            className="h-12 px-4 bg-surface-container-low/60 text-outline border-b-2 border-transparent rounded-t outline-none text-sm font-medium cursor-not-allowed"
+                          />
+                          {errors.phone && <span className="text-xs text-error font-semibold">{errors.phone}</span>}
+                        </div>
+                        <div className="flex flex-col gap-2">
+                          <label className="text-xs font-bold text-on-surface" htmlFor="email">{t.email} (Optional)</label>
+                          <input 
+                            type="email"
+                            id="email"
+                            name="email"
+                            value={formData.email}
+                            onChange={handleInputChange}
+                            placeholder="john.doe@example.com"
+                            disabled={hasActiveSession}
+                            className="h-12 px-4 bg-surface-container-low border-b-2 border-transparent focus:border-secondary focus:ring-0 rounded-t outline-none text-sm font-medium disabled:opacity-75 disabled:cursor-not-allowed"
+                          />
+                          {errors.email && <span className="text-xs text-error font-semibold">{errors.email}</span>}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 gap-6">
+                        <div className="flex flex-col gap-2">
+                          <label className="text-xs font-bold text-on-surface" htmlFor="installationPosition">
+                            {lang === "th" ? "จุดติดตั้งสินค้า (เช่น ห้องนอนชั้น 2, หน้าบ้าน)" : "Installation Location (e.g. Master Bedroom, Kitchen)"} <span className="text-outline text-[10px] font-normal">(Optional)</span>
+                          </label>
+                          <input 
+                            type="text"
+                            id="installationPosition"
+                            name="installationPosition"
+                            value={formData.installationPosition}
+                            onChange={handleInputChange}
+                            placeholder={lang === "th" ? "ระบุตำแหน่งที่ติดตั้งบานนี้" : "e.g. Living room, Kitchen, Bedroom"}
+                            className="h-12 px-4 bg-surface-container-low border-b-2 border-transparent focus:border-secondary focus:ring-0 rounded-t outline-none text-sm font-medium"
+                          />
+                        </div>
+                      </div>
+
+                      {/* GPS Location Section */}
+                      <div className="bg-surface-container-low rounded-xl p-5 border border-outline-variant space-y-3">
+                        <div className="flex items-start gap-3.5">
+                          <span className="material-symbols-outlined text-secondary text-2xl mt-0.5">
+                            location_on
+                          </span>
+                          <div className="space-y-1 flex-1">
+                            <h3 className="font-bold text-sm text-primary">{t.gpsLabel}</h3>
+                            <p className="text-xs text-on-surface-variant leading-relaxed">
+                              {isUsingExistingAddress 
+                                ? (lang === "th" ? "ใช้พิกัดจุดติดตั้งเดิมที่ลูกค้าเคยแชร์ไว้ในประวัติลงทะเบียน โดยคุณไม่ต้องกดอนุญาตหรือระบุตำแหน่งใหม่" : "Using the existing GPS coordinates shared during your previous registration.")
+                                : t.gpsDesc}
+                            </p>
+                          </div>
+                        </div>
+                        
+                        {!isUsingExistingAddress ? (
+                          <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center pt-2">
+                            <button
+                              type="button"
+                              onClick={handleFetchGps}
+                              disabled={isGpsLoading}
+                              className={`inline-flex items-center gap-2 px-5 h-11 rounded-lg text-xs font-bold transition-all active:scale-[0.98] cursor-pointer ${
+                                gpsLocation
+                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-300"
+                                  : isGpsLoading
+                                  ? "bg-surface-variant text-outline-variant cursor-not-allowed border border-transparent"
+                                  : "bg-secondary/10 hover:bg-secondary/15 text-secondary border border-secondary/25"
+                              }`}
+                            >
+                              {isGpsLoading ? (
+                                <>
+                                  <div className="w-4 h-4 border-2 border-secondary border-t-transparent rounded-full animate-spin"></div>
+                                  <span>{t.gpsLoading}</span>
+                                </>
+                              ) : gpsLocation ? (
+                                <>
+                                  <span className="material-symbols-outlined text-lg">check_circle</span>
+                                  <span>{t.gpsSuccess}</span>
+                                </>
+                              ) : (
+                                <>
+                                  <span className="material-symbols-outlined text-lg">my_location</span>
+                                  <span>{t.gpsButton}</span>
+                                </>
+                              )}
+                            </button>
+
+                            {gpsLocation && (
+                              <span className="text-[11px] font-semibold text-emerald-600 bg-emerald-50/50 px-3 py-1.5 rounded-md border border-emerald-100">
+                                Lat: {gpsLocation.latitude.toFixed(6)}, Lng: {gpsLocation.longitude.toFixed(6)}
+                              </span>
+                            )}
+
+                            {gpsErrorMsg && (
+                              <span className="text-[11px] font-medium text-error leading-normal">
+                                {gpsErrorMsg}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="pt-2 flex items-center gap-2 text-xs font-bold text-emerald-700">
+                            <span className="material-symbols-outlined !text-base text-emerald-600" style={{ fontVariationSettings: "'FILL' 1" }}>verified</span>
+                            <span>
+                              {lang === "th"
+                                ? `ใช้พิกัดในประวัติ: Lat: ${gpsLocation?.latitude?.toFixed(6) || "N/A"}, Lng: ${gpsLocation?.longitude?.toFixed(6) || "N/A"}`
+                                : `Using historical coordinates: Lat: ${gpsLocation?.latitude?.toFixed(6) || "N/A"}, Lng: ${gpsLocation?.longitude?.toFixed(6) || "N/A"}`}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {submitError && (
+                        <div className="p-4 mb-4 bg-error/10 border border-error/20 rounded-xl flex gap-2.5 text-xs text-error font-semibold leading-relaxed animate-success">
+                          <span className="material-symbols-outlined flex-shrink-0 text-[18px]">error</span>
+                          <span>{submitError}</span>
+                        </div>
+                      )}
+
+                      <div className="pt-8 border-t border-outline-variant flex flex-col md:flex-row gap-4">
+                        <button 
+                          type="submit"
+                          disabled={isSubmitting}
+                          className="w-full md:flex-1 h-14 bg-secondary text-white font-bold rounded-xl shadow-md hover:opacity-95 transition-all active:scale-[0.98] flex items-center justify-center gap-2 text-base cursor-pointer"
+                        >
+                          {isSubmitting ? (
+                            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          ) : (
+                            <>
+                              <span>{isPhoneVerified ? (lang === "th" ? "ลงทะเบียนรับประกันสินค้า" : "Register Product Warranty") : t.submitReg}</span>
+                              <span className="material-symbols-outlined text-[20px]">arrow_forward</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </>
+                  )}
+
+                  {/* Always render Back to phone edit button at the bottom of the form block */}
+                  <div className="pt-4 flex">
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        setIsPhoneVerified(false);
+                        setIsUsingExistingAddress(false);
+                        setShowAutofillPrompt(false);
+                      }}
+                      className="w-full h-14 border-2 border-outline-variant text-secondary font-bold rounded-xl hover:bg-surface-container-low transition-all active:scale-[0.98] flex items-center justify-center gap-2 text-base cursor-pointer"
+                    >
+                      <span className="material-symbols-outlined text-[20px]">arrow_back</span>
+                      {lang === "th" ? "แก้ไขเบอร์โทรศัพท์" : "Change Phone Number"}
+                    </button>
+                  </div>
+                </form>
+              )}
             </div>
 
             {/* Sidebar info */}
@@ -1551,38 +1884,37 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
                       </h3>
                       
                       <div className="my-4 flex items-center justify-between">
-                        <span className="text-sm text-on-surface-variant font-medium">{lang === "th" ? "บานที่ได้รับประกันสะสม:" : "Active warranty count:"}</span>
-                        <span className="text-2xl font-black text-secondary px-3.5 py-1 bg-secondary-container/20 rounded-full border border-secondary/20">{registrationHistory.length} {lang === "th" ? "บาน" : "Units"}</span>
+                        <span className="text-sm text-on-surface-variant font-medium">{lang === "th" ? "จำนวนสินค้าที่รับประกันสะสม:" : "Active warranty count:"}</span>
+                        <span className="text-2xl font-black text-secondary px-3.5 py-1 bg-secondary-container/20 rounded-full border border-secondary/20">{registrationHistory.length} {lang === "th" ? "ชิ้น" : "Units"}</span>
                       </div>
 
                       <div className="max-h-36 overflow-y-auto space-y-2 pr-1 text-xs">
                         {registrationHistory.map((reg, idx) => (
                           <div key={reg.id} className="flex justify-between items-center p-2.5 bg-surface-container-low rounded-lg border border-outline-variant/20">
-                            <span className="font-semibold text-primary">{lang === "th" ? `บานที่ ${idx + 1}` : `Unit ${idx + 1}`}</span>
-                            <span className="text-outline font-mono text-[10px]">{reg.id.split("-")[1] || reg.id}</span>
+                            <span className="font-semibold text-primary">{lang === "th" ? `ชิ้นที่ ${idx + 1}` : `Unit ${idx + 1}`}</span>
                             <span className="text-[10px] text-on-surface-variant font-medium">
-                              {new Date(reg.registeredAt).toLocaleDateString(lang === "th" ? "th-TH" : "en-US", { month: "short", day: "numeric" })}
+                              {new Date(reg.registeredAt).toLocaleDateString(lang === "th" ? "th-TH" : "en-US", { year: "numeric", month: "short", day: "numeric" })}
                             </span>
                           </div>
                         ))}
                       </div>
                     </div>
 
-                    {/* Action: 1-Click register unit */}
+                    {/* Action: register additional unit */}
                     <div className="pt-4 border-t border-outline-variant/40 space-y-2">
                       <button
-                        onClick={handleAddUnit}
-                        disabled={isSubmitting}
-                        className="w-full h-12 bg-secondary text-white font-bold rounded-xl shadow-md hover:opacity-95 active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-sm disabled:opacity-50 cursor-pointer"
+                        onClick={() => setShowScanner(true)}
+                        className="w-full h-12 bg-secondary text-white font-bold rounded-xl shadow-md hover:opacity-95 active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-sm cursor-pointer"
                       >
-                        {isSubmitting ? (
-                          <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        ) : (
-                          <>
-                            <span className="material-symbols-outlined text-[18px]">add_circle</span>
-                            <span>{lang === "th" ? "ลงทะเบียนบานเพิ่มเติม (1-Click)" : "Register another unit"}</span>
-                          </>
-                        )}
+                        <span className="material-symbols-outlined text-[18px]">photo_camera</span>
+                        <span>{lang === "th" ? "ลงทะเบียนเพิ่มเติม" : "Register Additional Product"}</span>
+                      </button>
+                      <button
+                        onClick={() => router.push("/my-warranty")}
+                        className="w-full h-12 bg-transparent border-2 border-secondary text-secondary hover:bg-secondary/5 font-bold rounded-xl flex items-center justify-center gap-2 text-sm transition-all cursor-pointer mt-2"
+                      >
+                        <span className="material-symbols-outlined text-[18px]">local_police</span>
+                        <span>{lang === "th" ? "ดูรายการรับประกันทั้งหมดของฉัน" : "View All My Warranties"}</span>
                       </button>
                       {submitError && (
                         <p className="text-[10px] text-error font-semibold text-center mt-1">{submitError}</p>
@@ -1659,16 +1991,38 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
                       <div>
                         <h4 className="font-bold text-sm text-white flex items-center gap-1.5">
                           <span className="material-symbols-outlined text-lg">photo_camera</span>
-                          {lang === "th" ? "สแกนบานถัดไปทันที" : "Scan Next Item"}
+                          {lang === "th" ? "สแกนชิ้นถัดไปทันที" : "Scan Next Item"}
                         </h4>
                         <p className="text-[11px] text-white/80 mt-1 leading-normal">
                           {lang === "th" 
-                            ? "เปิดกล้องเพื่อสแกน QR Code ของสินค้าบานถัดไปได้ทันทีจากจุดนี้"
+                            ? "เปิดกล้องเพื่อสแกน QR Code ของสินค้าชิ้นถัดไปได้ทันทีจากจุดนี้"
                             : "Open in-app camera to register the next product scan immediately."}
                         </p>
                       </div>
                       <div className="flex justify-end items-center mt-2">
                         <span className="material-symbols-outlined text-sm font-bold bg-white text-secondary p-1 rounded-full group-hover:translate-x-0.5 transition-transform">
+                          arrow_forward
+                        </span>
+                      </div>
+                    </button>
+
+                    <button 
+                      onClick={() => router.push("/my-warranty")}
+                      className="bg-surface-container border border-outline-variant hover:bg-surface-container-high rounded-xl p-5 flex flex-col justify-between shadow-xs active:scale-95 transition-all cursor-pointer text-left group min-h-[120px]"
+                    >
+                      <div>
+                        <h4 className="font-bold text-sm text-primary flex items-center gap-1.5">
+                          <span className="material-symbols-outlined text-lg">local_police</span>
+                          {lang === "th" ? "ดูรายการรับประกันทั้งหมด" : "View All Warranties"}
+                        </h4>
+                        <p className="text-[11px] text-on-surface-variant mt-1 leading-normal">
+                          {lang === "th" 
+                            ? "เรียกดูสิทธิ์การรับประกันสินค้าทั้งหมดที่คุณได้ลงทะเบียนไว้แล้ว"
+                            : "Retrieve all registered product warranty rights under your phone/email."}
+                        </p>
+                      </div>
+                      <div className="flex justify-end items-center mt-2">
+                        <span className="material-symbols-outlined text-sm font-bold bg-white text-primary border border-outline-variant p-1 rounded-full group-hover:translate-x-0.5 transition-transform">
                           arrow_forward
                         </span>
                       </div>
@@ -1796,6 +2150,11 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
               <h3 className="font-bold text-lg text-primary">{t.otpTitle}</h3>
               <p className="text-xs text-on-surface-variant leading-relaxed">
                 {t.otpSubtitle.replace("{phone}", formData.phone)}
+                {otpRefCode && (
+                  <span className="block font-black text-secondary mt-1.5 text-xs bg-secondary-container/10 border border-secondary/20 rounded-md py-1">
+                    Ref Code: {otpRefCode}
+                  </span>
+                )}
               </p>
             </div>
 
@@ -1844,9 +2203,11 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
                 />
 
                 {otpError && <p className="text-xs text-error font-semibold text-center mt-1">{otpError}</p>}
-                <p className="text-[10px] text-outline text-center mt-1">
-                  {lang === "th" ? "เพื่อทดสอบ โปรดป้อน: 123456" : "For testing, enter: 123456"}
-                </p>
+                {smsOtpMode === "TEST" && (
+                  <p className="text-[10px] text-outline text-center mt-1">
+                    {lang === "th" ? "เพื่อทดสอบ โปรดป้อน: 123456" : "For testing, enter: 123456"}
+                  </p>
+                )}
               </div>
 
               <button
@@ -1884,13 +2245,21 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
                       setOtpError("");
                       // Resend request to API
                       try {
-                        await fetch(`${getApiBaseUrl()}/otp/request`, {
+                        const res = await fetch(`${getApiBaseUrl()}/otp/request`, {
                           method: "POST",
                           headers: { "Content-Type": "application/json" },
                           body: JSON.stringify({ phone: formData.phone })
                         });
+                        if (res.ok) {
+                          const resData = await res.json();
+                          setOtpRefCode(resData.refCode || "");
+                        } else {
+                          const errData = await res.json().catch(() => ({}));
+                          setOtpError(errData.message || (lang === "th" ? "ส่งรหัส OTP ล้มเหลว" : "Failed to resend OTP"));
+                        }
                       } catch (err) {
                         console.warn("Backend not running, simulated resend.");
+                        setOtpRefCode("MOCK");
                       }
                     }}
                     className="text-secondary font-bold hover:underline"
@@ -1954,12 +2323,87 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
       {showScanner && (
         <QrScannerModal 
           onClose={() => setShowScanner(false)} 
-          onScanSuccess={(token) => {
+          onScanSuccess={(scannedToken) => {
             setShowScanner(false);
-            router.push(`/p/${token}`);
+            
+            const getDocNum = (t: string) => {
+              if (t.length === 9) return t;
+              if (t.length === 12) return t.substring(0, 9);
+              return t;
+            };
+
+            const scannedDocNum = getDocNum(scannedToken);
+            const currentDocNum = getDocNum(token);
+            const isSame = scannedToken === token || scannedDocNum === currentDocNum;
+
+            if (isSame) {
+              if (qrMode === "STATIC") {
+                setDuplicateCount(registrationHistory.length || 1);
+                setShowDuplicateConfirmModal(true);
+              } else {
+                alert(lang === "th" ? "รหัส QR Code นี้ได้รับการลงทะเบียนแล้ว" : "This QR Code is already registered.");
+              }
+            } else {
+              router.push(`/p/${scannedToken}`);
+            }
           }} 
           lang={lang} 
         />
+      )}
+
+      {/* Duplicate Registration Confirmation Modal for Static QR */}
+      {showDuplicateConfirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-2xl max-w-md w-full border border-outline-variant p-6 md:p-8 shadow-2xl text-center space-y-6 animate-success">
+            <div className="w-16 h-16 bg-secondary/15 rounded-full flex items-center justify-center mx-auto border border-secondary/20">
+              <span className="material-symbols-outlined text-secondary !text-3xl" style={{ fontVariationSettings: "'FILL' 1" }}>
+                help
+              </span>
+            </div>
+            <div className="space-y-3">
+              <h3 className="font-bold text-xl text-primary">
+                {lang === "th" ? "พบข้อมูลการลงทะเบียนซ้ำ" : "Duplicate Registration Found"}
+              </h3>
+              <p className="text-sm text-on-surface-variant leading-relaxed">
+                {lang === "th" 
+                  ? `ระบบตรวจสอบพบว่าคุณได้รับการลงทะเบียนรับประกันสินค้าในรุ่นนี้ที่พิกัดบ้านของคุณแล้วจำนวน ${duplicateCount} ชิ้น คุณต้องการลงทะเบียนเพิ่มเติมเป็นชิ้นที่ ${duplicateCount + 1} หรือไม่?`
+                  : `Our system detected that you already have ${duplicateCount} registered unit(s) of this product model at your location. Would you like to register an additional unit as unit ${duplicateCount + 1}?`}
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3 pt-2">
+              <button
+                type="button"
+                onClick={handleAddUnit}
+                disabled={isSubmitting}
+                className="w-full sm:flex-1 h-12 bg-secondary text-white font-bold rounded-xl shadow-md hover:opacity-95 active:scale-[0.98] transition-all cursor-pointer flex items-center justify-center gap-1.5 text-sm disabled:opacity-50"
+              >
+                {isSubmitting ? (
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined text-[18px]">add_circle</span>
+                    <span>
+                      {lang === "th" ? `ลงทะเบียนชิ้นที่ ${duplicateCount + 1}` : `Register unit ${duplicateCount + 1}`}
+                    </span>
+                  </>
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDuplicateConfirmModal(false);
+                  // Clear profile session only — OTP session is preserved so the same
+                  // phone number won't need to verify again on the new house registration
+                  localStorage.removeItem("proregis_customer_session");
+                  window.location.href = `/p/${token}`;
+                }}
+                className="w-full sm:flex-1 h-12 border border-outline-variant text-primary font-semibold rounded-xl hover:bg-surface-container-low transition-all active:scale-[0.98] cursor-pointer text-sm"
+              >
+                {lang === "th" ? "ลงทะเบียนบ้านหลังใหม่" : "Register at a new house"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

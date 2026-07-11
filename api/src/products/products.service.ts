@@ -20,6 +20,7 @@ export interface Product {
   warrantyPeriod: string;
   qrMode?: string;
   verificationMode?: string;
+  smsOtpMode?: string;
   specs: {
     th: { label: string; value: string }[];
     en: { label: string; value: string }[];
@@ -276,44 +277,93 @@ export class ProductsService {
       throw new BadRequestException('ไม่พบรหัสใบสั่งผลิตใน QR Code');
     }
 
-    const po = await this.productionOrderRepository.findOne({ where: { docNum } });
+    let po = await this.productionOrderRepository.findOne({ where: { docNum } });
     if (!po) {
-      throw new BadRequestException('ไม่พบข้อมูลใบสั่งผลิตนี้ในระบบ หรือยังไม่ได้มีการสร้างรหัส QR Code จากทางหลังบ้าน');
+      this.logger.log(`[PRODUCTS SERVICE] Production Order not found in local DB. Fetching from SAP: DocNum=${docNum}`);
+      const sapPo = await this.sapService.getProductionOrder(docNum);
+      if (!sapPo) {
+        throw new BadRequestException('ไม่พบข้อมูลใบสั่งผลิตนี้ในระบบ หรือยังไม่ได้มีการสร้างรหัส QR Code จากทางพนักงานของบริษัท โปรดตรวจสอบรหัสอีกครั้ง');
+      }
+
+      // Save SAP PO to local DB
+      po = this.productionOrderRepository.create({
+        docNum,
+        itemCode: sapPo.itemCode,
+        itemName: sapPo.itemName,
+        plannedQty: sapPo.plannedQty,
+        orderDate: sapPo.orderDate,
+        startDate: sapPo.startDate,
+        status: sapPo.status,
+        completedQty: sapPo.completedQty,
+      });
+      await this.productionOrderRepository.save(po);
+      this.logger.log(`[PRODUCTS SERVICE] Cached Production Order from SAP to local DB: DocNum=${docNum}`);
     }
 
     const itemCode = po.itemCode;
     const itemName = po.itemName || `กระจกนิรภัยนำเข้า ซีรีส์ ${docNum.substring(6, 9)}`;
     
-    const metadata = await this.productMetadataRepository.findOne({ where: { itemCode } });
+    let metadata = await this.productMetadataRepository.findOne({ where: { itemCode } });
     if (!metadata) {
-      throw new BadRequestException('ไม่พบข้อมูลสเปกหรือรูปภาพของสินค้านี้ในฐานข้อมูล');
+      this.logger.log(`[PRODUCTS SERVICE] Product metadata not found in local DB for ItemCode=${itemCode}. Creating cached entry.`);
+      metadata = await this.cacheProductMetadata(itemCode, itemName);
     }
 
     // Dynamic specs from DB & SAP
-    const mfgDateTh = po.createdAt ? this.formatManufactureDate(po.createdAt, 'th') : 'N/A';
-    const mfgDateEn = po.createdAt ? this.formatManufactureDate(po.createdAt, 'en') : 'N/A';
+    let mfgDateTh = 'N/A';
+    let mfgDateEn = 'N/A';
+    if (po.startDate) {
+      const parsedDate = new Date(po.startDate);
+      if (!isNaN(parsedDate.getTime())) {
+        mfgDateTh = this.formatManufactureDate(parsedDate, 'th');
+        mfgDateEn = this.formatManufactureDate(parsedDate, 'en');
+      }
+    }
+    if (mfgDateTh === 'N/A' && po.createdAt) {
+      mfgDateTh = this.formatManufactureDate(po.createdAt, 'th');
+      mfgDateEn = this.formatManufactureDate(po.createdAt, 'en');
+    }
 
-    // Query GenerationLogs for this docNum to compute LOT-XX and Total Quantity
-    const logs = await this.generationLogRepository.find({
-      where: { docNum },
-      order: { generatedAt: 'ASC' }
-    });
+    const plannedQtyValue = po.plannedQty > 0 ? `${po.plannedQty}` : 'N/A';
 
-    let lotIndex = 1;
-    if (seqNum && logs.length > 0) {
-      const seqNumNum = parseInt(seqNum, 10);
-      for (let i = 0; i < logs.length; i++) {
-        const log = logs[i];
-        if (seqNumNum >= log.startSeq && seqNumNum < log.startSeq + log.quantity) {
-          lotIndex = i + 1;
+    // Parse description for size (Width x Height) and Color
+    const colorMap: Record<string, { th: string; en: string }> = {
+      'ขาว': { th: 'สีขาว', en: 'White' },
+      'อบขาว': { th: 'สีอบขาว', en: 'Powder White' },
+      'ดำ': { th: 'สีดำ', en: 'Black' },
+      'เทา': { th: 'สีเทา', en: 'Grey' },
+      'อลูมิเนียม': { th: 'สีอลูมิเนียม', en: 'Aluminum' },
+      'น้ำตาล': { th: 'สีน้ำตาล', en: 'Brown' },
+      'นต.': { th: 'สีน้ำตาล', en: 'Brown' },
+      'นต': { th: 'สีน้ำตาล', en: 'Brown' },
+      'ชา': { th: 'สีชา', en: 'Bronze' },
+      'เงิน': { th: 'สีเงิน', en: 'Silver' },
+    };
+
+    let matchedColor = { th: 'N/A', en: 'N/A' };
+    let matchedSize = { th: 'N/A', en: 'N/A' };
+
+    if (po.itemName) {
+      // 1. Match Color
+      for (const [key, val] of Object.entries(colorMap)) {
+        if (po.itemName.includes(key)) {
+          matchedColor = val;
           break;
         }
       }
-    }
-    const lotNo = `LOT-${String(lotIndex).padStart(2, '0')}`;
 
-    const totalQty = logs.reduce((sum, log) => sum + log.quantity, 0);
-    const poNoValue = totalQty > 0 ? `${totalQty}` : 'N/A';
+      // 2. Match Dimensions (e.g. 60x40 or 120 x 110)
+      const dimRegex = /(\d+)\s*[xX\*]\s*(\d+)/;
+      const dimMatch = po.itemName.match(dimRegex);
+      if (dimMatch) {
+        const w = dimMatch[1];
+        const h = dimMatch[2];
+        matchedSize = {
+          th: `${w} x ${h} ซม.`,
+          en: `${w} x ${h} cm`
+        };
+      }
+    }
 
     const qrModeSetting = await this.systemSettingRepository.findOne({ where: { key: 'QR_CODE_MODE' } });
     const qrMode = qrModeSetting ? qrModeSetting.value : 'STATIC';
@@ -321,29 +371,37 @@ export class ProductsService {
     const verificationModeSetting = await this.systemSettingRepository.findOne({ where: { key: 'VERIFICATION_MODE' } });
     const verificationMode = verificationModeSetting ? verificationModeSetting.value : 'OTP';
 
+    const smsOtpModeSetting = await this.systemSettingRepository.findOne({ where: { key: 'SMS_OTP_MODE' } });
+    const smsOtpMode = smsOtpModeSetting ? smsOtpModeSetting.value : 'TEST';
+
     return {
       token: token,
       code: itemCode,
       modelTh: metadata.itemName || 'กระจกหน้าต่างอลูมิเนียมนำเข้าซีรีส์ย่อย',
       modelEn: metadata.itemName || 'Imported Aluminum Window Sub-Series',
       manufactureDate: mfgDateTh,
-      lotNo: lotNo,
-      poNo: poNoValue,
+      lotNo: '', // Hide Lot No by returning empty string
+      poNo: plannedQtyValue,
       imageUrl: metadata.imageBase64 || 'https://images.unsplash.com/photo-1513694203232-719a280e022f?q=80&w=800&auto=format&fit=crop',
       warrantyPeriod: 'ตลอดอายุการใช้งาน (Lifetime Warranty)',
       qrMode,
       verificationMode,
+      smsOtpMode,
       specs: {
         th: [
-          { label: 'จำนวนที่ผลิต', value: totalQty > 0 ? `${totalQty} ชิ้น` : 'N/A' },
+          { label: 'จำนวนผลิต', value: po.plannedQty > 0 ? `${po.plannedQty} ชิ้น` : 'N/A' },
           { label: 'ลำดับที่', value: seqNum ? `ชิ้นที่ ${parseInt(seqNum, 10)}` : '-' },
           { label: 'วันที่ผลิต', value: mfgDateTh },
+          { label: 'ขนาด (กว้าง x สูง)', value: matchedSize.th },
+          { label: 'สี', value: matchedColor.th },
           { label: 'มาตรฐานควบคุม', value: 'ISO 9001:2015' },
         ],
         en: [
-          { label: 'Production Quantity', value: totalQty > 0 ? `${totalQty} Units` : 'N/A' },
+          { label: 'Production Quantity', value: po.plannedQty > 0 ? `${po.plannedQty} Units` : 'N/A' },
           { label: 'Unit No.', value: seqNum ? `Unit ${parseInt(seqNum, 10)}` : '-' },
           { label: 'Manufacture Date', value: mfgDateEn },
+          { label: 'Dimensions (W x H)', value: matchedSize.en },
+          { label: 'Color', value: matchedColor.en },
           { label: 'Compliance Standard', value: 'ISO 9001:2015' },
         ]
       },

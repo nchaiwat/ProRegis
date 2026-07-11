@@ -12,6 +12,7 @@ interface RegistrationHistoryItem {
   itemName: string;
   registeredAt: string;
   status: string;
+  installationPosition?: string | null;
 }
 
 interface ContactData {
@@ -756,6 +757,12 @@ export default function MyWarrantyPage() {
                           <span className="font-semibold text-primary">{localT[lang].seqNo}:</span>
                           <code>{item.seqNum || "-"}</code>
                         </p>
+                        {item.installationPosition && (
+                          <p className="flex items-center gap-1.5 sm:col-span-2 text-secondary font-bold">
+                            <span className="font-semibold text-primary">{lang === "th" ? "จุดที่ติดตั้ง" : "Installation Location"}:</span>
+                            <span>{item.installationPosition}</span>
+                          </p>
+                        )}
                       </div>
                     </div>
 

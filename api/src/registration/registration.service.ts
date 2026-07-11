@@ -1,10 +1,12 @@
 import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, LessThanOrEqual } from 'typeorm';
 import { Registration } from './registration.entity';
 import { ProductionOrder } from '../production-order/production-order.entity';
 import { TelegramService, formatThaiDateTime } from '../telegram/telegram.service';
 import { SystemSetting } from '../backoffice/system-setting.entity';
+import { SapService } from '../sap/sap.service';
+import { ProductMetadata } from '../products/product-metadata.entity';
 import * as crypto from 'crypto';
 
 export class RegistrationDto {
@@ -23,6 +25,7 @@ export class RegistrationDto {
   latitude?: number;
   longitude?: number;
   lineUserId?: string; // LINE User ID (optional, from LIFF)
+  installationPosition?: string; // ตำแหน่งติดตั้งตัวสินค้าภายในบ้าน เช่น ห้องนอนชั้น 2
 }
 
 import { GenerationLog } from '../backoffice/generation-log.entity';
@@ -40,7 +43,10 @@ export class RegistrationService {
     private readonly generationLogRepository: Repository<GenerationLog>,
     @InjectRepository(SystemSetting)
     private readonly systemSettingRepository: Repository<SystemSetting>,
+    @InjectRepository(ProductMetadata)
+    private readonly productMetadataRepository: Repository<ProductMetadata>,
     private readonly telegramService: TelegramService,
+    private readonly sapService: SapService,
   ) {}
 
   private decryptToken(token: string): { docNum: string; seqNum: string } | null {
@@ -77,6 +83,52 @@ export class RegistrationService {
         Math.sin(dLon / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c; // Distance in km
+  }
+
+  private getLevenshteinDistance(a: string, b: string): number {
+    const matrix: number[][] = [];
+    for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+    for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+
+    for (let i = 1; i <= b.length; i++) {
+      for (let j = 1; j <= a.length; j++) {
+        if (b.charAt(i - 1) === a.charAt(j - 1)) {
+          matrix[i][j] = matrix[i - 1][j - 1];
+        } else {
+          matrix[i][j] = Math.min(
+            matrix[i - 1][j - 1] + 1, // substitution
+            matrix[i][j - 1] + 1,     // insertion
+            matrix[i - 1][j] + 1      // deletion
+          );
+        }
+      }
+    }
+    return matrix[b.length][a.length];
+  }
+
+  private areAddressesSimilar(addr1: string, addr2: string): boolean {
+    if (!addr1 || !addr2) return false;
+
+    const normalize = (s: string) => s
+      .toLowerCase()
+      .replace(/\s+/g, '')
+      .replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '')
+      .replace(/หมู่ที่|หมู่/g, 'ม')
+      .replace(/ซอย|ซ\./g, 'ซ')
+      .replace(/ถนน|ถ\./g, 'ถ');
+
+    const clean1 = normalize(addr1);
+    const clean2 = normalize(addr2);
+
+    if (clean1 === clean2) return true;
+
+    const maxLen = Math.max(clean1.length, clean2.length);
+    if (maxLen === 0) return true;
+
+    const distance = this.getLevenshteinDistance(clean1, clean2);
+    const similarity = 1 - distance / maxLen;
+
+    return similarity >= 0.85; // 85% similarity threshold
   }
 
   async registerProduct(dto: RegistrationDto) {
@@ -125,10 +177,40 @@ export class RegistrationService {
       }
     }
 
-    // 1. Check if ProductionOrder is pre-generated in backend (by staff)
-    const po = await this.productionOrderRepository.findOne({ where: { docNum } });
+    // 1. Check if ProductionOrder exists in local DB or fetch from SAP B1
+    let po = await this.productionOrderRepository.findOne({ where: { docNum } });
     if (!po) {
-      throw new BadRequestException('ไม่พบข้อมูลใบสั่งผลิตนี้ในระบบ หรือยังไม่ได้มีการสร้างรหัส QR Code จากทางพนักงานของบริษัท โปรดติดต่อเจ้าหน้าที่ดูแลระบบ');
+      this.logger.log(`[REGISTRATION SERVICE] Production Order not found in local DB. Fetching from SAP: DocNum=${docNum}`);
+      const sapPo = await this.sapService.getProductionOrder(docNum);
+      if (!sapPo) {
+        throw new BadRequestException('ไม่พบข้อมูลใบสั่งผลิตนี้ในระบบ หรือยังไม่ได้มีการสร้างรหัส QR Code จากทางพนักงานของบริษัท โปรดติดต่อเจ้าหน้าที่ดูแลระบบ');
+      }
+
+      // Save SAP PO to local DB
+      po = this.productionOrderRepository.create({
+        docNum,
+        itemCode: sapPo.itemCode,
+        itemName: sapPo.itemName,
+        plannedQty: sapPo.plannedQty,
+        orderDate: sapPo.orderDate,
+        startDate: sapPo.startDate,
+        status: sapPo.status,
+        completedQty: sapPo.completedQty,
+      });
+      await this.productionOrderRepository.save(po);
+      this.logger.log(`[REGISTRATION SERVICE] Cached Production Order from SAP to local DB during registration: DocNum=${docNum}`);
+    }
+
+    // Verify product metadata is saved locally
+    const metadata = await this.productMetadataRepository.findOne({ where: { itemCode: po.itemCode } });
+    if (!metadata) {
+      this.logger.log(`[REGISTRATION SERVICE] Caching missing product metadata for ItemCode=${po.itemCode}`);
+      const newMetadata = this.productMetadataRepository.create({
+        itemCode: po.itemCode,
+        itemName: po.itemName || 'สินค้าทั่วไป',
+        imageBase64: null,
+      });
+      await this.productMetadataRepository.save(newMetadata);
     }
 
     // 2. Check if already registered (Double Registration Check)
@@ -144,23 +226,23 @@ export class RegistrationService {
         
         // Construct Telegram Alert message
         const alertMessage = [
-          `📱 <b>ProRegis</b> · ${timeStr}`,
+          `🪟 <b>ProRegis</b> · ${timeStr}`,
           `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-          `🚨 <b>แจ้งเตือน: ตรวจพบการลงทะเบียนซ้ำ! (Double Registration)</b>\n`,
-          `• 📦 <b>Production Order (PD):</b> <code>${docNum}</code>`,
-          `• 🔢 <b>Production Running No:</b> <code>${seqNum}</code>`,
-          `• 🏷️ <b>รหัสสินค้า (SAP B1):</b> <code>${itemCode}</code>`,
+          `🚨 <b>ตรวจพบการลงทะเบียนซ้ำ! (Double Registration)</b>\n`,
+          `📦 <b>Production Order (PD):</b> <code>${docNum}</code>`,
+          `🔢 <b>Running No:</b> <code>${seqNum}</code>`,
+          `🏷️ <b>รหัสสินค้า (SAP B1):</b> <code>${itemCode}</code>`,
           `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
           `📍 <b>ข้อมูลการลงทะเบียนครั้งก่อนหน้า:</b>`,
-          `• 👤 <b>ชื่อ-นามสกุล:</b> ${existingRegistration.firstName} ${existingRegistration.lastName}`,
-          `• 📞 <b>เบอร์โทรศัพท์:</b> ${existingRegistration.phone}`,
-          `• 📍 <b>จังหวัดติดตั้ง:</b> จ.${existingRegistration.province}`,
-          `• 📅 <b>วันเวลาลงทะเบียนสำเร็จ:</b> ${oldRegTime}`,
+          `👤 <b>ชื่อ-นามสกุล:</b> ${existingRegistration.firstName} ${existingRegistration.lastName}`,
+          `📞 <b>เบอร์โทรศัพท์:</b> ${existingRegistration.phone}`,
+          `📍 <b>จังหวัดติดตั้ง:</b> จ.${existingRegistration.province}`,
+          `📅 <b>วันเวลาลงทะเบียนสำเร็จ:</b> ${oldRegTime}`,
           `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
           `⚠️ <b>ข้อมูลการพยายามลงทะเบียนซ้ำ:</b>`,
-          `• 👤 <b>ชื่อ-นามสกุล:</b> ${dto.firstName} ${dto.lastName}`,
-          `• 📞 <b>เบอร์โทรศัพท์:</b> ${dto.phone}`,
-          `• 📍 <b>จังหวัดติดตั้ง:</b> จ.${dto.province}`,
+          `👤 <b>ชื่อ-นามสกุล:</b> ${dto.firstName} ${dto.lastName}`,
+          `📞 <b>เบอร์โทรศัพท์:</b> ${dto.phone}`,
+          `📍 <b>จังหวัดติดตั้ง:</b> จ.${dto.province}`,
           `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
           `🔍 <i>โปรดติดต่อยืนยันความเป็นเจ้าของสินค้ากับลูกค้าในระบบ ProRegis</i>`
         ].join('\n');
@@ -200,11 +282,22 @@ export class RegistrationService {
                 Number(reg.latitude),
                 Number(reg.longitude)
               );
-              if (distance <= 0.5) { // 500 meters threshold
+              if (distance <= 0.5 && this.areAddressesSimilar(reg.address, dto.address)) {
                 isSameSite = true;
                 break;
               }
             } else {
+              if (this.areAddressesSimilar(reg.address, dto.address)) {
+                isSameSite = true;
+                break;
+              }
+            }
+          }
+        } else {
+          // If no GPS coordinates provided, fallback to address similarity checking
+          isSameSite = false;
+          for (const reg of existingRegistrations) {
+            if (this.areAddressesSimilar(reg.address, dto.address)) {
               isSameSite = true;
               break;
             }
@@ -217,8 +310,9 @@ export class RegistrationService {
       }
     }
 
-    // Generate Registration Code
-    const cleanToken = dto.token.substring(0, 3).toUpperCase();
+    // Generate Registration Code (using first 4 digits of production order yymm)
+    const codeSource = docNum || dto.token;
+    const cleanToken = codeSource.substring(0, 4).toUpperCase();
     const registrationId = `REG-${Math.floor(Math.random() * 90000) + 10000}-${cleanToken}`;
 
     const newRegistration = this.registrationRepository.create({
@@ -239,6 +333,7 @@ export class RegistrationService {
       longitude: dto.longitude || null,
       lineUserId: dto.lineUserId || null,
       status: 'WARRANTY_ACTIVE',
+      installationPosition: dto.installationPosition || null,
     });
 
     // Save to PostgreSQL database!
@@ -267,13 +362,27 @@ export class RegistrationService {
     if (existing) {
       return existing.itemCode;
     }
+    try {
+      const sapPo = await this.sapService.getProductionOrder(docNum);
+      if (sapPo) {
+        return sapPo.itemCode;
+      }
+    } catch (err) {
+      this.logger.warn(`Failed to fetch ItemCode from SAP for docNum ${docNum}:`, err);
+    }
     return 'ไม่ระบุ';
   }
 
   // Trigger Telegram notification for successful registration
   private async triggerTelegramNotification(reg: Registration): Promise<void> {
     const docNum = reg.docNum || 'ไม่ระบุ';
-    const seqNum = reg.seqNum || 'ไม่ระบุ';
+    let seqNum = reg.seqNum || '';
+    if (!seqNum || seqNum === 'ไม่ระบุ') {
+      const count = await this.registrationRepository.count({
+        where: { docNum: reg.docNum || '', phone: reg.phone }
+      });
+      seqNum = `${count}`;
+    }
     
     const itemCode = reg.docNum ? await this.getOrFetchItemCode(reg.docNum) : 'ไม่ระบุ';
     
@@ -286,15 +395,16 @@ export class RegistrationService {
       : 'ลูกค้าปฏิเสธการแชร์พิกัด';
 
     const message = [
-      `📱 <b>ProRegis</b> · ${timeStr}`,
+      `🪟 <b>ProRegis</b> · ${timeStr}`,
       `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-      `🔔 <b>แจ้งเตือน: ลงทะเบียนรับประกันสินค้าสำเร็จ (Warranty Registration)</b>\n`,
-      `• 📦 <b>Production Order (PD):</b> <code>${docNum}</code>`,
-      `• 🔢 <b>Production Running No:</b> <code>${seqNum}</code>`,
-      `• 🏷️ <b>รหัสสินค้า (SAP B1):</b> <code>${itemCode}</code>`,
-      `• 📍 <b>ที่อยู่ติดตั้ง:</b> ${reg.address || ''} จ.${reg.province || ''} ${reg.postalCode || ''}`,
-      `• 📞 <b>เบอร์โทรศัพท์:</b> ${reg.phone || 'ไม่ระบุ'}`,
-      `• 🌐 <b>GPS Location:</b> ${gpsText}`,
+      `🔔 <b>ลงทะเบียนรับประกันสินค้าสำเร็จ (Warranty Registration)</b>\n`,
+      `📦 <b>Production Order (PD):</b> <code>${docNum}</code>`,
+      `🔢 <b>Running No:</b> <code>${seqNum}</code>`,
+      `🏷️ <b>รหัสสินค้า (SAP B1):</b> <code>${itemCode}</code>`,
+      `📍 <b>ที่อยู่ติดตั้ง:</b> ${reg.address || ''} จ.${reg.province || ''} ${reg.postalCode || ''}`,
+      `🚪 <b>ตำแหน่งติดตั้ง:</b> ${reg.installationPosition || 'ไม่ระบุ'}`,
+      `📞 <b>เบอร์โทรศัพท์:</b> ${reg.phone || 'ไม่ระบุ'}`,
+      `🌐 <b>GPS Location:</b> ${gpsText}`,
       `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
       `🔍 <i>สามารถตรวจสอบรายละเอียดประกันภัยได้เพิ่มเติมในระบบ ProRegis</i>`
     ].join('\n');
@@ -309,36 +419,113 @@ export class RegistrationService {
       order: { registeredAt: 'DESC' },
     });
 
-    const results: Array<{
-      id: string;
-      docNum: string | null;
-      seqNum: string | null;
-      itemCode: string;
-      itemName: string;
-      registeredAt: Date;
-      status: string;
-    }> = [];
-    for (const reg of registrations) {
-      let itemCode = 'ไม่ระบุ';
-      let itemName = 'ไม่ระบุ';
-      if (reg.docNum) {
-        const po = await this.productionOrderRepository.findOne({ where: { docNum: reg.docNum } });
-        if (po) {
-          itemCode = po.itemCode;
-          itemName = po.itemName || 'ไม่ระบุ';
+     const formatMfgDate = (date: Date, lang: 'th' | 'en'): string => {
+       if (!date) return 'N/A';
+       const monthsTh = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+       const monthsEn = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+       const m = date.getMonth();
+       const y = date.getFullYear();
+       return lang === 'th' ? `${monthsTh[m]} ${y}` : `${monthsEn[m]} ${y}`;
+     };
+
+     const results: Array<{
+       id: string;
+       docNum: string | null;
+       seqNum: string | null;
+       itemCode: string;
+       itemName: string;
+       registeredAt: Date;
+       status: string;
+       firstName: string;
+       lastName: string;
+       address: string;
+       province: string;
+       postalCode: string;
+       email: string | null;
+       latitude: number | null;
+       longitude: number | null;
+       mfgDateTh: string;
+       mfgDateEn: string;
+       lotNo: string;
+       totalQty: string;
+       installationPosition: string | null;
+     }> = [];
+     for (const reg of registrations) {
+       let itemCode = 'ไม่ระบุ';
+       let itemName = 'ไม่ระบุ';
+       let mfgDateTh = 'N/A';
+       let mfgDateEn = 'N/A';
+       let lotNo = 'LOT-01';
+       let totalQty = 'N/A';
+
+       let po: any = null;
+       if (reg.docNum) {
+         po = await this.productionOrderRepository.findOne({ where: { docNum: reg.docNum } });
+         if (po) {
+           itemCode = po.itemCode;
+           itemName = po.itemName || 'ไม่ระบุ';
+           mfgDateTh = po.createdAt ? formatMfgDate(po.createdAt, 'th') : 'N/A';
+           mfgDateEn = po.createdAt ? formatMfgDate(po.createdAt, 'en') : 'N/A';
+         }
+
+         const logs = await this.generationLogRepository.find({
+           where: { docNum: reg.docNum },
+           order: { generatedAt: 'ASC' }
+         });
+
+         let lotIndex = 1;
+         if (reg.seqNum && logs.length > 0) {
+           const seqNumNum = parseInt(reg.seqNum, 10);
+           for (let i = 0; i < logs.length; i++) {
+             const log = logs[i];
+             if (seqNumNum >= log.startSeq && seqNumNum < log.startSeq + log.quantity) {
+               lotIndex = i + 1;
+               break;
+             }
+           }
+         }
+         lotNo = `LOT-${String(lotIndex).padStart(2, '0')}`;
+
+         const sumQty = logs.reduce((sum, log) => sum + log.quantity, 0);
+         totalQty = sumQty > 0 ? `${sumQty}` : (po && po.plannedQty > 0 ? `${po.plannedQty}` : 'N/A');
+       }
+
+        let calculatedSeqNum = reg.seqNum;
+        if (!calculatedSeqNum && reg.docNum) {
+          const count = await this.registrationRepository.count({
+            where: { 
+              docNum: reg.docNum, 
+              phone: reg.phone,
+              registeredAt: LessThanOrEqual(reg.registeredAt)
+            }
+          });
+          calculatedSeqNum = `${count}`;
         }
-      }
-      results.push({
-        id: reg.id,
-        docNum: reg.docNum,
-        seqNum: reg.seqNum,
-        itemCode,
-        itemName,
-        registeredAt: reg.registeredAt,
-        status: reg.status,
-      });
-    }
-    return results;
+
+       results.push({
+         id: reg.id,
+         docNum: reg.docNum,
+         seqNum: calculatedSeqNum,
+         itemCode,
+         itemName,
+         registeredAt: reg.registeredAt,
+         status: reg.status,
+         firstName: reg.firstName,
+         lastName: reg.lastName,
+         address: reg.address,
+         province: reg.province,
+         postalCode: reg.postalCode,
+         email: reg.email,
+         latitude: reg.latitude ? Number(reg.latitude) : null,
+         longitude: reg.longitude ? Number(reg.longitude) : null,
+         mfgDateTh,
+         mfgDateEn,
+         lotNo,
+         totalQty,
+         installationPosition: reg.installationPosition,
+       });
+     }
+     return results;
   }
 
   async getRegistrationsByContact(contact: string) {
@@ -380,6 +567,7 @@ export class RegistrationService {
       mfgDateEn: string;
       lotNo: string;
       totalQty: string;
+      installationPosition: string | null;
     }> = [];
 
     for (const reg of registrations) {
@@ -390,8 +578,9 @@ export class RegistrationService {
       let lotNo = 'LOT-01';
       let totalQty = 'N/A';
 
+      let po: any = null;
       if (reg.docNum) {
-        const po = await this.productionOrderRepository.findOne({ where: { docNum: reg.docNum } });
+        po = await this.productionOrderRepository.findOne({ where: { docNum: reg.docNum } });
         if (po) {
           itemCode = po.itemCode;
           itemName = po.itemName || 'ไม่ระบุ';
@@ -418,13 +607,25 @@ export class RegistrationService {
         lotNo = `LOT-${String(lotIndex).padStart(2, '0')}`;
 
         const sumQty = logs.reduce((sum, log) => sum + log.quantity, 0);
-        totalQty = sumQty > 0 ? `${sumQty}` : 'N/A';
+        totalQty = sumQty > 0 ? `${sumQty}` : (po && po.plannedQty > 0 ? `${po.plannedQty}` : 'N/A');
+      }
+
+      let calculatedSeqNum = reg.seqNum;
+      if (!calculatedSeqNum && reg.docNum) {
+        const count = await this.registrationRepository.count({
+          where: { 
+            docNum: reg.docNum, 
+            phone: reg.phone,
+            registeredAt: LessThanOrEqual(reg.registeredAt)
+          }
+        });
+        calculatedSeqNum = `${count}`;
       }
 
       results.push({
         id: reg.id,
         docNum: reg.docNum,
-        seqNum: reg.seqNum,
+        seqNum: calculatedSeqNum,
         itemCode,
         itemName,
         registeredAt: reg.registeredAt,
@@ -433,6 +634,7 @@ export class RegistrationService {
         mfgDateEn,
         lotNo,
         totalQty,
+        installationPosition: reg.installationPosition,
       });
     }
     return results;
@@ -581,8 +783,9 @@ export class RegistrationService {
       throw new BadRequestException('ไม่พบข้อมูลการลงทะเบียนต้นแบบสำหรับบานนี้');
     }
 
-    // Generate new registration ID
-    const cleanToken = dto.token.substring(0, 3).toUpperCase();
+    // Generate new registration ID (using first 4 digits of production order yymm)
+    const codeSource = baseReg.docNum || dto.token;
+    const cleanToken = codeSource.substring(0, 4).toUpperCase();
     const registrationId = `REG-${Math.floor(Math.random() * 90000) + 10000}-${cleanToken}`;
 
     const newRegistration = this.registrationRepository.create({
@@ -603,6 +806,7 @@ export class RegistrationService {
       longitude: baseReg.longitude,
       lineUserId: baseReg.lineUserId,
       status: 'WARRANTY_ACTIVE',
+      installationPosition: baseReg.installationPosition || null,
     });
 
     await this.registrationRepository.save(newRegistration);
