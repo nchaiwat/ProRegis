@@ -96,6 +96,44 @@ export class UsersService implements OnApplicationBootstrap {
       }
       console.log('[USERS SEED] Seeding completed.');
     }
+
+    // Ensure SYSTEM_ADMIN has 'product-images' menu
+    const adminPerm = await this.rolePermissionRepository.findOne({ where: { role: UserRole.SYSTEM_ADMIN } });
+    if (adminPerm) {
+      if (!adminPerm.allowedMenus.includes('product-images')) {
+        adminPerm.allowedMenus.push('product-images');
+        await this.rolePermissionRepository.save(adminPerm);
+      }
+    }
+
+    // Ensure IMAGE_EDITOR permissions exist
+    const editorPerm = await this.rolePermissionRepository.findOne({ where: { role: UserRole.IMAGE_EDITOR } });
+    if (!editorPerm) {
+      const p = this.rolePermissionRepository.create({
+        role: UserRole.IMAGE_EDITOR,
+        allowedMenus: ['product-images', 'checker'],
+      });
+      await this.rolePermissionRepository.save(p);
+    }
+
+    // Ensure default image_editor user exists
+    const editorUser = await this.userRepository.findOne({ where: { username: 'image_editor' } });
+    if (!editorUser) {
+      const editorPass = await bcrypt.hash('WindowAsia@2026', 10);
+      const u = this.userRepository.create({
+        username: 'image_editor',
+        passwordHash: editorPass,
+        role: UserRole.IMAGE_EDITOR,
+        status: UserStatus.ACTIVE,
+        firstName: 'Image',
+        lastName: 'Editor',
+        department: 'Design',
+        email: 'design@windowasia.com',
+        mobile: '088-888-8888',
+        telegramId: null,
+      });
+      await this.userRepository.save(u);
+    }
   }
 
   async findByUsername(username: string): Promise<User | null> {

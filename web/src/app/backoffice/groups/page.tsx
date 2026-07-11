@@ -25,6 +25,7 @@ export default function GroupManagementPage() {
     { key: "generate", name: "สร้างไฟล์คิวอาร์ (QR Builder)", group: "general" },
     { key: "production-tracker", name: "รายการสั่งผลิต (Production Tracker)", group: "general" },
     { key: "crm", name: "ฐานข้อมูลลูกค้า (CRM Database)", group: "general" },
+    { key: "product-images", name: "จัดการรูปภาพสินค้า (Product Images)", group: "general" },
     { key: "users", name: "จัดการบัญชีผู้ใช้ (User Admin)", group: "admin" },
     { key: "groups", name: "จัดการกลุ่มผู้ใช้งาน (Group Management)", group: "admin" },
     { key: "logs", name: "ประวัติบันทึกการทำงาน (Audit Logs)", group: "admin" },
@@ -37,18 +38,20 @@ export default function GroupManagementPage() {
     generate: "qr_code",
     "production-tracker": "factory",
     crm: "groups",
+    "product-images": "image",
     users: "manage_accounts",
     groups: "admin_panel_settings",
     logs: "history_toggle_off",
     settings: "settings",
   };
 
-  const roles = ["CRM_MANAGER", "QR_GENERATOR", "SYSTEM_ADMIN"];
+  const roles = ["CRM_MANAGER", "QR_GENERATOR", "IMAGE_EDITOR", "SYSTEM_ADMIN"];
 
   const roleFriendlyNames: Record<string, string> = {
-    CRM_MANAGER: "CRM Manager",
-    QR_GENERATOR: "Factory & QR Builder",
-    SYSTEM_ADMIN: "System Admin",
+    CRM_MANAGER: "CRM Manager (ฝ่ายดูแลข้อมูลลูกค้า)",
+    QR_GENERATOR: "QR Generator (ฝ่ายผลิต/คลังสินค้า)",
+    IMAGE_EDITOR: "Image Editor (ฝ่ายจัดการรูปภาพสินค้า)",
+    SYSTEM_ADMIN: "System Admin (ผู้ดูแลระบบสูงสุด)",
   };
 
   useEffect(() => {

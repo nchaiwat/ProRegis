@@ -181,6 +181,12 @@ export default function BackofficeLayout({ children }: { children: React.ReactNo
       path: "/backoffice/crm",
       icon: "groups",
     },
+    {
+      key: "product-images",
+      name: "จัดการรูปภาพสินค้า (Product Images)",
+      path: "/backoffice/product-images",
+      icon: "image",
+    },
   ];
 
   // Define Admin Menus

@@ -13,6 +13,7 @@ interface RegistrationHistoryItem {
   registeredAt: string;
   status: string;
   installationPosition?: string | null;
+  imageUrl?: string;
 }
 
 interface ContactData {
@@ -723,11 +724,19 @@ export default function MyWarrantyPage() {
                   <div className="absolute left-0 top-0 h-full w-1.5 bg-secondary" />
 
                   <div className="flex flex-col md:flex-row gap-4 items-start md:items-center pl-2">
-                    {/* Dynamic product type icon */}
-                    <div className="w-12 h-12 bg-secondary/5 border border-secondary/15 rounded-xl flex items-center justify-center flex-shrink-0">
-                      <span className="material-symbols-outlined text-secondary text-2xl">
-                        {getProductIcon(item.itemName)}
-                      </span>
+                    {/* Dynamic product type icon or Product Image */}
+                    <div className="w-16 h-16 bg-surface-container border border-outline-variant/60 rounded-xl flex items-center justify-center flex-shrink-0 overflow-hidden shadow-inner">
+                      {item.imageUrl ? (
+                        <img 
+                          src={item.imageUrl} 
+                          alt="Product thumbnail" 
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <span className="material-symbols-outlined text-secondary text-2xl">
+                          {getProductIcon(item.itemName)}
+                        </span>
+                      )}
                     </div>
 
                     <div className="space-y-1.5 flex-grow">

@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Get,
+  Delete,
   Body,
   Res,
   Req,
@@ -139,6 +140,27 @@ export class BackofficeController {
   @UseGuards(JwtAuthGuard)
   async checkProduct(@Body() body: { token?: string; label?: string; registrationId?: string }) {
     return this.backofficeService.checkProduct(body.token, body.label, body.registrationId);
+  }
+
+  @Post('upload-image')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('SYSTEM_ADMIN', 'IMAGE_EDITOR')
+  async uploadProductImage(@Body() body: { itemCode: string; imageBase64: string }) {
+    return this.backofficeService.uploadProductImage(body.itemCode, body.imageBase64);
+  }
+
+  @Get('custom-images')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('SYSTEM_ADMIN', 'IMAGE_EDITOR')
+  async getCustomImages() {
+    return this.backofficeService.getCustomImages();
+  }
+
+  @Delete('product-image/:itemCode')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('SYSTEM_ADMIN', 'IMAGE_EDITOR')
+  async deleteProductImage(@Param('itemCode') itemCode: string) {
+    return this.backofficeService.deleteProductImage(itemCode);
   }
 
   // -------------------------------------------------------------------------

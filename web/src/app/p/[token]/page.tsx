@@ -307,7 +307,6 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
 
   const t = translations[lang];
 
-  // Load session on mount & dynamically load LINE LIFF SDK
   useEffect(() => {
     let storedPhone: string | null = null;
     const sessionStr = localStorage.getItem("proregis_customer_session");
@@ -315,7 +314,7 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
       try {
         const session = JSON.parse(sessionStr);
         // Active session for 1 hour (3,600,000 milliseconds)
-        if (Date.now() - session.timestamp < 3600000) {
+        if (Date.now() - session.timestamp < 3600000 && session.firstName && session.address) {
           setFormData({
             firstName: session.firstName || "",
             lastName: session.lastName || "",
@@ -349,6 +348,7 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
             setFormData((prev) => ({ ...prev, phone: otpSession.phone }));
             setIsPhoneVerified(true);
             storedPhone = otpSession.phone;
+            fetchProfileByPhone(otpSession.phone);
           } else {
             localStorage.removeItem("proregis_otp_session");
           }
@@ -399,6 +399,34 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
     };
   }, []);
 
+  const fetchProfileByPhone = async (phoneVal: string) => {
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/registration/by-phone`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone: phoneVal, otpCode: "SESSION_BYPASS" })
+      });
+      if (res.ok) {
+        const list = await res.json();
+        if (list && list.length > 0) {
+          const latest = list[list.length - 1];
+          const profile = {
+            firstName: latest.firstName || "",
+            lastName: latest.lastName || "",
+            address: latest.address || "",
+            province: latest.province || "",
+            postalCode: latest.postalCode || "",
+            email: latest.email || ""
+          };
+          setAutofilledProfile(profile);
+          setShowAutofillPrompt(true);
+        }
+      }
+    } catch (err) {
+      console.warn("Failed fetching profile by phone:", err);
+    }
+  };
+
   // Helper to check if this lot (PD) is already registered at user's location
   const checkRegistrationStatus = async (resolvedDocNum: string, phoneVal: string, lat?: number, lng?: number) => {
     if (!resolvedDocNum || !phoneVal) return;
@@ -420,7 +448,37 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
           setIsRegisteredAtSite(true);
           setRegistrationHistory(data.list || []);
           setRefRegNumber(data.list[data.list.length - 1]?.id || "");
-          setStep(4); // Redirect directly to Warranty Dashboard (step 4)
+          
+          if (data.profile && data.profile.firstName && data.profile.address) {
+            setFormData({
+              firstName: data.profile.firstName || "",
+              lastName: data.profile.lastName || "",
+              address: data.profile.address || "",
+              province: data.profile.province || "",
+              postalCode: data.profile.postalCode || "",
+              phone: data.profile.phone || "",
+              email: data.profile.email || "",
+              installationPosition: ""
+            });
+
+            localStorage.setItem("proregis_customer_session", JSON.stringify({
+              firstName: data.profile.firstName,
+              lastName: data.profile.lastName,
+              address: data.profile.address,
+              province: data.profile.province,
+              postalCode: data.profile.postalCode,
+              phone: data.profile.phone,
+              email: data.profile.email,
+              timestamp: Date.now()
+            }));
+          }
+
+          if (data.count > 0 && qrMode === "STATIC") {
+            setDuplicateCount(data.count);
+            setShowDuplicateConfirmModal(true);
+          } else {
+            setStep(4);
+          }
         } else {
           setIsRegisteredAtSite(false);
         }

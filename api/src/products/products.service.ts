@@ -196,20 +196,7 @@ export class ProductsService {
       }
     }
 
-    this.logger.log(`[PRODUCTS SERVICE] Falling back and downloading placeholder image for ${itemCode}`);
-    try {
-      const response = await fetch(placeholder, { signal: AbortSignal.timeout(5000) });
-      if (response.ok) {
-        const buffer = await response.arrayBuffer();
-        const contentType = response.headers.get('content-type') || 'image/jpeg';
-        const base64Str = Buffer.from(buffer).toString('base64');
-        this.logger.log(`[PRODUCTS SERVICE] Downloaded placeholder image successfully`);
-        return `data:${contentType};base64,${base64Str}`;
-      }
-    } catch (err) {
-      this.logger.error(`[PRODUCTS SERVICE] Failed to download placeholder image: ${err.message}`);
-    }
-
+    this.logger.log(`[PRODUCTS SERVICE] Returning placeholder image URL for ${itemCode}`);
     return placeholder;
   }
 
@@ -282,7 +269,7 @@ export class ProductsService {
       this.logger.log(`[PRODUCTS SERVICE] Production Order not found in local DB. Fetching from SAP: DocNum=${docNum}`);
       const sapPo = await this.sapService.getProductionOrder(docNum);
       if (!sapPo) {
-        throw new BadRequestException('ไม่พบข้อมูลใบสั่งผลิตนี้ในระบบ หรือยังไม่ได้มีการสร้างรหัส QR Code จากทางพนักงานของบริษัท โปรดตรวจสอบรหัสอีกครั้ง');
+        throw new BadRequestException('ไม่พบข้อมูลใบสั่งผลิตนี้ในระบบ หรือการเชื่อมต่อขัดข้อง กรุณารอประมาณ 5 นาทีค่อยลองใหม่อีกครั้ง หรือติดต่อเจ้าหน้าที่');
       }
 
       // Save SAP PO to local DB
@@ -374,6 +361,27 @@ export class ProductsService {
     const smsOtpModeSetting = await this.systemSettingRepository.findOne({ where: { key: 'SMS_OTP_MODE' } });
     const smsOtpMode = smsOtpModeSetting ? smsOtpModeSetting.value : 'TEST';
 
+    let imageUrl: string | null = null;
+    const placeholderUrl = 'https://images.unsplash.com/photo-1513694203232-719a280e022f?q=80&w=800&auto=format&fit=crop';
+    
+    if (itemCode && itemCode.includes('-')) {
+      const parts = itemCode.split('-');
+      if (parts.length >= 3) {
+        const prefix = parts.slice(0, parts.length - 1).join('-');
+        const prefixMetadata = await this.productMetadataRepository.findOne({ where: { itemCode: prefix } });
+        if (prefixMetadata && prefixMetadata.imageBase64 && !prefixMetadata.imageBase64.startsWith('http')) {
+          imageUrl = prefixMetadata.imageBase64;
+        }
+      }
+    }
+
+    if (!imageUrl) {
+      imageUrl = metadata.imageBase64;
+    }
+    if (!imageUrl || imageUrl.startsWith('http') || imageUrl === placeholderUrl) {
+      imageUrl = placeholderUrl;
+    }
+
     return {
       token: token,
       code: itemCode,
@@ -382,7 +390,7 @@ export class ProductsService {
       manufactureDate: mfgDateTh,
       lotNo: '', // Hide Lot No by returning empty string
       poNo: plannedQtyValue,
-      imageUrl: metadata.imageBase64 || 'https://images.unsplash.com/photo-1513694203232-719a280e022f?q=80&w=800&auto=format&fit=crop',
+      imageUrl,
       warrantyPeriod: 'ตลอดอายุการใช้งาน (Lifetime Warranty)',
       qrMode,
       verificationMode,
@@ -418,5 +426,19 @@ export class ProductsService {
         ]
       }
     };
+  }
+
+  async uploadProductImage(itemCode: string, imageBase64: string): Promise<ProductMetadata> {
+    let metadata = await this.productMetadataRepository.findOne({ where: { itemCode } });
+    if (!metadata) {
+      metadata = this.productMetadataRepository.create({
+        itemCode,
+        itemName: itemCode.includes('-') ? `สินค้ากลุ่มรหัส ${itemCode}` : 'สินค้าทั่วไป',
+        imageBase64,
+      });
+    } else {
+      metadata.imageBase64 = imageBase64;
+    }
+    return this.productMetadataRepository.save(metadata);
   }
 }

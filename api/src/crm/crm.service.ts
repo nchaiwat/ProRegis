@@ -58,9 +58,40 @@ export class CrmService {
       );
     }
 
-    // Province filter
+    // Province filter supporting dual language EN/TH variants
     if (filters.province && filters.province.trim()) {
-      query.andWhere('reg.province = :province', { province: filters.province.trim() });
+      const p = filters.province.trim();
+      const pLower = p.toLowerCase();
+      
+      const enThGroups: Record<string, string[]> = {
+        'bangkok': ['Bangkok', 'กรุงเทพมหานคร'],
+        'กรุงเทพมหานคร': ['Bangkok', 'กรุงเทพมหานคร'],
+        'nonthaburi': ['Nonthaburi', 'นนทบุรี'],
+        'นนทบุรี': ['Nonthaburi', 'นนทบุรี'],
+        'samut prakan': ['Samut Prakan', 'สมุทรปราการ', 'SamutPrakan'],
+        'samutprakan': ['Samut Prakan', 'สมุทรปราการ', 'SamutPrakan'],
+        'สมุทรปราการ': ['Samut Prakan', 'สมุทรปราการ', 'SamutPrakan'],
+        'chiang mai': ['Chiang Mai', 'เชียงใหม่', 'ChiangMai'],
+        'chiangmai': ['Chiang Mai', 'เชียงใหม่', 'ChiangMai'],
+        'เชียงใหม่': ['Chiang Mai', 'เชียงใหม่', 'ChiangMai'],
+        'chonburi': ['Chonburi', 'ชลบุรี'],
+        'ชลบุรี': ['Chonburi', 'ชลบุรี'],
+        'phuket': ['Phuket', 'ภูเก็ต'],
+        'ภูเก็ต': ['Phuket', 'ภูเก็ต'],
+        'khon kaen': ['Khon Kaen', 'ขอนแก่น', 'KhonKaen'],
+        'khonkaen': ['Khon Kaen', 'ขอนแก่น', 'KhonKaen'],
+        'ขอนแก่น': ['Khon Kaen', 'ขอนแก่น', 'KhonKaen'],
+        'nakhon ratchasima': ['Nakhon Ratchasima', 'นครราชสีมา', 'NakhonRatchasima', 'Korat'],
+        'nakhonratchasima': ['Nakhon Ratchasima', 'นครราชสีมา', 'NakhonRatchasima', 'Korat'],
+        'korat': ['Nakhon Ratchasima', 'นครราชสีมา', 'NakhonRatchasima', 'Korat'],
+        'นครราชสีมา': ['Nakhon Ratchasima', 'นครราชสีมา', 'NakhonRatchasima', 'Korat'],
+      };
+
+      if (enThGroups[pLower]) {
+        query.andWhere('reg.province IN (:...provinces)', { provinces: enThGroups[pLower] });
+      } else {
+        query.andWhere('reg.province = :province', { province: p });
+      }
     }
 
     // Status filter
@@ -144,8 +175,40 @@ export class CrmService {
       );
     }
 
+    // Province filter supporting dual language EN/TH variants
     if (filters.province && filters.province.trim()) {
-      query.andWhere('reg.province = :province', { province: filters.province.trim() });
+      const p = filters.province.trim();
+      const pLower = p.toLowerCase();
+      
+      const enThGroups: Record<string, string[]> = {
+        'bangkok': ['Bangkok', 'กรุงเทพมหานคร'],
+        'กรุงเทพมหานคร': ['Bangkok', 'กรุงเทพมหานคร'],
+        'nonthaburi': ['Nonthaburi', 'นนทบุรี'],
+        'นนทบุรี': ['Nonthaburi', 'นนทบุรี'],
+        'samut prakan': ['Samut Prakan', 'สมุทรปราการ', 'SamutPrakan'],
+        'samutprakan': ['Samut Prakan', 'สมุทรปราการ', 'SamutPrakan'],
+        'สมุทรปราการ': ['Samut Prakan', 'สมุทรปราการ', 'SamutPrakan'],
+        'chiang mai': ['Chiang Mai', 'เชียงใหม่', 'ChiangMai'],
+        'chiangmai': ['Chiang Mai', 'เชียงใหม่', 'ChiangMai'],
+        'เชียงใหม่': ['Chiang Mai', 'เชียงใหม่', 'ChiangMai'],
+        'chonburi': ['Chonburi', 'ชลบุรี'],
+        'ชลบุรี': ['Chonburi', 'ชลบุรี'],
+        'phuket': ['Phuket', 'ภูเก็ต'],
+        'ภูเก็ต': ['Phuket', 'ภูเก็ต'],
+        'khon kaen': ['Khon Kaen', 'ขอนแก่น', 'KhonKaen'],
+        'khonkaen': ['Khon Kaen', 'ขอนแก่น', 'KhonKaen'],
+        'ขอนแก่น': ['Khon Kaen', 'ขอนแก่น', 'KhonKaen'],
+        'nakhon ratchasima': ['Nakhon Ratchasima', 'นครราชสีมา', 'NakhonRatchasima', 'Korat'],
+        'nakhonratchasima': ['Nakhon Ratchasima', 'นครราชสีมา', 'NakhonRatchasima', 'Korat'],
+        'korat': ['Nakhon Ratchasima', 'นครราชสีมา', 'NakhonRatchasima', 'Korat'],
+        'นครราชสีมา': ['Nakhon Ratchasima', 'นครราชสีมา', 'NakhonRatchasima', 'Korat'],
+      };
+
+      if (enThGroups[pLower]) {
+        query.andWhere('reg.province IN (:...provinces)', { provinces: enThGroups[pLower] });
+      } else {
+        query.andWhere('reg.province = :province', { province: p });
+      }
     }
 
     if (filters.status && filters.status.trim()) {
@@ -155,5 +218,55 @@ export class CrmService {
     query.orderBy('reg.registeredAt', 'DESC');
 
     return query.getMany();
+  }
+
+  async getActiveProvinces(): Promise<Array<{ value: string; label: string }>> {
+    const rawProvinces = await this.registrationRepository
+      .createQueryBuilder('reg')
+      .select('reg.province', 'province')
+      .distinct(true)
+      .where('reg.province IS NOT NULL')
+      .andWhere("reg.province != ''")
+      .getRawMany();
+
+    const normMap: Record<string, { value: string; label: string }> = {
+      'bangkok': { value: 'Bangkok', label: 'กรุงเทพมหานคร' },
+      'กรุงเทพมหานคร': { value: 'Bangkok', label: 'กรุงเทพมหานคร' },
+      'nonthaburi': { value: 'Nonthaburi', label: 'นนทบุรี' },
+      'นนทบุรี': { value: 'Nonthaburi', label: 'นนทบุรี' },
+      'samut prakan': { value: 'Samut Prakan', label: 'สมุทรปราการ' },
+      'samutprakan': { value: 'Samut Prakan', label: 'สมุทรปราการ' },
+      'สมุทรปราการ': { value: 'Samut Prakan', label: 'สมุทรปราการ' },
+      'chiang mai': { value: 'Chiang Mai', label: 'เชียงใหม่' },
+      'chiangmai': { value: 'Chiang Mai', label: 'เชียงใหม่' },
+      'เชียงใหม่': { value: 'Chiang Mai', label: 'เชียงใหม่' },
+      'chonburi': { value: 'Chonburi', label: 'ชลบุรี' },
+      'ชลบุรี': { value: 'Chonburi', label: 'ชลบุรี' },
+      'phuket': { value: 'Phuket', label: 'ภูเก็ต' },
+      'ภูเก็ต': { value: 'Phuket', label: 'ภูเก็ต' },
+      'khon kaen': { value: 'Khon Kaen', label: 'ขอนแก่น' },
+      'khonkaen': { value: 'Khon Kaen', label: 'ขอนแก่น' },
+      'ขอนแก่น': { value: 'Khon Kaen', label: 'ขอนแก่น' },
+      'nakhon ratchasima': { value: 'Nakhon Ratchasima', label: 'นครราชสีมา' },
+      'nakhonratchasima': { value: 'Nakhon Ratchasima', label: 'นครราชสีมา' },
+      'korat': { value: 'Nakhon Ratchasima', label: 'นครราชสีมา' },
+      'นครราชสีมา': { value: 'Nakhon Ratchasima', label: 'นครราชสีมา' },
+    };
+
+    const uniqueMap = new Map<string, { value: string; label: string }>();
+
+    for (const raw of rawProvinces) {
+      const pStr = (raw.province || '').trim();
+      if (!pStr) continue;
+      const key = pStr.toLowerCase();
+      if (normMap[key]) {
+        const item = normMap[key];
+        uniqueMap.set(item.value, item);
+      } else {
+        uniqueMap.set(pStr, { value: pStr, label: pStr });
+      }
+    }
+
+    return Array.from(uniqueMap.values()).sort((a, b) => a.label.localeCompare(b.label, 'th'));
   }
 }

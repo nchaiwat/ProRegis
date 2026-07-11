@@ -19,6 +19,11 @@ export class CrmController {
     return this.crmService.getRegistrations(query);
   }
 
+  @Get('provinces')
+  async getActiveProvinces() {
+    return this.crmService.getActiveProvinces();
+  }
+
   @Get('registrations/:id')
   async getDetails(@Param('id') id: string, @Req() req: Request) {
     const actor = (req as any).user?.username || 'unknown';

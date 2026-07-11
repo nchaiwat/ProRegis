@@ -4,6 +4,7 @@ export enum UserRole {
   SYSTEM_ADMIN = 'SYSTEM_ADMIN',
   QR_GENERATOR = 'QR_GENERATOR',
   CRM_MANAGER = 'CRM_MANAGER',
+  IMAGE_EDITOR = 'IMAGE_EDITOR',
 }
 
 export enum UserStatus {

@@ -725,6 +725,27 @@ export class BackofficeService implements OnModuleInit {
       }
     }
 
+    let imageBase64: string | null = null;
+    if (itemCode && itemCode !== 'ไม่พบรหัสสินค้า') {
+      try {
+        const metadata = await this.productsService.cacheProductMetadata(itemCode, itemName);
+        let resolvedImage = metadata ? metadata.imageBase64 : null;
+        if (!resolvedImage || resolvedImage.startsWith('http')) {
+          if (itemCode.includes('-')) {
+            const parts = itemCode.split('-');
+            const prefix = parts.slice(0, parts.length - 1).join('-');
+            const prefixMeta = await this.productsService['productMetadataRepository'].findOne({ where: { itemCode: prefix } });
+            if (prefixMeta && prefixMeta.imageBase64 && !prefixMeta.imageBase64.startsWith('http')) {
+              resolvedImage = prefixMeta.imageBase64;
+            }
+          }
+        }
+        imageBase64 = resolvedImage;
+      } catch (err) {
+        console.error('Failed to get metadata image in checkProduct', err);
+      }
+    }
+
     return {
       registered: !!registration,
       docNum,
@@ -734,6 +755,7 @@ export class BackofficeService implements OnModuleInit {
         itemCode,
         itemName,
         plannedQty,
+        imageBase64,
       }
     };
   }
@@ -865,5 +887,58 @@ export class BackofficeService implements OnModuleInit {
       unregisteredCount: Math.max(0, totalQty - registeredCount),
       items,
     };
+  }
+
+  async uploadProductImage(itemCode: string, imageBase64: string) {
+    let targetCode = itemCode.trim();
+    if (targetCode.includes('-')) {
+      const parts = targetCode.split('-');
+      if (parts.length >= 3) {
+        targetCode = parts.slice(0, parts.length - 1).join('-');
+      }
+    }
+    return this.productsService.uploadProductImage(targetCode, imageBase64);
+  }
+
+  async getCustomImages() {
+    const metas = await this.productsService['productMetadataRepository']
+      .createQueryBuilder('meta')
+      .orderBy('meta.itemCode', 'ASC')
+      .getMany();
+
+    const results: any[] = [];
+    for (const meta of metas) {
+      const parts = meta.itemCode.split('-');
+      if (parts.length >= 3) {
+        continue;
+      }
+
+      const qb = this.registrationRepository
+        .createQueryBuilder('reg')
+        .innerJoin(ProductionOrder, 'po', 'po.docNum = reg.docNum')
+        .where('po.itemCode = :itemCode OR po.itemCode LIKE :prefix', {
+          itemCode: meta.itemCode,
+          prefix: `${meta.itemCode}-%`
+        });
+      const count = await qb.getCount();
+
+      results.push({
+        itemCode: meta.itemCode,
+        itemName: meta.itemName,
+        imageBase64: meta.imageBase64,
+        createdAt: meta.createdAt,
+        registrationCount: count,
+      });
+    }
+    return results;
+  }
+
+  async deleteProductImage(itemCode: string) {
+    const metadata = await this.productsService['productMetadataRepository'].findOne({ where: { itemCode } });
+    if (metadata) {
+      metadata.imageBase64 = null;
+      await this.productsService['productMetadataRepository'].save(metadata);
+    }
+    return { success: true };
   }
 }

@@ -183,7 +183,7 @@ export class RegistrationService {
       this.logger.log(`[REGISTRATION SERVICE] Production Order not found in local DB. Fetching from SAP: DocNum=${docNum}`);
       const sapPo = await this.sapService.getProductionOrder(docNum);
       if (!sapPo) {
-        throw new BadRequestException('ไม่พบข้อมูลใบสั่งผลิตนี้ในระบบ หรือยังไม่ได้มีการสร้างรหัส QR Code จากทางพนักงานของบริษัท โปรดติดต่อเจ้าหน้าที่ดูแลระบบ');
+        throw new BadRequestException('ไม่พบข้อมูลใบสั่งผลิตนี้ในระบบ หรือการเชื่อมต่อขัดข้อง กรุณารอประมาณ 5 นาทีค่อยลองใหม่อีกครั้ง หรือติดต่อเจ้าหน้าที่');
       }
 
       // Save SAP PO to local DB
@@ -211,6 +211,24 @@ export class RegistrationService {
         imageBase64: null,
       });
       await this.productMetadataRepository.save(newMetadata);
+    }
+
+    // Also automatically create/cache group prefix metadata for backoffice image management
+    if (po.itemCode && po.itemCode.includes('-')) {
+      const parts = po.itemCode.split('-');
+      if (parts.length >= 3) {
+        const prefix = parts.slice(0, parts.length - 1).join('-');
+        const prefixMeta = await this.productMetadataRepository.findOne({ where: { itemCode: prefix } });
+        if (!prefixMeta) {
+          this.logger.log(`[REGISTRATION SERVICE] Automatically creating missing prefix group metadata for ItemCode=${prefix}`);
+          const newPrefixMetadata = this.productMetadataRepository.create({
+            itemCode: prefix,
+            itemName: `กลุ่มสินค้าโมเดล ${prefix}`,
+            imageBase64: null,
+          });
+          await this.productMetadataRepository.save(newPrefixMetadata);
+        }
+      }
     }
 
     // 2. Check if already registered (Double Registration Check)
@@ -386,6 +404,19 @@ export class RegistrationService {
     
     const itemCode = reg.docNum ? await this.getOrFetchItemCode(reg.docNum) : 'ไม่ระบุ';
     
+    // Resolve prefix group code image remark for Telegram
+    let remarkImage = 'ยังไม่มีรูปจริงของสินค้า';
+    if (itemCode && itemCode !== 'ไม่ระบุ' && itemCode.includes('-')) {
+      const parts = itemCode.split('-');
+      if (parts.length >= 3) {
+        const prefixCode = parts.slice(0, parts.length - 1).join('-');
+        const prefixMeta = await this.productMetadataRepository.findOne({ where: { itemCode: prefixCode } });
+        if (prefixMeta && prefixMeta.imageBase64 && !prefixMeta.imageBase64.startsWith('http')) {
+          remarkImage = `ใช้รูปกลุ่มสินค้า ${prefixCode}`;
+        }
+      }
+    }
+
     const timeStr = formatThaiDateTime(new Date());
     const gpsLink = reg.latitude && reg.longitude 
       ? `https://www.google.com/maps?q=${reg.latitude},${reg.longitude}`
@@ -404,6 +435,7 @@ export class RegistrationService {
       `📍 <b>ที่อยู่ติดตั้ง:</b> ${reg.address || ''} จ.${reg.province || ''} ${reg.postalCode || ''}`,
       `🚪 <b>ตำแหน่งติดตั้ง:</b> ${reg.installationPosition || 'ไม่ระบุ'}`,
       `📞 <b>เบอร์โทรศัพท์:</b> ${reg.phone || 'ไม่ระบุ'}`,
+      `📝 <b>หมายเหตุรูปภาพ:</b> ${remarkImage}`,
       `🌐 <b>GPS Location:</b> ${gpsText}`,
       `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
       `🔍 <i>สามารถตรวจสอบรายละเอียดประกันภัยได้เพิ่มเติมในระบบ ProRegis</i>`
@@ -568,6 +600,7 @@ export class RegistrationService {
       lotNo: string;
       totalQty: string;
       installationPosition: string | null;
+      imageUrl: string;
     }> = [];
 
     for (const reg of registrations) {
@@ -622,6 +655,30 @@ export class RegistrationService {
         calculatedSeqNum = `${count}`;
       }
 
+      let imageUrl = 'https://images.unsplash.com/photo-1513694203232-719a280e022f?q=80&w=800&auto=format&fit=crop';
+      if (itemCode && itemCode !== 'ไม่ระบุ') {
+        let resolvedImage: string | null = null;
+        if (itemCode.includes('-')) {
+          const parts = itemCode.split('-');
+          if (parts.length >= 3) {
+            const prefix = parts.slice(0, parts.length - 1).join('-');
+            const prefixMeta = await this.productMetadataRepository.findOne({ where: { itemCode: prefix } });
+            if (prefixMeta && prefixMeta.imageBase64 && !prefixMeta.imageBase64.startsWith('http')) {
+              resolvedImage = prefixMeta.imageBase64;
+            }
+          }
+        }
+        if (!resolvedImage) {
+          const metadata = await this.productMetadataRepository.findOne({ where: { itemCode } });
+          if (metadata && metadata.imageBase64 && !metadata.imageBase64.startsWith('http')) {
+            resolvedImage = metadata.imageBase64;
+          }
+        }
+        if (resolvedImage) {
+          imageUrl = resolvedImage;
+        }
+      }
+
       results.push({
         id: reg.id,
         docNum: reg.docNum,
@@ -635,6 +692,7 @@ export class RegistrationService {
         lotNo,
         totalQty,
         installationPosition: reg.installationPosition,
+        imageUrl,
       });
     }
     return results;
@@ -737,10 +795,21 @@ export class RegistrationService {
     const po = await this.productionOrderRepository.findOne({ where: { docNum } });
     const modelName = po ? (po.itemName || 'กระจกนิรภัยนำเข้า') : 'กระจกนิรภัยนำเข้า';
 
+    const latestReg = registrations[registrations.length - 1];
+
     return {
       registered: true,
       count: registrations.length,
       modelName,
+      profile: {
+        firstName: latestReg.firstName,
+        lastName: latestReg.lastName,
+        address: latestReg.address,
+        province: latestReg.province,
+        postalCode: latestReg.postalCode,
+        phone: latestReg.phone,
+        email: latestReg.email,
+      },
       list: registrations.map((r, idx) => ({
         index: idx + 1,
         id: r.id,

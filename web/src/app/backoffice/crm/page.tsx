@@ -28,6 +28,20 @@ interface PaginatedResponse {
   totalPages: number;
 }
 
+const getProvinceLabel = (pVal: string) => {
+  const map: Record<string, string> = {
+    'Bangkok': 'กรุงเทพมหานคร',
+    'Nonthaburi': 'นนทบุรี',
+    'Samut Prakan': 'สมุทรปราการ',
+    'Chiang Mai': 'เชียงใหม่',
+    'Chonburi': 'ชลบุรี',
+    'Phuket': 'ภูเก็ต',
+    'Khon Kaen': 'ขอนแก่น',
+    'Nakhon Ratchasima': 'นครราชสีมา'
+  };
+  return map[pVal] || pVal;
+};
+
 export default function CrmPage() {
   const router = useRouter();
   const [data, setData] = useState<PaginatedResponse | null>(null);
@@ -35,20 +49,41 @@ export default function CrmPage() {
   const [error, setError] = useState("");
 
   // Filter states
+  const [page, setPage] = useState(1);
+  const [activeProvinces, setActiveProvinces] = useState<{ value: string; label: string }[]>([]);
+
+
+
   const [search, setSearch] = useState("");
+  const [isExporting, setIsExporting] = useState(false);
   const [province, setProvince] = useState("");
   const [status, setStatus] = useState("");
-  const [page, setPage] = useState(1);
-
-
-
-  // Export CSV state
-  const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
     fetchCustomers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, province, status]);
+
+  useEffect(() => {
+    fetchActiveProvinces();
+  }, []);
+
+  const fetchActiveProvinces = async () => {
+    try {
+      const token = sessionStorage.getItem("bo_token") || "";
+      const res = await fetch(`${getApiBaseUrl()}/crm/provinces`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setActiveProvinces(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch active provinces", err);
+    }
+  };
 
   const fetchCustomers = async () => {
     setIsLoading(true);
@@ -133,17 +168,6 @@ export default function CrmPage() {
     }
   };
 
-  const provinces = [
-    { value: "Bangkok", label: "กรุงเทพมหานคร" },
-    { value: "Nonthaburi", label: "นนทบุรี" },
-    { value: "Samut Prakan", label: "สมุทรปราการ" },
-    { value: "Chiang Mai", label: "เชียงใหม่" },
-    { value: "Chonburi", label: "ชลบุรี" },
-    { value: "Phuket", label: "ภูเก็ต" },
-    { value: "Khon Kaen", label: "ขอนแก่น" },
-    { value: "Nakhon Ratchasima", label: "นครราชสีมา" },
-  ];
-
   return (
     <div className="max-w-6xl mx-auto space-y-6 animate-success">
       {/* Header */}
@@ -195,7 +219,7 @@ export default function CrmPage() {
               className="w-full h-11 px-3 bg-surface-container-low border border-outline-variant rounded-lg text-sm outline-none focus:border-secondary"
             >
               <option value="">-- แสดงทุกจังหวัด --</option>
-              {provinces.map((p) => (
+              {activeProvinces.map((p) => (
                 <option key={p.value} value={p.value}>{p.label}</option>
               ))}
             </select>
@@ -249,7 +273,7 @@ export default function CrmPage() {
                       <td className="px-4 py-3.5 font-semibold text-primary">{cust.firstName} {cust.lastName}</td>
                       <td className="px-4 py-3.5 text-xs font-semibold font-mono text-on-surface-variant">{cust.phone}</td>
                       <td className="px-4 py-3.5 text-xs text-primary font-semibold">
-                        {provinces.find((p) => p.value === cust.province)?.label || cust.province}
+                        {getProvinceLabel(cust.province)}
                       </td>
                       <td className="px-4 py-3.5 text-xs text-outline">
                         {new Date(cust.registeredAt).toLocaleDateString("th-TH", {
