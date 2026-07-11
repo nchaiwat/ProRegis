@@ -47,12 +47,15 @@ export class CrmService {
     const limit = filters.limit ? parseInt(filters.limit as any, 10) : 10;
     const skip = (page - 1) * limit;
 
-    const query = this.registrationRepository.createQueryBuilder('reg');
+    const phoneQb = this.registrationRepository
+      .createQueryBuilder('reg')
+      .select('reg.phone', 'phone')
+      .groupBy('reg.phone');
 
     // Text search (search in first name, last name, phone, token, email, address, or docNum)
     if (filters.search && filters.search.trim()) {
       const searchNormalized = `%${filters.search.trim()}%`;
-      query.andWhere(
+      phoneQb.andWhere(
         '(reg.firstName ILIKE :search OR reg.lastName ILIKE :search OR reg.phone ILIKE :search OR reg.token ILIKE :search OR reg.id ILIKE :search OR reg.email ILIKE :search OR reg.address ILIKE :search OR reg.docNum ILIKE :search)',
         { search: searchNormalized },
       );
@@ -88,24 +91,46 @@ export class CrmService {
       };
 
       if (enThGroups[pLower]) {
-        query.andWhere('reg.province IN (:...provinces)', { provinces: enThGroups[pLower] });
+        phoneQb.andWhere('reg.province IN (:...provinces)', { provinces: enThGroups[pLower] });
       } else {
-        query.andWhere('reg.province = :province', { province: p });
+        phoneQb.andWhere('reg.province = :province', { province: p });
       }
     }
 
     // Status filter
     if (filters.status && filters.status.trim()) {
-      query.andWhere('reg.status = :status', { status: filters.status.trim() });
+      phoneQb.andWhere('reg.status = :status', { status: filters.status.trim() });
     }
 
-    // Order by date descending
-    query.orderBy('reg.registeredAt', 'DESC');
+    // Get total count of unique customers (phones) matching filters
+    const totalResult = await phoneQb.getRawMany();
+    const total = totalResult.length;
 
-    // Pagination
-    query.skip(skip).take(limit);
+    // Sort by latest registration date
+    phoneQb.addSelect('MAX(reg.registeredAt)', 'latestRegAt');
+    phoneQb.orderBy('"latestRegAt"', 'DESC');
 
-    const [items, total] = await query.getManyAndCount();
+    const paginatedPhonesResult = await phoneQb
+      .offset(skip)
+      .limit(limit)
+      .getRawMany();
+    
+    const paginatedPhones = paginatedPhonesResult.map(r => r.phone);
+
+    const items: any[] = [];
+    for (const phone of paginatedPhones) {
+      const latest = await this.registrationRepository.findOne({
+        where: { phone },
+        order: { registeredAt: 'DESC' }
+      });
+      if (latest) {
+        const count = await this.registrationRepository.count({ where: { phone } });
+        items.push({
+          ...latest,
+          registrationCount: count
+        });
+      }
+    }
 
     // Map list items to mask PII (PDPA principle)
     const itemsMasked = items.map((item) => ({

@@ -18,6 +18,7 @@ interface CustomerEntry {
   seqNum: string | null;
   status: string;
   registeredAt: string;
+  registrationCount?: number;
 }
 
 interface PaginatedResponse {
@@ -262,6 +263,7 @@ export default function CrmPage() {
                     <th className="px-4 py-3 text-left text-xs font-bold text-on-surface-variant uppercase tracking-wider">ชื่อ-นามสกุล</th>
                     <th className="px-4 py-3 text-left text-xs font-bold text-on-surface-variant uppercase tracking-wider">เบอร์โทรศัพท์ (พราง)</th>
                     <th className="px-4 py-3 text-left text-xs font-bold text-on-surface-variant uppercase tracking-wider">จังหวัด</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-on-surface-variant uppercase tracking-wider">จำนวนที่คุ้มครอง</th>
                     <th className="px-4 py-3 text-left text-xs font-bold text-on-surface-variant uppercase tracking-wider">วันที่ลงทะเบียน</th>
                     <th className="px-4 py-3 text-right text-xs font-bold text-on-surface-variant uppercase tracking-wider">รายละเอียด</th>
                   </tr>
@@ -274,6 +276,11 @@ export default function CrmPage() {
                       <td className="px-4 py-3.5 text-xs font-semibold font-mono text-on-surface-variant">{cust.phone}</td>
                       <td className="px-4 py-3.5 text-xs text-primary font-semibold">
                         {getProvinceLabel(cust.province)}
+                      </td>
+                      <td className="px-4 py-3.5 text-xs">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-secondary-container/20 text-secondary border border-secondary/20">
+                          {cust.registrationCount || 1} ชิ้น
+                        </span>
                       </td>
                       <td className="px-4 py-3.5 text-xs text-outline">
                         {new Date(cust.registeredAt).toLocaleDateString("th-TH", {
