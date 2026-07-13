@@ -941,4 +941,10 @@ export class BackofficeService implements OnModuleInit {
     }
     return { success: true };
   }
+
+  async clearTestData() {
+    await this.registrationRepository.manager.query(
+      'TRUNCATE TABLE registrations, generation_logs, production_orders, audit_logs RESTART IDENTITY CASCADE;',
+    );
+  }
 }

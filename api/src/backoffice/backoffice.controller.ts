@@ -195,5 +195,16 @@ export class BackofficeController {
     await this.backofficeService.updateSystemSetting(body.key, body.value);
     return { success: true };
   }
+
+  // -------------------------------------------------------------------------
+  // POST /backoffice/clear-test-data - Restricted to SYSTEM_ADMIN
+  // -------------------------------------------------------------------------
+  @Post('clear-test-data')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('SYSTEM_ADMIN')
+  async clearTestData() {
+    await this.backofficeService.clearTestData();
+    return { success: true, message: 'ล้างข้อมูลการทดสอบทั้งหมดเรียบร้อยแล้ว' };
+  }
 }
 

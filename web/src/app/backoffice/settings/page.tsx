@@ -17,6 +17,11 @@ export default function SettingsAdminPage() {
   const [error, setError] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
 
+  // Danger Zone States
+  const [isResetting, setIsResetting] = useState(false);
+  const [showConfirmReset, setShowConfirmReset] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
+
   // DB Settings Metadata (contains values and updatedAt timestamps)
   const [dbSettings, setDbSettings] = useState<Record<string, SettingInfo>>({});
 
@@ -197,6 +202,42 @@ export default function SettingsAdminPage() {
       setError("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleClearAllData = async () => {
+    if (confirmText !== "RESET") {
+      setError("กรุณาพิมพ์คำว่า RESET เพื่อยืนยันการลบข้อมูล");
+      return;
+    }
+
+    setIsResetting(true);
+    setError("");
+    setSuccessMsg("");
+    setShowConfirmReset(false);
+    const token = sessionStorage.getItem("bo_token");
+
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/backoffice/clear-test-data`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setSuccessMsg(data.message || "ล้างข้อมูลระบบเรียบร้อยแล้ว!");
+        setConfirmText("");
+        setTimeout(() => setSuccessMsg(""), 4000);
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        setError(errData.message || "เกิดข้อผิดพลาดในการล้างข้อมูล");
+      }
+    } catch {
+      setError("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์");
+    } finally {
+      setIsResetting(false);
     }
   };
 
@@ -692,6 +733,40 @@ export default function SettingsAdminPage() {
           </div>
         </div>
 
+        {/* SECTION 4: DANGER ZONE / CLEAR TEST DATA */}
+        <div className="bg-error/5 rounded-2xl border border-error/20 shadow-sm p-6 space-y-4 animate-fade-in">
+          <div className="flex items-center gap-3 border-b border-error/10 pb-3">
+            <span className="material-symbols-outlined text-error !text-[24px]">gpp_maybe</span>
+            <h2 className="font-bold text-base text-error">
+              โซนอันตราย / ล้างข้อมูลระบบ (Danger Zone)
+            </h2>
+          </div>
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <p className="text-xs font-bold text-primary">ล้างข้อมูลการทดสอบทั้งหมด (Clear All Test Data)</p>
+              <p className="text-[11px] text-outline font-semibold leading-relaxed">
+                ลบข้อมูลลูกค้าลงทะเบียนรับประกัน, ประวัติการสร้าง QR Code, แคชออร์เดอร์ SAP และบันทึกกิจกรรมทั้งหมดออกจากระบบแบบถาวร เพื่อเตรียมทดสอบใหม่
+                <br />
+                <span className="text-error font-bold">ข้อมูลบัญชีผู้ดูแลระบบ และการตั้งค่าระบบ จะไม่ถูกลบ</span>
+              </p>
+            </div>
+            <div>
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmText("");
+                  setShowConfirmReset(true);
+                }}
+                disabled={isResetting}
+                className="h-11 px-5 bg-error text-white text-xs font-bold rounded-xl shadow-md hover:bg-error/90 active:scale-[0.98] transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                <span className="material-symbols-outlined !text-[18px]">delete_forever</span>
+                <span>ล้างข้อมูลการทดสอบทั้งหมด</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
       </div>
 
       {/* Footer Save Actions Button */}
@@ -714,6 +789,72 @@ export default function SettingsAdminPage() {
           )}
         </button>
       </div>
+
+      {/* Confirmation Reset Modal */}
+      {showConfirmReset && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-2xl p-6 max-w-md w-full space-y-4 animate-scale-in">
+            <div className="flex items-center gap-3 text-error border-b border-outline-variant/30 pb-3">
+              <span className="material-symbols-outlined !text-[28px]">warning</span>
+              <h3 className="text-base font-black tracking-tight">ยืนยันการล้างข้อมูลทั้งหมด</h3>
+            </div>
+            
+            <p className="text-xs font-semibold text-outline leading-relaxed">
+              การดำเนินการนี้จะทำการลบข้อมูลต่อไปนี้ออกจากฐานข้อมูลแบบถาวร:
+            </p>
+            <ul className="text-xs font-bold text-outline-variant list-disc list-inside space-y-1 bg-surface-container-low p-3 rounded-xl border border-outline-variant/20">
+              <li className="text-error">ข้อมูลการลงทะเบียนรับประกันทั้งหมด</li>
+              <li className="text-error">ประวัติการสร้าง QR Code ทั้งหมด</li>
+              <li className="text-error">ประวัติกิจกรรมทั้งหมด (Audit Logs)</li>
+              <li className="text-error">ข้อมูลแคชสินค้าและออร์เดอร์ SAP</li>
+            </ul>
+
+            <div className="space-y-2 pt-2">
+              <label className="text-[11px] font-bold text-primary block">
+                พิมพ์คำว่า <span className="text-error font-black underline">RESET</span> ด้านล่างเพื่อยืนยันการลบ:
+              </label>
+              <input
+                type="text"
+                value={confirmText}
+                onChange={(e) => setConfirmText(e.target.value)}
+                placeholder="พิมพ์ RESET ตรงนี้"
+                className="w-full h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-center font-black tracking-widest text-xs uppercase focus:border-error focus:ring-1 focus:ring-error bg-surface-container-lowest transition-all"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowConfirmReset(false);
+                  setConfirmText("");
+                }}
+                className="h-11 px-4 border border-outline-variant/60 text-outline text-xs font-bold rounded-xl hover:bg-surface-container-low transition-all cursor-pointer"
+              >
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                onClick={handleClearAllData}
+                disabled={confirmText !== "RESET" || isResetting}
+                className="h-11 px-6 bg-error text-white text-xs font-bold rounded-xl shadow hover:bg-error/95 transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isResetting ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>กำลังลบข้อมูล...</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="material-symbols-outlined !text-[18px]">delete_forever</span>
+                    <span>ลบข้อมูลถาวร</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
