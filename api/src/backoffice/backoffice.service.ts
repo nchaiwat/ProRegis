@@ -726,7 +726,8 @@ export class BackofficeService implements OnModuleInit {
         plannedQty = po.plannedQty;
       } catch (err) {
         console.error('[SAP ERROR] Failed to fetch product details in checkProduct:', err);
-        throw err;
+        const detailMsg = err.response?.data?.error?.message?.value || err.message;
+        throw new BadRequestException(`ข้อผิดพลาดจาก SAP B1: ${detailMsg}`);
       }
     }
 
@@ -815,7 +816,8 @@ export class BackofficeService implements OnModuleInit {
             plannedQty: 100,
           });
         } else {
-          throw err;
+          const detailMsg = err.response?.data?.error?.message?.value || err.message;
+          throw new BadRequestException(`ข้อผิดพลาดจาก SAP B1: ${detailMsg}`);
         }
       }
     }
