@@ -657,6 +657,29 @@ export default function SettingsAdminPage() {
                   placeholder="http://192.168.1.100:50002/b1s/v2 หรือ mock"
                   className="w-full h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary"
                 />
+                <div className="flex flex-wrap gap-2 mt-2">
+                  <button
+                    type="button"
+                    onClick={() => setSapServiceLayerUrl("http://wa-dbs2.wa.net:50002/b1s/v2")}
+                    className="px-2 py-1 bg-surface-variant text-[10px] font-bold rounded-lg hover:bg-outline-variant/40 transition-all cursor-pointer"
+                  >
+                    ใช้ Local Default (wa-dbs2)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSapServiceLayerUrl("https://sapb1.waapps.net/b1s/v2")}
+                    className="px-2 py-1 bg-surface-variant text-[10px] font-bold rounded-lg hover:bg-outline-variant/40 transition-all cursor-pointer"
+                  >
+                    ใช้ VPS Production (sapb1.waapps)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSapServiceLayerUrl("mock")}
+                    className="px-2 py-1 bg-surface-variant text-[10px] font-bold rounded-lg hover:bg-outline-variant/40 transition-all cursor-pointer"
+                  >
+                    ใช้ Mock Mode
+                  </button>
+                </div>
               </div>
             </div>
 
