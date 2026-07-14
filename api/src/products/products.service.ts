@@ -267,9 +267,15 @@ export class ProductsService {
     let po = await this.productionOrderRepository.findOne({ where: { docNum } });
     if (!po) {
       this.logger.log(`[PRODUCTS SERVICE] Production Order not found in local DB. Fetching from SAP: DocNum=${docNum}`);
-      const sapPo = await this.sapService.getProductionOrder(docNum);
+      let sapPo;
+      try {
+        sapPo = await this.sapService.getProductionOrder(docNum);
+      } catch (err) {
+        throw new BadRequestException(`การเชื่อมต่อระบบ SAP B1 ขัดข้อง: ${err.message}`);
+      }
+      
       if (!sapPo) {
-        throw new BadRequestException('ไม่พบข้อมูลใบสั่งผลิตนี้ในระบบ หรือการเชื่อมต่อขัดข้อง กรุณารอประมาณ 5 นาทีค่อยลองใหม่อีกครั้ง หรือติดต่อเจ้าหน้าที่');
+        throw new BadRequestException('ไม่พบข้อมูลใบสั่งผลิตนี้ในระบบ SAP B1');
       }
 
       // Save SAP PO to local DB

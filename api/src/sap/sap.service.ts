@@ -168,6 +168,10 @@ export class SapService implements OnModuleInit {
     }
   }
 
+  getIsMockMode(): boolean {
+    return this.isMockMode;
+  }
+
   /**
    * Fetches Production Order details for a given docNum.
    * Leverages mock fallback if SAP is unreachable.
@@ -205,7 +209,7 @@ export class SapService implements OnModuleInit {
       return null;
     } catch (err) {
       this.logger.error(`[SAP SERVICE] Failed to query Production Order ${docNum}:`, err);
-      return null;
+      throw err;
     }
   }
 

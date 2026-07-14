@@ -706,15 +706,19 @@ export class BackofficeService implements OnModuleInit {
             });
             await this.productionOrderRepository.save(po);
           } else {
-            const defaultSuffix = docNum.substring(5, 9) || '205';
-            po = this.productionOrderRepository.create({
-              docNum,
-              itemCode: `FA00-D0112-200${defaultSuffix}`,
-              itemName: `กระจกนิรภัยนำเข้า ซีรีส์ ${docNum.substring(6, 9) || '007'} (Mock SAP B1)`,
-              plannedQty: 100,
-              completedQty: 0,
-            });
-            await this.productionOrderRepository.save(po);
+            if (this.sapService.getIsMockMode()) {
+              const defaultSuffix = docNum.substring(5, 9) || '205';
+              po = this.productionOrderRepository.create({
+                docNum,
+                itemCode: `FA00-D0112-200${defaultSuffix}`,
+                itemName: `กระจกนิรภัยนำเข้า ซีรีส์ ${docNum.substring(6, 9) || '007'} (Mock SAP B1)`,
+                plannedQty: 100,
+                completedQty: 0,
+              });
+              await this.productionOrderRepository.save(po);
+            } else {
+              throw new BadRequestException(`ไม่พบเลขที่สั่งผลิต (PD) ${docNum} นี้ในระบบ SAP B1`);
+            }
           }
         }
         itemCode = po.itemCode;
@@ -722,6 +726,7 @@ export class BackofficeService implements OnModuleInit {
         plannedQty = po.plannedQty;
       } catch (err) {
         console.error('[SAP ERROR] Failed to fetch product details in checkProduct:', err);
+        throw err;
       }
     }
 
@@ -786,24 +791,32 @@ export class BackofficeService implements OnModuleInit {
           });
           await this.productionOrderRepository.save(po);
         } else {
+          if (this.sapService.getIsMockMode()) {
+            po = this.productionOrderRepository.create({
+              docNum,
+              itemCode: `FA00-D0112-200${docNum.substring(5, 9)}`,
+              itemName: `กระจกนิรภัยนำเข้า ซีรีส์ ${docNum.substring(6, 9)}`,
+              plannedQty: 100,
+              completedQty: 0,
+            });
+            await this.productionOrderRepository.save(po);
+          } else {
+            throw new BadRequestException(`ไม่พบเลขที่สั่งผลิต (PD) ${docNum} นี้ในระบบ SAP B1`);
+          }
+        }
+      } catch (err) {
+        console.error('[SAP ERROR] Failed to fetch product details in getLotSummary:', err);
+        if (this.sapService.getIsMockMode()) {
+          // default PO details for mock mode fallback
           po = this.productionOrderRepository.create({
             docNum,
             itemCode: `FA00-D0112-200${docNum.substring(5, 9)}`,
             itemName: `กระจกนิรภัยนำเข้า ซีรีส์ ${docNum.substring(6, 9)}`,
             plannedQty: 100,
-            completedQty: 0,
           });
-          await this.productionOrderRepository.save(po);
+        } else {
+          throw err;
         }
-      } catch (err) {
-        console.error('[SAP ERROR] Failed to fetch product details in getLotSummary:', err);
-        // default PO details
-        po = this.productionOrderRepository.create({
-          docNum,
-          itemCode: `FA00-D0112-200${docNum.substring(5, 9)}`,
-          itemName: `กระจกนิรภัยนำเข้า ซีรีส์ ${docNum.substring(6, 9)}`,
-          plannedQty: 100,
-        });
       }
     }
 
