@@ -473,7 +473,7 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
             }));
           }
 
-          if (data.count > 0 && qrMode === "STATIC") {
+          if (data.count > 0 && qrMode === "STATIC" && step !== 4) {
             setDuplicateCount(data.count);
             setShowDuplicateConfirmModal(true);
           } else {
@@ -1102,6 +1102,7 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
         setShowDuplicateConfirmModal(false);
         const actualDocNum = docNum || (token.length === 9 ? token : null);
         if (actualDocNum) {
+          setStep(4);
           await checkRegistrationStatus(actualDocNum, formData.phone, gpsLocation?.latitude, gpsLocation?.longitude);
         }
       } else {
@@ -1220,6 +1221,10 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
                       <p className="text-sm text-primary font-semibold tracking-mono">{product.lotNo}</p>
                     </div>
                   )}
+                  <div>
+                    <p className="text-[10px] text-outline font-bold uppercase tracking-wider">{t.orderNo}</p>
+                    <p className="text-sm text-primary font-semibold tracking-mono">{docNum || token}</p>
+                  </div>
                   <div>
                     <p className="text-[10px] text-outline font-bold uppercase tracking-wider">{t.poNo}</p>
                     <p className="text-sm text-primary font-semibold tracking-mono">{product.poNo}</p>
@@ -2450,10 +2455,23 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
                 type="button"
                 onClick={() => {
                   setShowDuplicateConfirmModal(false);
-                  // Clear profile session only — OTP session is preserved so the same
-                  // phone number won't need to verify again on the new house registration
                   localStorage.removeItem("proregis_customer_session");
-                  window.location.href = `/p/${token}`;
+                  
+                  // Clear autofill inputs to force a clean form for the new location
+                  setFormData(prev => ({
+                    ...prev,
+                    address: "",
+                    province: "",
+                    postalCode: ""
+                  }));
+                  setGpsLocation(null);
+                  setIsUsingExistingAddress(false);
+                  setShowAutofillPrompt(false);
+                  setAutofilledProfile(null);
+                  setIsPhoneVerified(true);
+                  
+                  // Go directly to Step 3 (form input)
+                  setStep(3);
                 }}
                 className="w-full sm:flex-1 h-12 border border-outline-variant text-primary font-semibold rounded-xl hover:bg-surface-container-low transition-all active:scale-[0.98] cursor-pointer text-sm"
               >

@@ -22,6 +22,7 @@ export interface Translation {
   prodDate: string;
   lotNo: string;
   poNo: string;
+  orderNo: string;
   performance: string;
   dimensions: string;
   weight: string;
@@ -129,6 +130,7 @@ export const translations: Record<"th" | "en", Translation> = {
     prodDate: "วันที่ผลิต",
     lotNo: "เลขล็อตการผลิต",
     poNo: "จำนวนที่ผลิต",
+    orderNo: "เลขที่สั่งผลิต",
     performance: "ประสิทธิภาพและวัสดุ",
     dimensions: "ขนาด (กว้าง x สูง)",
     weight: "น้ำหนัก",
@@ -144,7 +146,7 @@ export const translations: Record<"th" | "en", Translation> = {
 
     // Step 2
     privacyTitle: "ความเป็นส่วนตัวและความยินยอม",
-    privacySubtitle: "ความไว้วางใจของคุณคือสิ่งสำคัญอันดับแรกของเรา ที่ ProRegis เราใช้มาตรการรักษาความปลอดภัยระดับองค์กรเพื่อให้มั่นใจว่าข้อมูลส่วนบุคคลของคุณจะได้รับการปกป้องในระดับสูงสุดและสอดคล้องตามมาตรฐาน PDPA อย่างเคร่งครัด",
+    privacySubtitle: "ความไว้วางใจของคุณคือสิ่งสำคัญอันดับแรกของเรา ที่ Window Asia PCL. เราใช้มาตรการรักษาความปลอดภัยระดับองค์กรเพื่อให้มั่นใจว่าข้อมูลส่วนบุคคลของคุณจะได้รับการปกป้องในระดับสูงสุดและสอดคล้องตามมาตรฐาน PDPA อย่างเคร่งครัด",
     dataProtectionTitle: "นโยบายการคุ้มครองข้อมูลส่วนบุคคล",
     dataProtectionDesc: "เราใช้การเข้ารหัสข้อมูลแบบปลายทางถึงปลายทาง (End-to-End Encryption) สำหรับข้อมูลที่จัดเก็บทั้งหมด ข้อมูลของคุณจะสามารถเข้าถึงได้โดยบุคลากรที่ได้รับอนุญาตเท่านั้น เพื่อวัตถุประสงค์ในการลงทะเบียนการรับประกันสินค้าและการให้บริการหลังการขาย",
     mandatoryConsent: "ฉันยอมรับการเก็บรวบรวมและประมวลผลข้อมูลส่วนบุคคลสำหรับการลงทะเบียนสินค้า",
@@ -234,6 +236,7 @@ export const translations: Record<"th" | "en", Translation> = {
     prodDate: "Manufacture Date",
     lotNo: "Production Lot",
     poNo: "Production Order",
+    orderNo: "Production Order No.",
     performance: "Performance & Materials",
     dimensions: "Dimensions (W x H)",
     weight: "Weight",
@@ -249,7 +252,7 @@ export const translations: Record<"th" | "en", Translation> = {
 
     // Step 2
     privacyTitle: "Privacy & Consent",
-    privacySubtitle: "Your trust is our top priority. At ProRegis, we employ enterprise-grade security measures to ensure your personal data is protected to the highest standards, strictly complying with PDPA regulations.",
+    privacySubtitle: "Your trust is our top priority. At Window Asia PCL., we employ enterprise-grade security measures to ensure your personal data is protected to the highest standards, strictly complying with PDPA regulations.",
     dataProtectionTitle: "Personal Data Protection Policy",
     dataProtectionDesc: "We use End-to-End Encryption for all stored data. Your information is only accessible by authorized personnel for the purpose of validating product registration and delivering after-sales services.",
     mandatoryConsent: "I accept the collection and processing of my personal data for product registration purposes.",
