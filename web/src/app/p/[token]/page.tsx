@@ -319,6 +319,12 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
             email: session.email || "",
             installationPosition: ""
           });
+          if (session.latitude && session.longitude) {
+            setGpsLocation({
+              latitude: Number(session.latitude),
+              longitude: Number(session.longitude)
+            });
+          }
           setHasActiveSession(true);
           setIsPhoneVerified(true);
           storedPhone = session.phone;
@@ -865,6 +871,8 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
           postalCode: formData.postalCode,
           phone: formData.phone,
           email: formData.email,
+          latitude: gpsLocation?.latitude || null,
+          longitude: gpsLocation?.longitude || null,
           timestamp: Date.now()
         }));
 
@@ -902,6 +910,8 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
             postalCode: formData.postalCode,
             phone: formData.phone,
             email: formData.email,
+            latitude: gpsLocation?.latitude || null,
+            longitude: gpsLocation?.longitude || null,
             timestamp: Date.now()
           }));
 
@@ -1292,7 +1302,13 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
 
             <div className="pt-8 border-t border-outline-variant flex flex-col items-center gap-2">
               <button 
-                onClick={() => setStep(2)}
+                onClick={() => {
+                  if (hasActiveSession) {
+                    setStep(3);
+                  } else {
+                    setStep(2);
+                  }
+                }}
                 className="w-full md:w-auto min-w-[320px] h-14 bg-secondary text-white font-bold rounded-xl shadow-md hover:opacity-95 active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-base cursor-pointer"
               >
                 <span>{t.nextConsent}</span>

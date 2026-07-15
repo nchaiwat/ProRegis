@@ -259,7 +259,7 @@ export default function CrmPage() {
               <table className="w-full text-sm">
                 <thead className="bg-surface-container-low border-b border-outline-variant">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-bold text-on-surface-variant uppercase tracking-wider">Ref ID</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold text-on-surface-variant uppercase tracking-wider">รหัสอ้างอิงลูกค้า (Customer Ref)</th>
                     <th className="px-4 py-3 text-left text-xs font-bold text-on-surface-variant uppercase tracking-wider">ชื่อ-นามสกุล</th>
                     <th className="px-4 py-3 text-left text-xs font-bold text-on-surface-variant uppercase tracking-wider">เบอร์โทรศัพท์ (พราง)</th>
                     <th className="px-4 py-3 text-left text-xs font-bold text-on-surface-variant uppercase tracking-wider">จังหวัด</th>
@@ -271,7 +271,7 @@ export default function CrmPage() {
                 <tbody className="divide-y divide-outline-variant/50">
                   {data.items.map((cust) => (
                     <tr key={cust.id} className="hover:bg-surface-container-low/50 transition-colors">
-                      <td className="px-4 py-3.5 font-mono text-xs font-bold text-primary">{cust.id}</td>
+                      <td className="px-4 py-3.5 font-mono text-xs font-bold text-primary">CUST-{cust.phone ? cust.phone.replace(/[^0-9*]/g, "") : "UNKNOWN"}</td>
                       <td className="px-4 py-3.5 font-semibold text-primary">{cust.firstName} {cust.lastName}</td>
                       <td className="px-4 py-3.5 text-xs font-semibold font-mono text-on-surface-variant">{cust.phone}</td>
                       <td className="px-4 py-3.5 text-xs text-primary font-semibold">
