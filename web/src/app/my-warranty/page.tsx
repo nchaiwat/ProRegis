@@ -756,13 +756,9 @@ export default function MyWarrantyPage() {
                         </p>
                         <p className="flex items-center gap-1.5">
                           <span className="font-semibold text-primary">{lang === "th" ? "เลขล็อตการผลิต" : "Lot No."}:</span>
-                          <code>{(item as any).lotNo || "-"}</code>
+                          <code>{item.docNum || (item as any).lotNo || "-"}</code>
                         </p>
                         <p className="flex items-center gap-1.5">
-                          <span className="font-semibold text-primary">{localT[lang].prodOrder}:</span>
-                          <code>{(item as any).totalQty ? `${(item as any).totalQty} ${lang === "th" ? "ชิ้น" : "Units"}` : "-"}</code>
-                        </p>
-                        <p className="flex items-center gap-1.5 sm:col-span-2">
                           <span className="font-semibold text-primary">{localT[lang].seqNo}:</span>
                           <code>{item.seqNum || "-"}</code>
                         </p>

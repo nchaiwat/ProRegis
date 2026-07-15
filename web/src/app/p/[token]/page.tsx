@@ -3,7 +3,7 @@
 import { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
-import { translations } from "../../translations";
+import { translations, THAILAND_PROVINCES } from "../../translations";
 import { getApiBaseUrl } from '@/lib/api';
 
 const QrScannerModal = dynamic(() => import("../../QrScannerModal"), { ssr: false });
@@ -287,19 +287,12 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
 
   const getProvinceLabel = (prov: string, currentLang: "th" | "en") => {
     if (!prov) return "";
-    const pMap: Record<string, { th: string; en: string }> = {
-      bangkok: { th: "กรุงเทพมหานคร", en: "Bangkok" },
-      nonthaburi: { th: "นนทบุรี", en: "Nonthaburi" },
-      "samut prakan": { th: "สมุทรปราการ", en: "Samut Prakan" },
-      "chiang mai": { th: "เชียงใหม่", en: "Chiang Mai" },
-      chonburi: { th: "ชลบุรี", en: "Chonburi" },
-      phuket: { th: "ภูเก็ต", en: "Phuket" },
-      "khon kaen": { th: "ขอนแก่น", en: "Khon Kaen" },
-      "nakhon ratchasima": { th: "นครราชสีมา", en: "Nakhon Ratchasima" },
-    };
     const key = prov.trim().toLowerCase();
-    if (pMap[key]) {
-      return currentLang === "th" ? pMap[key].th : pMap[key].en;
+    const found = THAILAND_PROVINCES.find(
+      p => p.th.toLowerCase() === key || p.en.toLowerCase() === key
+    );
+    if (found) {
+      return currentLang === "th" ? found.th : found.en;
     }
     return prov;
   };
@@ -702,13 +695,15 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    let finalValue = value;
+    if (name === "phone") {
+      finalValue = value.replace(/\D/g, "").substring(0, 10);
+      setHasActiveSession(false);
+    }
+    setFormData((prev) => ({ ...prev, [name]: finalValue }));
     setSubmitError(null);
     if (errors[name]) {
       setErrors((prev) => ({ ...prev, [name]: "" }));
-    }
-    if (name === "phone") {
-      setHasActiveSession(false);
     }
   };
 
@@ -1659,14 +1654,11 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
                             className="h-12 px-4 bg-surface-container-low border-b-2 border-transparent focus:border-secondary focus:ring-0 rounded-t outline-none text-sm font-medium disabled:opacity-75 disabled:cursor-not-allowed"
                           >
                             <option value="">-- {t.selectProvince} --</option>
-                            <option value={lang === "th" ? "กรุงเทพมหานคร" : "Bangkok"}>{lang === "th" ? "กรุงเทพมหานคร" : "Bangkok"}</option>
-                            <option value={lang === "th" ? "นนทบุรี" : "Nonthaburi"}>{lang === "th" ? "นนทบุรี" : "Nonthaburi"}</option>
-                            <option value={lang === "th" ? "สมุทรปราการ" : "Samut Prakan"}>{lang === "th" ? "สมุทรปราการ" : "Samut Prakan"}</option>
-                            <option value={lang === "th" ? "เชียงใหม่" : "Chiang Mai"}>{lang === "th" ? "เชียงใหม่" : "Chiang Mai"}</option>
-                            <option value={lang === "th" ? "ชลบุรี" : "Chonburi"}>{lang === "th" ? "ชลบุรี" : "Chonburi"}</option>
-                            <option value={lang === "th" ? "ภูเก็ต" : "Phuket"}>{lang === "th" ? "ภูเก็ต" : "Phuket"}</option>
-                            <option value={lang === "th" ? "ขอนแก่น" : "Khon Kaen"}>{lang === "th" ? "ขอนแก่น" : "Khon Kaen"}</option>
-                            <option value={lang === "th" ? "นครราชสีมา" : "Nakhon Ratchasima"}>{lang === "th" ? "นครราชสีมา" : "Nakhon Ratchasima"}</option>
+                            {THAILAND_PROVINCES.map((prov) => (
+                              <option key={prov.en} value={lang === "th" ? prov.th : prov.en}>
+                                {lang === "th" ? prov.th : prov.en}
+                              </option>
+                            ))}
                           </select>
                           {errors.province && <span className="text-xs text-error font-semibold">{errors.province}</span>}
                         </div>
@@ -1709,8 +1701,7 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
                             value={formData.email}
                             onChange={handleInputChange}
                             placeholder="john.doe@example.com"
-                            disabled={hasActiveSession}
-                            className="h-12 px-4 bg-surface-container-low border-b-2 border-transparent focus:border-secondary focus:ring-0 rounded-t outline-none text-sm font-medium disabled:opacity-75 disabled:cursor-not-allowed"
+                            className="h-12 px-4 bg-surface-container-low border-b-2 border-transparent focus:border-secondary focus:ring-0 rounded-t outline-none text-sm font-medium"
                           />
                           {errors.email && <span className="text-xs text-error font-semibold">{errors.email}</span>}
                         </div>
@@ -1836,9 +1827,23 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
                     <button 
                       type="button"
                       onClick={() => {
+                        localStorage.removeItem("proregis_otp_session");
+                        localStorage.removeItem("proregis_customer_session");
+                        setFormData((prev) => ({
+                          ...prev,
+                          phone: "",
+                          firstName: "",
+                          lastName: "",
+                          address: "",
+                          province: "",
+                          postalCode: "",
+                          email: "",
+                        }));
+                        setHasActiveSession(false);
                         setIsPhoneVerified(false);
                         setIsUsingExistingAddress(false);
                         setShowAutofillPrompt(false);
+                        setAutofilledProfile(null);
                       }}
                       className="w-full h-14 border-2 border-outline-variant text-secondary font-bold rounded-xl hover:bg-surface-container-low transition-all active:scale-[0.98] flex items-center justify-center gap-2 text-base cursor-pointer"
                     >

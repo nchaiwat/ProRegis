@@ -481,6 +481,7 @@ export class RegistrationService {
        lotNo: string;
        totalQty: string;
        installationPosition: string | null;
+       imageUrl?: string;
      }> = [];
      for (const reg of registrations) {
        let itemCode = 'ไม่ระบุ';
@@ -534,10 +535,35 @@ export class RegistrationService {
           calculatedSeqNum = `${count}`;
         }
 
+         let imageUrl = '';
+         if (itemCode && itemCode !== 'ไม่ระบุ') {
+           let resolvedImage: string | null = null;
+           if (itemCode.includes('-')) {
+             const parts = itemCode.split('-');
+             if (parts.length >= 3) {
+               const prefix = parts.slice(0, parts.length - 1).join('-');
+               const prefixMeta = await this.productMetadataRepository.findOne({ where: { itemCode: prefix } });
+               if (prefixMeta && prefixMeta.imageBase64 && !prefixMeta.imageBase64.startsWith('http')) {
+                 resolvedImage = prefixMeta.imageBase64;
+               }
+             }
+           }
+           if (!resolvedImage) {
+             const metadata = await this.productMetadataRepository.findOne({ where: { itemCode } });
+             if (metadata && metadata.imageBase64 && !metadata.imageBase64.startsWith('http')) {
+               resolvedImage = metadata.imageBase64;
+             }
+           }
+           if (resolvedImage) {
+             imageUrl = resolvedImage;
+           }
+         }
+
        results.push({
          id: reg.id,
          docNum: reg.docNum,
          seqNum: calculatedSeqNum,
+         imageUrl,
          itemCode,
          itemName,
          registeredAt: reg.registeredAt,
@@ -655,7 +681,7 @@ export class RegistrationService {
         calculatedSeqNum = `${count}`;
       }
 
-      let imageUrl = 'https://images.unsplash.com/photo-1513694203232-719a280e022f?q=80&w=800&auto=format&fit=crop';
+      let imageUrl = '';
       if (itemCode && itemCode !== 'ไม่ระบุ') {
         let resolvedImage: string | null = null;
         if (itemCode.includes('-')) {
