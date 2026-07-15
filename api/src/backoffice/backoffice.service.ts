@@ -951,8 +951,7 @@ export class BackofficeService implements OnModuleInit {
   async deleteProductImage(itemCode: string) {
     const metadata = await this.productsService['productMetadataRepository'].findOne({ where: { itemCode } });
     if (metadata) {
-      metadata.imageBase64 = null;
-      await this.productsService['productMetadataRepository'].save(metadata);
+      await this.productsService['productMetadataRepository'].remove(metadata);
     }
     return { success: true };
   }
