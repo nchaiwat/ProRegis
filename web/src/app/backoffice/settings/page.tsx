@@ -21,6 +21,7 @@ export default function SettingsAdminPage() {
   const [isResetting, setIsResetting] = useState(false);
   const [showConfirmReset, setShowConfirmReset] = useState(false);
   const [confirmText, setConfirmText] = useState("");
+  const [selectedTables, setSelectedTables] = useState<string[]>(["registrations", "generation_logs", "production_orders", "audit_logs"]);
 
   // DB Settings Metadata (contains values and updatedAt timestamps)
   const [dbSettings, setDbSettings] = useState<Record<string, SettingInfo>>({});
@@ -221,8 +222,10 @@ export default function SettingsAdminPage() {
       const res = await fetch(`${getApiBaseUrl()}/backoffice/clear-test-data`, {
         method: "POST",
         headers: {
+          "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
+        body: JSON.stringify({ tables: selectedTables }),
       });
 
       if (res.ok) {
@@ -819,18 +822,85 @@ export default function SettingsAdminPage() {
           <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-2xl p-6 max-w-md w-full space-y-4 animate-scale-in">
             <div className="flex items-center gap-3 text-error border-b border-outline-variant/30 pb-3">
               <span className="material-symbols-outlined !text-[28px]">warning</span>
-              <h3 className="text-base font-black tracking-tight">ยืนยันการล้างข้อมูลทั้งหมด</h3>
+              <h3 className="text-base font-black tracking-tight">ยืนยันการล้างข้อมูลระบบ</h3>
             </div>
             
             <p className="text-xs font-semibold text-outline leading-relaxed">
-              การดำเนินการนี้จะทำการลบข้อมูลต่อไปนี้ออกจากฐานข้อมูลแบบถาวร:
+              โปรดเลือกข้อมูลที่คุณต้องการลบออกจากฐานข้อมูลแบบถาวร:
             </p>
-            <ul className="text-xs font-bold text-outline-variant list-disc list-inside space-y-1 bg-surface-container-low p-3 rounded-xl border border-outline-variant/20">
-              <li className="text-error">ข้อมูลการลงทะเบียนรับประกันทั้งหมด</li>
-              <li className="text-error">ประวัติการสร้าง QR Code ทั้งหมด</li>
-              <li className="text-error">ประวัติกิจกรรมทั้งหมด (Audit Logs)</li>
-              <li className="text-error">ข้อมูลแคชสินค้าและออร์เดอร์ SAP</li>
-            </ul>
+            <div className="space-y-2 bg-surface-container-low p-4 rounded-xl border border-outline-variant/20 text-xs font-bold text-primary flex flex-col">
+              <label className="flex items-center gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={selectedTables.includes("registrations")}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setSelectedTables(prev => [...prev, "registrations"]);
+                    } else {
+                      setSelectedTables(prev => prev.filter(t => t !== "registrations"));
+                    }
+                  }}
+                  className="rounded border-outline-variant text-error focus:ring-error w-4 h-4 cursor-pointer"
+                />
+                <span className={selectedTables.includes("registrations") ? "text-error" : "text-outline"}>
+                  ข้อมูลการลงทะเบียนรับประกันทั้งหมด
+                </span>
+              </label>
+
+              <label className="flex items-center gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={selectedTables.includes("generation_logs")}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setSelectedTables(prev => [...prev, "generation_logs"]);
+                    } else {
+                      setSelectedTables(prev => prev.filter(t => t !== "generation_logs"));
+                    }
+                  }}
+                  className="rounded border-outline-variant text-error focus:ring-error w-4 h-4 cursor-pointer"
+                />
+                <span className={selectedTables.includes("generation_logs") ? "text-error" : "text-outline"}>
+                  ประวัติการสร้าง QR Code ทั้งหมด
+                </span>
+              </label>
+
+              <label className="flex items-center gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={selectedTables.includes("audit_logs")}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setSelectedTables(prev => [...prev, "audit_logs"]);
+                    } else {
+                      setSelectedTables(prev => prev.filter(t => t !== "audit_logs"));
+                    }
+                  }}
+                  className="rounded border-outline-variant text-error focus:ring-error w-4 h-4 cursor-pointer"
+                />
+                <span className={selectedTables.includes("audit_logs") ? "text-error" : "text-outline"}>
+                  ประวัติกิจกรรมทั้งหมด (Audit Logs)
+                </span>
+              </label>
+
+              <label className="flex items-center gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={selectedTables.includes("production_orders")}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      setSelectedTables(prev => [...prev, "production_orders"]);
+                    } else {
+                      setSelectedTables(prev => prev.filter(t => t !== "production_orders"));
+                    }
+                  }}
+                  className="rounded border-outline-variant text-error focus:ring-error w-4 h-4 cursor-pointer"
+                />
+                <span className={selectedTables.includes("production_orders") ? "text-error" : "text-outline"}>
+                  ข้อมูลแคชสินค้าและออร์เดอร์ SAP
+                </span>
+              </label>
+            </div>
 
             <div className="space-y-2 pt-2">
               <label className="text-[11px] font-bold text-primary block">
@@ -859,7 +929,7 @@ export default function SettingsAdminPage() {
               <button
                 type="button"
                 onClick={handleClearAllData}
-                disabled={confirmText !== "RESET" || isResetting}
+                disabled={confirmText !== "RESET" || isResetting || selectedTables.length === 0}
                 className="h-11 px-6 bg-error text-white text-xs font-bold rounded-xl shadow hover:bg-error/95 transition-all cursor-pointer flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isResetting ? (

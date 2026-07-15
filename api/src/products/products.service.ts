@@ -21,6 +21,7 @@ export interface Product {
   qrMode?: string;
   verificationMode?: string;
   smsOtpMode?: string;
+  seqNum?: string | null;
   specs: {
     th: { label: string; value: string }[];
     en: { label: string; value: string }[];
@@ -227,6 +228,25 @@ export class ProductsService {
         this.logger.log(`[PRODUCTS SERVICE] Updated cached product metadata for ItemCode=${itemCode}`);
       }
     }
+
+    // Auto-create empty gallery card placeholder for prefix model (Issue #6)
+    if (itemCode.includes('-')) {
+      const parts = itemCode.split('-');
+      if (parts.length >= 3) {
+        const prefix = parts.slice(0, 2).join('-');
+        let prefixMeta = await this.productMetadataRepository.findOne({ where: { itemCode: prefix } });
+        if (!prefixMeta) {
+          prefixMeta = this.productMetadataRepository.create({
+            itemCode: prefix,
+            itemName: `กลุ่มสินค้าโมเดล ${prefix}`,
+            imageBase64: null,
+          });
+          await this.productMetadataRepository.save(prefixMeta);
+          this.logger.log(`[PRODUCTS SERVICE] Auto-created empty prefix metadata box for: ${prefix}`);
+        }
+      }
+    }
+
     return metadata;
   }
 
@@ -319,6 +339,14 @@ export class ProductsService {
 
     const plannedQtyValue = po.plannedQty > 0 ? `${po.plannedQty}` : 'N/A';
 
+    // Parse description for specifications and characteristics
+    let productType = { th: 'กระจกและหน้าต่างโครงสร้าง', en: 'Structural Glass/Window' };
+    let productStyle = { th: 'N/A', en: 'N/A' };
+    let productPane = { th: 'N/A', en: 'N/A' };
+    let glassType = { th: 'กระจกเขียวใสตัดแสง', en: 'Green Tinted Glass' };
+    let glassThickness = { th: '5 มม.', en: '5 mm' };
+    let screenType = { th: 'N/A', en: 'N/A' };
+
     // Parse description for size (Width x Height) and Color
     const colorMap: Record<string, { th: string; en: string }> = {
       'ขาว': { th: 'สีขาว', en: 'White' },
@@ -356,6 +384,53 @@ export class ProductsService {
           en: `${w} x ${h} cm`
         };
       }
+
+      const nameUpper = po.itemName.toUpperCase();
+
+      // 3. Product Type
+      if (nameUpper.includes('WINDOW') || nameUpper.includes('หน้าต่าง') || nameUpper.includes('บานเลื่อน') || nameUpper.includes('บานกระทุ้ง')) {
+        productType = { th: 'หน้าต่าง', en: 'Window' };
+      } else if (nameUpper.includes('DOOR') || nameUpper.includes('ประตู')) {
+        productType = { th: 'ประตู', en: 'Door' };
+      }
+
+      // 4. Style & Panes
+      if (nameUpper.includes('SS')) {
+        productStyle = { th: 'บานเลื่อน (SS)', en: 'Sliding Window (SS)' };
+        productPane = { th: '2 บาน', en: '2 Panes' };
+      } else if (nameUpper.includes('FSSF')) {
+        productStyle = { th: 'บานเลื่อน (FSSF)', en: 'Sliding Window (FSSF)' };
+        productPane = { th: '4 บาน', en: '4 Panes' };
+      } else if (nameUpper.includes('กระทุ้ง') || nameUpper.includes('AWNING') || nameUpper.includes('AW')) {
+        productStyle = { th: 'บานกระทุ้ง', en: 'Awning Window' };
+        productPane = { th: '1 บาน', en: '1 Pane' };
+      } else {
+        // default Sliding
+        productStyle = { th: 'บานเลื่อน', en: 'Sliding Window' };
+      }
+
+      // 5. Glass Type
+      if (nameUpper.includes('เทมเปอร์') || nameUpper.includes('TEMPERED')) {
+        glassType = { th: 'กระจกเทมเปอร์', en: 'Tempered Glass' };
+      } else if (nameUpper.includes('ลามิเนต') || nameUpper.includes('LAMINATED')) {
+        glassType = { th: 'กระจกลามิเนต', en: 'Laminated Glass' };
+      } else if (nameUpper.includes('เขียว') || nameUpper.includes('GREEN')) {
+        glassType = { th: 'กระจกเขียวใสตัดแสง', en: 'Green Tinted Glass' };
+      }
+
+      // 6. Glass Thickness
+      const thickRegex = /(\d+)\s*(?:มิล|มม|mm)/i;
+      const thickMatch = po.itemName.match(thickRegex);
+      if (thickMatch) {
+        glassThickness = { th: `${thickMatch[1]} มม.`, en: `${thickMatch[1]} mm` };
+      }
+
+      // 7. Screen Inclusion
+      if (nameUpper.includes('ไม่มีมุ้ง')) {
+        screenType = { th: 'ไม่มีมุ้งลวด', en: 'Without Screen' };
+      } else if (nameUpper.includes('มุ้ง') || nameUpper.includes('SCREEN')) {
+        screenType = { th: 'มีมุ้งลวด', en: 'With Screen' };
+      }
     }
 
     const qrModeSetting = await this.systemSettingRepository.findOne({ where: { key: 'QR_CODE_MODE' } });
@@ -391,7 +466,7 @@ export class ProductsService {
     return {
       token: token,
       code: itemCode,
-      modelTh: metadata.itemName || 'กระจกหน้าต่างอลูมิเนียมนำเข้าซีรีส์ย่อย',
+      modelTh: metadata.itemName || 'กระจกหน้าต่างอลีมิเนียมนำเข้าซีรีส์ย่อย',
       modelEn: metadata.itemName || 'Imported Aluminum Window Sub-Series',
       manufactureDate: mfgDateTh,
       lotNo: '', // Hide Lot No by returning empty string
@@ -401,19 +476,26 @@ export class ProductsService {
       qrMode,
       verificationMode,
       smsOtpMode,
+      seqNum: seqNum || null,
       specs: {
         th: [
-          { label: 'จำนวนผลิต', value: po.plannedQty > 0 ? `${po.plannedQty} ชิ้น` : 'N/A' },
-          { label: 'ลำดับที่', value: seqNum ? `ชิ้นที่ ${parseInt(seqNum, 10)}` : '-' },
-          { label: 'วันที่ผลิต', value: mfgDateTh },
+          { label: 'ประเภทสินค้า', value: productType.th },
+          { label: 'รูปแบบสินค้า', value: productStyle.th },
+          { label: 'ลักษณะบาน', value: productPane.th },
+          { label: 'ลักษณะกระจก', value: glassType.th },
+          { label: 'ความหนากระจก (มม.)', value: glassThickness.th },
+          { label: 'แบบมี/ไม่มีมุ้ง', value: screenType.th },
           { label: 'ขนาด (กว้าง x สูง)', value: matchedSize.th },
           { label: 'สี', value: matchedColor.th },
           { label: 'มาตรฐานควบคุม', value: 'ISO 9001:2015' },
         ],
         en: [
-          { label: 'Production Quantity', value: po.plannedQty > 0 ? `${po.plannedQty} Units` : 'N/A' },
-          { label: 'Unit No.', value: seqNum ? `Unit ${parseInt(seqNum, 10)}` : '-' },
-          { label: 'Manufacture Date', value: mfgDateEn },
+          { label: 'Product Type', value: productType.en },
+          { label: 'Product Style', value: productStyle.en },
+          { label: 'Pane Details', value: productPane.en },
+          { label: 'Glass Type', value: glassType.en },
+          { label: 'Glass Thickness', value: glassThickness.en },
+          { label: 'Screen Inclusion', value: screenType.en },
           { label: 'Dimensions (W x H)', value: matchedSize.en },
           { label: 'Color', value: matchedColor.en },
           { label: 'Compliance Standard', value: 'ISO 9001:2015' },
@@ -423,12 +505,12 @@ export class ProductsService {
         th: [
           'ผลิตจากอลูมิเนียมหนาพิเศษ แข็งแรง ทนลมพายุได้ดีเยี่ยม',
           'กระจกฉนวนประหยัดพลังงาน ช่วยสะท้อนรังสีความร้อนของดวงอาทิตย์',
-          'ดีไซน์ขอบบางเพิ่มมุมมองภายนอกที่กว้างขวางขึ้น'
+          'ไร้สารตะกั่วและสารที่เป็นอันตราย ได้รับการรับรองตามมาตรฐาน RoHS'
         ],
         en: [
           'Heavy-duty aluminum profile designed for superior wind load resistance',
           'Energy-efficient insulated glass pane helping reject solar heat',
-          'Slim profile frame maximizing natural daylight and viewing area'
+          'Lead-free and eco-friendly components, RoHS directive compliant'
         ]
       }
     };

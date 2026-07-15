@@ -44,6 +44,7 @@ interface ProductData {
   poNo: string;
   imageUrl: string;
   warrantyPeriod: string;
+  seqNum?: string | null;
   specs: {
     th: { label: string; value: string }[];
     en: { label: string; value: string }[];
@@ -1225,6 +1226,14 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
                     <p className="text-[10px] text-outline font-bold uppercase tracking-wider">{t.orderNo}</p>
                     <p className="text-sm text-primary font-semibold tracking-mono">{docNum || token}</p>
                   </div>
+                  {qrMode === "DYNAMIC" && (seqNum || product.seqNum) && (
+                    <div>
+                      <p className="text-[10px] text-outline font-bold uppercase tracking-wider">{t.productionSeq}</p>
+                      <p className="text-sm text-primary font-semibold tracking-mono">
+                        ชิ้นที่ {parseInt(seqNum || product.seqNum || "", 10)}
+                      </p>
+                    </div>
+                  )}
                   <div>
                     <p className="text-[10px] text-outline font-bold uppercase tracking-wider">{t.poNo}</p>
                     <p className="text-sm text-primary font-semibold tracking-mono">{product.poNo}</p>

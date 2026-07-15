@@ -23,6 +23,7 @@ export interface Translation {
   lotNo: string;
   poNo: string;
   orderNo: string;
+  productionSeq: string;
   performance: string;
   dimensions: string;
   weight: string;
@@ -125,13 +126,14 @@ export const translations: Record<"th" | "en", Translation> = {
     notRegisteredStatus: "ยังไม่ได้ลงทะเบียน",
     registeredStatus: "ลงทะเบียนรับประกันแล้ว",
     warrantyPeriod: "รับประกันตลอดอายุการใช้งาน (Lifetime Warranty)",
-    techSpecs: "ข้อมูลทางเทคนิค",
+    techSpecs: "ข้อมูลการผลิต",
     prodCode: "รหัสสินค้า",
     prodDate: "วันที่ผลิต",
     lotNo: "เลขล็อตการผลิต",
     poNo: "จำนวนที่ผลิต",
     orderNo: "เลขที่สั่งผลิต",
-    performance: "ประสิทธิภาพและวัสดุ",
+    productionSeq: "ลำดับที่ผลิต",
+    performance: "ข้อมูลทางเทคนิค",
     dimensions: "ขนาด (กว้าง x สูง)",
     weight: "น้ำหนัก",
     glassType: "ประเภทกระจก",
@@ -231,13 +233,14 @@ export const translations: Record<"th" | "en", Translation> = {
     notRegisteredStatus: "Not Registered",
     registeredStatus: "Warranty Active",
     warrantyPeriod: "Lifetime Warranty",
-    techSpecs: "Technical Specifications",
+    techSpecs: "Production Specifications",
     prodCode: "Product Code",
     prodDate: "Manufacture Date",
     lotNo: "Production Lot",
     poNo: "Production Order",
     orderNo: "Production Order No.",
-    performance: "Performance & Materials",
+    productionSeq: "Production Sequence",
+    performance: "Technical Specifications",
     dimensions: "Dimensions (W x H)",
     weight: "Weight",
     glassType: "Glass Type",

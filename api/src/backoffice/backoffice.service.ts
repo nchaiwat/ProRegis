@@ -918,6 +918,7 @@ export class BackofficeService implements OnModuleInit {
   async getCustomImages() {
     const metas = await this.productsService['productMetadataRepository']
       .createQueryBuilder('meta')
+      .where('meta.imageBase64 IS NOT NULL AND meta.imageBase64 != :empty', { empty: '' })
       .orderBy('meta.itemCode', 'ASC')
       .getMany();
 
@@ -957,9 +958,21 @@ export class BackofficeService implements OnModuleInit {
     return { success: true };
   }
 
-  async clearTestData() {
+  async clearTestData(tables?: string[]) {
+    const allowedTables = ['registrations', 'generation_logs', 'production_orders', 'audit_logs'];
+    let tablesToClear = allowedTables;
+
+    if (tables && tables.length > 0) {
+      tablesToClear = tables.filter((t) => allowedTables.includes(t));
+    }
+
+    if (tablesToClear.length === 0) {
+      return;
+    }
+
+    const tableList = tablesToClear.join(', ');
     await this.registrationRepository.manager.query(
-      'TRUNCATE TABLE registrations, generation_logs, production_orders, audit_logs RESTART IDENTITY CASCADE;',
+      `TRUNCATE TABLE ${tableList} RESTART IDENTITY CASCADE;`,
     );
   }
 }

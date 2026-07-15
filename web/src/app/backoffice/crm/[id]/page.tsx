@@ -60,6 +60,30 @@ export default function CustomerDetailPage() {
     }
   };
 
+  const getDiffString = (fromStr: string | null, toStr: string | Date) => {
+    if (!fromStr) return "-";
+    const from = new Date(fromStr);
+    const to = new Date(toStr);
+    if (isNaN(from.getTime()) || isNaN(to.getTime())) return "-";
+    
+    let diffMs = to.getTime() - from.getTime();
+    if (diffMs < 0) diffMs = 0;
+    
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    if (diffDays === 0) return "ภายในวันเดียวกัน";
+    
+    const years = Math.floor(diffDays / 365);
+    const months = Math.floor((diffDays % 365) / 30);
+    const days = Math.floor((diffDays % 365) % 30);
+    
+    let res = "";
+    if (years > 0) res += `${years} ปี `;
+    if (months > 0) res += `${months} เดือน `;
+    if (days > 0) res += `${days} วัน`;
+    if (!res) res = `${diffDays} วัน`;
+    return res.trim();
+  };
+
   return (
     <div className="max-w-6xl mx-auto space-y-6 animate-success pb-10">
       {/* Navigation Breadcrumb */}
@@ -104,7 +128,9 @@ export default function CustomerDetailPage() {
               {/* Ref Box */}
               <div className="p-5 bg-surface-container rounded-2xl border border-outline-variant flex flex-col gap-2">
                 <p className="text-[10px] text-outline font-bold uppercase tracking-wider">รหัสอ้างอิงลูกค้า (Customer Ref)</p>
-                <p className="text-xl font-bold text-primary font-mono select-all">{details.id}</p>
+                <p className="text-xl font-bold text-primary font-mono select-all">
+                  CUST-{details.phone ? details.phone.replace(/\D/g, "") : "UNKNOWN"}
+                </p>
                 <div className="mt-2 flex">
                   <span className="inline-block px-3 py-1 bg-green-500/10 border border-green-500/20 text-green-700 text-xs font-bold rounded-full">
                     สถานะ: มีการรับประกันคุ้มครองอยู่
@@ -211,6 +237,10 @@ export default function CustomerDetailPage() {
 
                               <div className="space-y-2 pt-2 border-t border-outline-variant/30 text-[10px]">
                                 <div className="flex justify-between">
+                                  <span className="text-outline">รหัสรับประกัน:</span>
+                                  <span className="font-bold text-secondary font-mono">{item.id}</span>
+                                </div>
+                                <div className="flex justify-between">
                                   <span className="text-outline">รหัสสั่งผลิต / Lot:</span>
                                   <span className="font-semibold text-primary font-mono">
                                     {item.docNum || "-"}
@@ -236,6 +266,18 @@ export default function CustomerDetailPage() {
                                     })}
                                   </span>
                                 </div>
+                                {item.orderDate && (
+                                  <>
+                                    <div className="flex justify-between border-t border-outline-variant/20 pt-1.5 mt-1.5 text-[9.5px]">
+                                      <span className="text-outline">⏱️ ผลิตถึงวันลงทะเบียน:</span>
+                                      <span className="font-bold text-primary">{getDiffString(item.orderDate, item.registeredAt)}</span>
+                                    </div>
+                                    <div className="flex justify-between text-[9.5px]">
+                                      <span className="text-outline">⏱️ ผลิตถึงปัจจุบัน:</span>
+                                      <span className="font-bold text-primary">{getDiffString(item.orderDate, new Date())}</span>
+                                    </div>
+                                  </>
+                                )}
                               </div>
                             </div>
                           ))}

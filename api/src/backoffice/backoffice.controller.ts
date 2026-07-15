@@ -202,9 +202,9 @@ export class BackofficeController {
   @Post('clear-test-data')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('SYSTEM_ADMIN')
-  async clearTestData() {
-    await this.backofficeService.clearTestData();
-    return { success: true, message: 'ล้างข้อมูลการทดสอบทั้งหมดเรียบร้อยแล้ว' };
+  async clearTestData(@Body() body?: { tables?: string[] }) {
+    await this.backofficeService.clearTestData(body?.tables);
+    return { success: true, message: 'ล้างข้อมูลการทดสอบที่เลือกเรียบร้อยแล้ว' };
   }
 }
 

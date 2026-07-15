@@ -166,6 +166,7 @@ export class CrmService {
     for (const reg of allUserRegistrations) {
       let itemName = 'สินค้าทั่วไป';
       let itemCode = 'ไม่ระบุ';
+      let orderDate: string | null = null;
       if (reg.docNum) {
         const po = await this.registrationRepository.manager.findOne(ProductionOrder, {
           where: { docNum: reg.docNum }
@@ -173,12 +174,14 @@ export class CrmService {
         if (po) {
           itemName = po.itemName || 'สินค้าทั่วไป';
           itemCode = po.itemCode;
+          orderDate = po.orderDate || null;
         }
       }
       detailedRegistrations.push({
         ...reg,
         itemName,
         itemCode,
+        orderDate,
       });
     }
 
