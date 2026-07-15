@@ -422,7 +422,7 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
   };
 
   // Helper to check if this lot (PD) is already registered at user's location
-  const checkRegistrationStatus = async (resolvedDocNum: string, phoneVal: string, lat?: number, lng?: number) => {
+  const checkRegistrationStatus = async (resolvedDocNum: string, phoneVal: string, lat?: number, lng?: number, triggerModal = true) => {
     if (!resolvedDocNum || !phoneVal) return;
     setIsCheckingStatus(true);
     try {
@@ -467,7 +467,7 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
             }));
           }
 
-          if (data.count > 0 && qrMode === "STATIC" && step !== 4) {
+          if (triggerModal && data.count > 0 && qrMode === "STATIC") {
             setDuplicateCount(data.count);
             setShowDuplicateConfirmModal(true);
           } else {
@@ -475,6 +475,9 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
           }
         } else {
           setIsRegisteredAtSite(false);
+          if (!triggerModal) {
+            setStep(4);
+          }
         }
       }
     } catch (err) {
@@ -869,7 +872,7 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
         if (qrMode === "STATIC") {
           const actualDocNum = docNum || (token.length === 9 ? token : null);
           if (actualDocNum) {
-            await checkRegistrationStatus(actualDocNum, formData.phone, gpsLocation?.latitude, gpsLocation?.longitude);
+            await checkRegistrationStatus(actualDocNum, formData.phone, gpsLocation?.latitude, gpsLocation?.longitude, false);
           }
         }
 
@@ -1099,7 +1102,7 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
         const actualDocNum = docNum || (token.length === 9 ? token : null);
         if (actualDocNum) {
           setStep(4);
-          await checkRegistrationStatus(actualDocNum, formData.phone, gpsLocation?.latitude, gpsLocation?.longitude);
+          await checkRegistrationStatus(actualDocNum, formData.phone, gpsLocation?.latitude, gpsLocation?.longitude, false);
         }
       } else {
         const data = await res.json();
