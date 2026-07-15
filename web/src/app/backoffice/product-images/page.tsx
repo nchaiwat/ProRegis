@@ -7,7 +7,7 @@ import { getApiBaseUrl } from "@/lib/api";
 interface CustomImageItem {
   itemCode: string;
   itemName: string | null;
-  imageBase64: string;
+  imageBase64: string | null;
   createdAt: string;
   registrationCount?: number;
 }
@@ -472,7 +472,14 @@ export default function ProductImagesPage() {
 
                     {/* Thumbnail */}
                     <div className="w-full h-32 bg-surface-container border-b border-outline-variant/60 relative overflow-hidden flex items-center justify-center">
-                      <img src={item.imageBase64} alt={item.itemCode} className="w-full h-full object-cover group-hover:scale-105 duration-300" />
+                      {item.imageBase64 ? (
+                        <img src={item.imageBase64} alt={item.itemCode} className="w-full h-full object-cover group-hover:scale-105 duration-300" />
+                      ) : (
+                        <div className="flex flex-col items-center gap-1 text-outline">
+                          <span className="material-symbols-outlined text-3xl">image</span>
+                          <span className="text-[10px] font-bold">ไม่มีรูปภาพ (กล่องว่าง)</span>
+                        </div>
+                      )}
                     </div>
 
                     {/* Meta info */}

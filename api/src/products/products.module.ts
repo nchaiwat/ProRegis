@@ -9,12 +9,14 @@ import { BackofficeModule } from '../backoffice/backoffice.module';
 
 import { GenerationLog } from '../backoffice/generation-log.entity';
 import { SystemSetting } from '../backoffice/system-setting.entity';
+import { TelegramModule } from '../telegram/telegram.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([ProductMetadata, ProductionOrder, GenerationLog, SystemSetting]),
     SapModule,
     forwardRef(() => BackofficeModule),
+    TelegramModule,
   ],
   controllers: [ProductsController],
   providers: [ProductsService],

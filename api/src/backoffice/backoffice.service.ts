@@ -918,7 +918,6 @@ export class BackofficeService implements OnModuleInit {
   async getCustomImages() {
     const metas = await this.productsService['productMetadataRepository']
       .createQueryBuilder('meta')
-      .where('meta.imageBase64 IS NOT NULL AND meta.imageBase64 != :empty', { empty: '' })
       .orderBy('meta.itemCode', 'ASC')
       .getMany();
 

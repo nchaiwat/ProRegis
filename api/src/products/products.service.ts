@@ -7,6 +7,7 @@ import { ProductionOrder } from '../production-order/production-order.entity';
 import { SystemSetting } from '../backoffice/system-setting.entity';
 import { SapService } from '../sap/sap.service';
 import { BackofficeService } from '../backoffice/backoffice.service';
+import { TelegramService } from '../telegram/telegram.service';
 
 export interface Product {
   token: string;
@@ -51,6 +52,7 @@ export class ProductsService {
     @Inject(forwardRef(() => BackofficeService))
     private readonly backofficeService: BackofficeService,
     private readonly configService: ConfigService,
+    private readonly telegramService: TelegramService,
   ) {}
 
   private readonly products: Record<string, Product> = {
@@ -291,7 +293,25 @@ export class ProductsService {
       try {
         sapPo = await this.sapService.getProductionOrder(docNum);
       } catch (err) {
-        throw new BadRequestException(`การเชื่อมต่อระบบ SAP B1 ขัดข้อง: ${err.message}`);
+        const errorSummary = err.message && err.message.length > 300 
+          ? err.message.substring(0, 300) + '... (truncated)' 
+          : err.message;
+        
+        const telegramMessage = [
+          `🚨 <b>[PROREGIS ALERT] SAP B1 Connection Failed</b>`,
+          `📍 <b>DocNum:</b> <code>${docNum}</code>`,
+          `🕒 <b>Time:</b> ${new Date().toLocaleString('th-TH')}`,
+          `⚠️ <b>Error:</b> <code>${errorSummary}</code>`,
+          `━━━━━━━━━━━━━━━━━━━━━━━━━━`
+        ].join('\n');
+        
+        try {
+          await this.telegramService.sendMessage(telegramMessage);
+        } catch (tgErr) {
+          this.logger.error(`[PRODUCTS SERVICE] Failed to send Telegram alert: ${tgErr.message}`);
+        }
+
+        throw new BadRequestException('การเชื่อมต่อระบบบริการข้อมูลสินค้าขัดข้องชั่วคราว (ระบบได้รายงานให้ผู้ดูแลระบบทราบเรียบร้อยแล้ว) โปรดลองใหม่อีกครั้งภายหลัง');
       }
       
       if (!sapPo) {
