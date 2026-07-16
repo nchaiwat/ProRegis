@@ -928,6 +928,40 @@ export class BackofficeService implements OnModuleInit {
   }
 
   async getCustomImages() {
+    // Senior Developer Auto-Sync:
+    // Ensure all model prefixes present in production orders have corresponding metadata placeholders
+    try {
+      const poList = await this.productionOrderRepository
+        .createQueryBuilder('po')
+        .select('DISTINCT po.itemCode', 'itemCode')
+        .addSelect('MAX(po.itemName)', 'itemName')
+        .groupBy('po.itemCode')
+        .getRawMany();
+
+      for (const poRow of poList) {
+        const itemCode = poRow.itemCode;
+        const itemName = poRow.itemName || 'สินค้าทั่วไป';
+        if (itemCode && itemCode.includes('-')) {
+          const parts = itemCode.split('-');
+          if (parts.length >= 3) {
+            const prefix = parts.slice(0, 2).join('-');
+            let prefixMeta = await this.productsService['productMetadataRepository'].findOne({ where: { itemCode: prefix } });
+            if (!prefixMeta) {
+              prefixMeta = this.productsService['productMetadataRepository'].create({
+                itemCode: prefix,
+                itemName: `กลุ่มสินค้าโมเดล ${prefix}`,
+                imageBase64: null,
+              });
+              await this.productsService['productMetadataRepository'].save(prefixMeta);
+              this.logger.log(`[BACKOFFICE SERVICE] Auto-synced and created missing prefix group metadata in getCustomImages: ${prefix}`);
+            }
+          }
+        }
+      }
+    } catch (syncErr) {
+      this.logger.error(`[BACKOFFICE SERVICE] Failed to auto-sync metadata prefixes in getCustomImages: ${syncErr.message}`);
+    }
+
     const metas = await this.productsService['productMetadataRepository']
       .createQueryBuilder('meta')
       .orderBy('meta.itemCode', 'ASC')
