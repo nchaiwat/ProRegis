@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Query, Param, Req, Res, UseGuards, HttpCode, Body } from '@nestjs/common';
+import { Controller, Get, Post, Query, Param, Req, Res, UseGuards, HttpCode, Body, Delete } from '@nestjs/common';
 import { CrmService, CrmFilterDto } from './crm.service';
 import { AuditService } from '../audit/audit.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -117,5 +117,39 @@ export class CrmController {
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(Buffer.from(csvContent, 'utf8'));
+  }
+
+  @Delete('customer/:id')
+  async deleteCustomer(@Param('id') id: string, @Req() req: Request) {
+    const actor = (req as any).user?.username || 'unknown';
+    const ipAddress =
+      (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
+      req.socket?.remoteAddress ||
+      null;
+    const userAgent = req.headers['user-agent'] || null;
+
+    const registration = await this.crmService.getRegistrationDetails(id);
+    const phone = registration.phone;
+
+    // Delete customer and all their warranty registrations from database
+    const deleteCount = await this.crmService.deleteCustomerAndRegistrations(phone);
+
+    // Audit logs for deleting customer details (important for security)
+    await this.auditService.logAction(
+      actor,
+      'DELETE_CUSTOMER',
+      'Customer',
+      id,
+      ipAddress,
+      userAgent,
+      {
+        phone,
+        firstName: registration.firstName,
+        lastName: registration.lastName,
+        deletedRecordsCount: deleteCount,
+      },
+    );
+
+    return { success: true, deletedRecordsCount: deleteCount };
   }
 }

@@ -124,6 +124,33 @@ export default function CrmPage() {
     }
   };
 
+  const confirmDeleteCustomer = async (id: string, name: string, count: number) => {
+    const consent = window.confirm(
+      `คุณแน่ใจหรือไม่ว่าต้องการลบข้อมูลลูกค้ารายนี้?\n\nลูกค้า: ${name}\nจำนวนชิ้นการรับประกันที่จะถูกลบ: ${count} ชิ้น\n\n⚠️ คำเตือน: ข้อมูลการรับประกันของลูกค้าและสิทธิ์ทั้งหมดในสินค้าทุกชิ้นจะถูกลบออกจากฐานข้อมูลอย่างถาวรและไม่สามารถกู้คืนกลับมาได้อีก!`
+    );
+    if (!consent) return;
+
+    try {
+      const token = sessionStorage.getItem("bo_token") || "";
+      const res = await fetch(`${getApiBaseUrl()}/crm/customer/${id}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (res.ok) {
+        alert("ลบข้อมูลลูกค้าและประวัติการรับประกันทั้งหมดสำเร็จ!");
+        fetchCustomers();
+      } else {
+        alert("ลบข้อมูลไม่สำเร็จ กรุณาตรวจสอบสิทธิ์ของคุณอีกครั้ง");
+      }
+    } catch (err) {
+      console.error("Delete customer error:", err);
+      alert("ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์เพื่อลบข้อมูลได้");
+    }
+  };
+
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setPage(1);
@@ -289,13 +316,20 @@ export default function CrmPage() {
                           day: "2-digit",
                         })}
                       </td>
-                      <td className="px-4 py-3.5 text-right">
+                      <td className="px-4 py-3.5 text-right flex items-center justify-end gap-2">
                         <button
                           onClick={() => router.push(`/backoffice/crm/${cust.id}`)}
                           className="h-9 px-4 bg-secondary/10 hover:bg-secondary/15 text-secondary font-bold text-[11px] rounded-lg transition-all cursor-pointer inline-flex items-center gap-1 active:scale-95"
                         >
                           <span className="material-symbols-outlined !text-[14px]">visibility</span>
                           ตรวจสอบสิทธิ์
+                        </button>
+                        <button
+                          onClick={() => confirmDeleteCustomer(cust.id, `${cust.firstName} ${cust.lastName}`, cust.registrationCount || 1)}
+                          className="h-9 w-9 bg-error/10 hover:bg-error/15 text-error border border-error/20 font-bold rounded-lg transition-all cursor-pointer flex items-center justify-center active:scale-95"
+                          title="ลบข้อมูลลูกค้าและประวัติการลงทะเบียนทั้งหมด"
+                        >
+                          <span className="material-symbols-outlined !text-[16px]">delete</span>
                         </button>
                       </td>
                     </tr>

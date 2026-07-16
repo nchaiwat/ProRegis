@@ -297,4 +297,12 @@ export class CrmService {
 
     return Array.from(uniqueMap.values()).sort((a, b) => a.label.localeCompare(b.label, 'th'));
   }
+
+  async deleteCustomerAndRegistrations(phone: string): Promise<number> {
+    const registrations = await this.registrationRepository.find({ where: { phone } });
+    if (registrations.length > 0) {
+      await this.registrationRepository.remove(registrations);
+    }
+    return registrations.length;
+  }
 }

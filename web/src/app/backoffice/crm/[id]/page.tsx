@@ -60,6 +60,34 @@ export default function CustomerDetailPage() {
     }
   };
 
+  const handleDeleteCustomer = async () => {
+    if (!details) return;
+    const consent = window.confirm(
+      `คุณแน่ใจหรือไม่ว่าต้องการลบข้อมูลลูกค้ารายนี้?\n\nลูกค้า: ${details.firstName} ${details.lastName}\nจำนวนชิ้นการรับประกันที่จะถูกลบ: ${details.allRegistrations?.length || 1} ชิ้น\n\n⚠️ คำเตือน: ข้อมูลจะถูกลบออกจากระบบอย่างถาวรและไม่สามารถกู้คืนได้!`
+    );
+    if (!consent) return;
+
+    try {
+      const token = sessionStorage.getItem("bo_token") || "";
+      const res = await fetch(`${getApiBaseUrl()}/crm/customer/${id}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (res.ok) {
+        alert("ลบข้อมูลลูกค้าและประวัติทั้งหมดเสร็จสิ้น!");
+        router.push("/backoffice/crm");
+      } else {
+        alert("ไม่สามารถลบข้อมูลได้ กรุณาตรวจสอบสิทธิ์อีกครั้ง");
+      }
+    } catch (err) {
+      console.error("Delete detailed customer error:", err);
+      alert("การเชื่อมต่อล้มเหลว");
+    }
+  };
+
   const getDiffString = (fromStr: string | null, toStr: string | Date) => {
     if (!fromStr) return "-";
     const from = new Date(fromStr);
@@ -99,6 +127,18 @@ export default function CustomerDetailPage() {
           <h2 className="font-bold text-2xl text-primary">ตรวจสอบสิทธิ์และข้อมูลการรับประกันสินค้า</h2>
           <p className="text-sm text-on-surface-variant">รายละเอียดประวัติของลูกค้าและจุดงานติดตั้งอย่างละเอียด</p>
         </div>
+        {details && (
+          <div className="flex sm:self-end">
+            <button
+              onClick={() => handleDeleteCustomer()}
+              className="h-10 px-4 bg-error hover:bg-error-container text-white font-extrabold text-xs rounded-xl shadow hover:opacity-95 active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+              title="ลบข้อมูลผู้ใช้งานและประวัติรับประกันทั้งหมดออกจากระบบ"
+            >
+              <span className="material-symbols-outlined text-base">delete</span>
+              <span>ลบลูกค้าและประวัติทั้งหมด</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {loading ? (
