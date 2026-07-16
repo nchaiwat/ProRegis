@@ -324,9 +324,12 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
               latitude: Number(session.latitude),
               longitude: Number(session.longitude)
             });
+            setIsUsingExistingAddress(true);
           }
           setHasActiveSession(true);
           setIsPhoneVerified(true);
+          setMandatoryConsent(true);
+          setOptionalConsent(true);
           storedPhone = session.phone;
         } else {
           localStorage.removeItem("proregis_customer_session");
@@ -429,7 +432,25 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
 
   // Helper to check if this lot (PD) is already registered at user's location
   const checkRegistrationStatus = async (resolvedDocNum: string, phoneVal: string, lat?: number, lng?: number, triggerModal = true) => {
-    if (!resolvedDocNum || !phoneVal) return;
+    let activePhone = phoneVal;
+    if (!activePhone) {
+      // Fallback: check formData or local session
+      activePhone = formData.phone;
+      if (!activePhone) {
+        const stored = localStorage.getItem("proregis_customer_session");
+        if (stored) {
+          try {
+            activePhone = JSON.parse(stored).phone || "";
+          } catch {}
+        }
+      }
+    }
+
+    if (!resolvedDocNum || !activePhone) {
+      console.warn("Skipping checkRegistrationStatus due to missing parameters:", { resolvedDocNum, activePhone });
+      return;
+    }
+
     setIsCheckingStatus(true);
     try {
       const res = await fetch(`${getApiBaseUrl()}/registration/check-status`, {
@@ -437,7 +458,7 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           docNum: resolvedDocNum,
-          phone: phoneVal,
+          phone: activePhone,
           latitude: lat,
           longitude: lng
         })
@@ -461,6 +482,16 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
               installationPosition: ""
             });
 
+            if (data.profile.latitude && data.profile.longitude) {
+              setGpsLocation({
+                latitude: Number(data.profile.latitude),
+                longitude: Number(data.profile.longitude)
+              });
+              setIsUsingExistingAddress(true);
+            }
+            setMandatoryConsent(true);
+            setOptionalConsent(true);
+
             localStorage.setItem("proregis_customer_session", JSON.stringify({
               firstName: data.profile.firstName,
               lastName: data.profile.lastName,
@@ -469,6 +500,8 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
               postalCode: data.profile.postalCode,
               phone: data.profile.phone,
               email: data.profile.email,
+              latitude: data.profile.latitude || null,
+              longitude: data.profile.longitude || null,
               timestamp: Date.now()
             }));
           }
@@ -481,6 +514,37 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
           }
         } else {
           setIsRegisteredAtSite(false);
+          
+          // Re-populate from local storage for a seamless experience on additional scans at same site
+          const stored = localStorage.getItem("proregis_customer_session");
+          if (stored) {
+            try {
+              const session = JSON.parse(stored);
+              setFormData(prev => ({
+                ...prev,
+                firstName: session.firstName || prev.firstName,
+                lastName: session.lastName || prev.lastName,
+                address: session.address || prev.address,
+                province: session.province || prev.province,
+                postalCode: session.postalCode || prev.postalCode,
+                phone: session.phone || prev.phone,
+                email: session.email || prev.email,
+              }));
+
+              if (session.latitude && session.longitude) {
+                setGpsLocation({
+                  latitude: Number(session.latitude),
+                  longitude: Number(session.longitude)
+                });
+                setIsUsingExistingAddress(true);
+              }
+              setMandatoryConsent(true);
+              setOptionalConsent(true);
+            } catch (e) {
+              console.warn("Failed to parse local session in checkRegistrationStatus fallback:", e);
+            }
+          }
+
           if (!triggerModal) {
             setStep(4);
           }
@@ -947,6 +1011,8 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
         setGpsLocation(null);
       }
       setIsUsingExistingAddress(true);
+      setMandatoryConsent(true);
+      setOptionalConsent(true);
       setShowAutofillPrompt(false);
     }
   };

@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, BadRequestException, Inject, forwardRef, OnModuleInit } from '@nestjs/common';
+import { Injectable, UnauthorizedException, BadRequestException, Inject, forwardRef, OnModuleInit, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, IsNull } from 'typeorm';
@@ -52,6 +52,8 @@ export interface GeneratedRow {
 
 @Injectable()
 export class BackofficeService implements OnModuleInit {
+  private readonly logger = new Logger(BackofficeService.name);
+
   constructor(
     @InjectRepository(GenerationLog)
     private readonly logRepository: Repository<GenerationLog>,
@@ -791,6 +793,11 @@ export class BackofficeService implements OnModuleInit {
             completedQty: sapInfo.completedQty || 0,
           });
           await this.productionOrderRepository.save(po);
+          try {
+            await this.productsService.cacheProductMetadata(po.itemCode, po.itemName || 'สินค้าทั่วไป');
+          } catch (cacheErr) {
+            this.logger.error(`[BACKOFFICE SERVICE] Failed to cache metadata in getLotSummary (SAP): ${cacheErr.message}`);
+          }
         } else {
           if (this.sapService.getIsMockMode()) {
             po = this.productionOrderRepository.create({
@@ -801,6 +808,11 @@ export class BackofficeService implements OnModuleInit {
               completedQty: 0,
             });
             await this.productionOrderRepository.save(po);
+            try {
+              await this.productsService.cacheProductMetadata(po.itemCode, po.itemName || 'สินค้าทั่วไป');
+            } catch (cacheErr) {
+              this.logger.error(`[BACKOFFICE SERVICE] Failed to cache metadata in getLotSummary (Mock): ${cacheErr.message}`);
+            }
           } else {
             throw new BadRequestException(`ไม่พบเลขที่สั่งผลิต (PD) ${docNum} นี้ในระบบ SAP B1`);
           }
