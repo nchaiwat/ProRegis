@@ -755,7 +755,7 @@ export default function MyWarrantyPage() {
                           <code>{lang === "th" ? (item as any).mfgDateTh || "-" : (item as any).mfgDateEn || "-"}</code>
                         </p>
                         <p className="flex items-center gap-1.5">
-                          <span className="font-semibold text-primary">{lang === "th" ? "เลขล็อตการผลิต" : "Lot No."}:</span>
+                          <span className="font-semibold text-primary">{lang === "th" ? "เลขการผลิต" : "Production No."}:</span>
                           <code>{item.docNum || (item as any).lotNo || "-"}</code>
                         </p>
                         <p className="flex items-center gap-1.5">

@@ -284,6 +284,10 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
   const [autofilledProfile, setAutofilledProfile] = useState<any>(null);
   const [showAutofillPrompt, setShowAutofillPrompt] = useState(false);
   const [isUsingExistingAddress, setIsUsingExistingAddress] = useState(false);
+  // sessionLoaded becomes true once the session-restore useEffect has fully completed
+  // (including any async fetchProfileByPhone call). The product status-check useEffect
+  // depends on this so it never fires before GPS / profile data is ready.
+  const [sessionLoaded, setSessionLoaded] = useState(false);
 
   const getProvinceLabel = (prov: string, currentLang: "th" | "en") => {
     if (!prov) return "";
@@ -331,6 +335,8 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
           setMandatoryConsent(true);
           setOptionalConsent(true);
           storedPhone = session.phone;
+          // Full session data is synchronously available — mark session as loaded
+          setSessionLoaded(true);
         } else {
           localStorage.removeItem("proregis_customer_session");
         }
@@ -351,7 +357,9 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
             setFormData((prev) => ({ ...prev, phone: otpSession.phone }));
             setIsPhoneVerified(true);
             storedPhone = otpSession.phone;
+            // fetchProfileByPhone is async — it sets sessionLoaded=true in its finally block
             fetchProfileByPhone(otpSession.phone);
+            return; // Don't call setSessionLoaded(true) here; fetchProfileByPhone will do it
           } else {
             localStorage.removeItem("proregis_otp_session");
           }
@@ -360,6 +368,9 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
         }
       }
     }
+
+    // If we reach here, session loading is done (either full session or no session at all)
+    setSessionLoaded(true);
 
     // Load LINE LIFF SDK dynamically from edge CDN
     const script = document.createElement("script");
@@ -419,14 +430,61 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
             address: latest.address || "",
             province: latest.province || "",
             postalCode: latest.postalCode || "",
-            email: latest.email || ""
+            email: latest.email || "",
+            latitude: latest.latitude || null,
+            longitude: latest.longitude || null
           };
           setAutofilledProfile(profile);
+          // Immediately restore GPS from historical registration so Step 3 won't re-prompt
+          if (profile.latitude && profile.longitude) {
+            setGpsLocation({
+              latitude: Number(profile.latitude),
+              longitude: Number(profile.longitude)
+            });
+            setIsUsingExistingAddress(true);
+            // Persist coordinates into localStorage so useEffect([product, sessionLoaded]) can use them
+            const stored = localStorage.getItem("proregis_customer_session");
+            if (stored) {
+              try {
+                const existingSession = JSON.parse(stored);
+                localStorage.setItem("proregis_customer_session", JSON.stringify({
+                  ...existingSession,
+                  firstName: profile.firstName || existingSession.firstName,
+                  lastName: profile.lastName || existingSession.lastName,
+                  address: profile.address || existingSession.address,
+                  province: profile.province || existingSession.province,
+                  postalCode: profile.postalCode || existingSession.postalCode,
+                  email: profile.email || existingSession.email,
+                  latitude: profile.latitude,
+                  longitude: profile.longitude,
+                  phone: phoneVal,
+                  timestamp: existingSession.timestamp || Date.now()
+                }));
+              } catch {}
+            } else {
+              // No full session yet — create one from profile data so future token scans can use it
+              localStorage.setItem("proregis_customer_session", JSON.stringify({
+                firstName: profile.firstName,
+                lastName: profile.lastName,
+                address: profile.address,
+                province: profile.province,
+                postalCode: profile.postalCode,
+                email: profile.email,
+                phone: phoneVal,
+                latitude: profile.latitude,
+                longitude: profile.longitude,
+                timestamp: Date.now()
+              }));
+            }
+          }
           setShowAutofillPrompt(true);
         }
       }
     } catch (err) {
       console.warn("Failed fetching profile by phone:", err);
+    } finally {
+      // Signal that session data (including GPS from history) is now available
+      setSessionLoaded(true);
     }
   };
 
@@ -630,19 +688,8 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
           if (data.verificationMode) setVerificationMode(data.verificationMode as "OTP" | "LINE");
           if (data.smsOtpMode) setSmsOtpMode(data.smsOtpMode);
 
-          // If QR Mode is STATIC and we have phone number, immediately trigger registration status check
-          const storedSession = localStorage.getItem("proregis_customer_session");
-          const actualDocNum = resolvedDocNum || (lookupKey.length === 9 ? lookupKey : null);
-          if (data.qrMode === "STATIC" && storedSession && actualDocNum) {
-            try {
-              const session = JSON.parse(storedSession);
-              if (session.phone) {
-                await checkRegistrationStatus(actualDocNum, session.phone);
-              }
-            } catch (e) {
-              console.warn("Error parsing session on fetchProduct", e);
-            }
-          }
+          // If QR Mode is STATIC, store docNum for use by the session check effect below
+          // (checkRegistrationStatus will be called in the [product, hasActiveSession] useEffect)
           return;
         } else {
           // If the server explicitly rejected the request, show the validation error message!
@@ -702,7 +749,7 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
     fetchProduct();
   }, [token]);
 
-  // Handle OTP timer countdown
+  // OTP timer countdown
   useEffect(() => {
     if (otpTimer > 0) {
       const interval = setInterval(() => {
@@ -711,6 +758,30 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
       return () => clearInterval(interval);
     }
   }, [otpTimer]);
+
+  // After both product AND session data (including async fetchProfileByPhone) are ready,
+  // run the duplicate/status check for STATIC QR.
+  useEffect(() => {
+    if (!product || qrMode !== "STATIC" || !sessionLoaded) return;
+    const storedSession = localStorage.getItem("proregis_customer_session");
+    if (!storedSession) return;
+    try {
+      const session = JSON.parse(storedSession);
+      if (!session.phone) return;
+      const actualDocNum = docNum || (token.length === 9 ? token : null);
+      if (!actualDocNum) return;
+      // Pass GPS from session — guaranteed to be present now that sessionLoaded=true
+      checkRegistrationStatus(
+        actualDocNum,
+        session.phone,
+        session.latitude ? Number(session.latitude) : undefined,
+        session.longitude ? Number(session.longitude) : undefined
+      );
+    } catch (e) {
+      console.warn("Error reading session for status check:", e);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [product, sessionLoaded]);
 
   // Scroll to top of the page when the step changes (e.g. to step 4 on success)
   useEffect(() => {
@@ -1002,15 +1073,29 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
         postalCode: autofilledProfile.postalCode,
         email: autofilledProfile.email
       }));
+      // Restore GPS from autofilled profile if available
       if (autofilledProfile.latitude && autofilledProfile.longitude) {
         setGpsLocation({
           latitude: Number(autofilledProfile.latitude),
           longitude: Number(autofilledProfile.longitude)
         });
+        setIsUsingExistingAddress(true);
       } else {
-        setGpsLocation(null);
+        // Fall back to session coordinates if profile has none
+        const stored = localStorage.getItem("proregis_customer_session");
+        if (stored) {
+          try {
+            const session = JSON.parse(stored);
+            if (session.latitude && session.longitude) {
+              setGpsLocation({
+                latitude: Number(session.latitude),
+                longitude: Number(session.longitude)
+              });
+              setIsUsingExistingAddress(true);
+            }
+          } catch {}
+        }
       }
-      setIsUsingExistingAddress(true);
       setMandatoryConsent(true);
       setOptionalConsent(true);
       setShowAutofillPrompt(false);
@@ -1818,23 +1903,38 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
                           <div className="space-y-1 flex-1">
                             <h3 className="font-bold text-sm text-primary">{t.gpsLabel}</h3>
                             <p className="text-xs text-on-surface-variant leading-relaxed">
-                              {isUsingExistingAddress 
-                                ? (lang === "th" ? "ใช้พิกัดจุดติดตั้งเดิมที่ลูกค้าเคยแชร์ไว้ในประวัติลงทะเบียน โดยคุณไม่ต้องกดอนุญาตหรือระบุตำแหน่งใหม่" : "Using the existing GPS coordinates shared during your previous registration.")
+                              {gpsLocation
+                                ? (lang === "th" ? "พิกัดสถานที่ติดตั้งถูกบันทึกไว้เรียบร้อยแล้ว" : "Installation location coordinates are saved.")
                                 : t.gpsDesc}
                             </p>
                           </div>
                         </div>
                         
-                        {!isUsingExistingAddress ? (
+                        {gpsLocation ? (
+                          // GPS coordinates already available - show verified badge
+                          <div className="pt-1 flex flex-wrap items-center gap-3">
+                            <div className="flex items-center gap-2 text-xs font-bold text-emerald-700">
+                              <span className="material-symbols-outlined !text-base text-emerald-600" style={{ fontVariationSettings: "'FILL' 1" }}>verified</span>
+                              <span>{lang === "th" ? "พิกัดที่ติดตั้ง:" : "Location:"}</span>
+                            </div>
+                            <span className="text-[11px] font-semibold text-emerald-600 bg-emerald-50/50 px-3 py-1.5 rounded-md border border-emerald-100">
+                              Lat: {gpsLocation.latitude.toFixed(6)}, Lng: {gpsLocation.longitude.toFixed(6)}
+                            </span>
+                            {isUsingExistingAddress && (
+                              <span className="text-[10px] text-outline font-medium">
+                                ({lang === "th" ? "จากประวัติลงทะเบียนเดิม" : "from previous registration"})
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          // No GPS - show fetch button
                           <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center pt-2">
                             <button
                               type="button"
                               onClick={handleFetchGps}
                               disabled={isGpsLoading}
                               className={`inline-flex items-center gap-2 px-5 h-11 rounded-lg text-xs font-bold transition-all active:scale-[0.98] cursor-pointer ${
-                                gpsLocation
-                                  ? "bg-emerald-50 text-emerald-700 border border-emerald-300"
-                                  : isGpsLoading
+                                isGpsLoading
                                   ? "bg-surface-variant text-outline-variant cursor-not-allowed border border-transparent"
                                   : "bg-secondary/10 hover:bg-secondary/15 text-secondary border border-secondary/25"
                               }`}
@@ -1844,11 +1944,6 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
                                   <div className="w-4 h-4 border-2 border-secondary border-t-transparent rounded-full animate-spin"></div>
                                   <span>{t.gpsLoading}</span>
                                 </>
-                              ) : gpsLocation ? (
-                                <>
-                                  <span className="material-symbols-outlined text-lg">check_circle</span>
-                                  <span>{t.gpsSuccess}</span>
-                                </>
                               ) : (
                                 <>
                                   <span className="material-symbols-outlined text-lg">my_location</span>
@@ -1857,26 +1952,11 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
                               )}
                             </button>
 
-                            {gpsLocation && (
-                              <span className="text-[11px] font-semibold text-emerald-600 bg-emerald-50/50 px-3 py-1.5 rounded-md border border-emerald-100">
-                                Lat: {gpsLocation.latitude.toFixed(6)}, Lng: {gpsLocation.longitude.toFixed(6)}
-                              </span>
-                            )}
-
                             {gpsErrorMsg && (
                               <span className="text-[11px] font-medium text-error leading-normal">
                                 {gpsErrorMsg}
                               </span>
                             )}
-                          </div>
-                        ) : (
-                          <div className="pt-2 flex items-center gap-2 text-xs font-bold text-emerald-700">
-                            <span className="material-symbols-outlined !text-base text-emerald-600" style={{ fontVariationSettings: "'FILL' 1" }}>verified</span>
-                            <span>
-                              {lang === "th"
-                                ? `ใช้พิกัดในประวัติ: Lat: ${gpsLocation?.latitude?.toFixed(6) || "N/A"}, Lng: ${gpsLocation?.longitude?.toFixed(6) || "N/A"}`
-                                : `Using historical coordinates: Lat: ${gpsLocation?.latitude?.toFixed(6) || "N/A"}, Lng: ${gpsLocation?.longitude?.toFixed(6) || "N/A"}`}
-                            </span>
                           </div>
                         )}
                       </div>

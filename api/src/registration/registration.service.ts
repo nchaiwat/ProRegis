@@ -787,19 +787,24 @@ export class RegistrationService {
 
   async checkStatus(docNum: string, phone: string, lat?: number, lng?: number) {
     const cleanPhone = phone.replace(/\D/g, '');
-    const registrations = await this.registrationRepository.find({
-      where: { docNum, phone: cleanPhone },
+    
+    // Fetch all registrations under this customer's phone number to count cumulative warranties
+    const allRegistrations = await this.registrationRepository.find({
+      where: { phone: cleanPhone },
       order: { registeredAt: 'ASC' }
     });
 
-    if (registrations.length === 0) {
+    // Check if the current docNum has been registered under this phone
+    const docRegistrations = allRegistrations.filter(r => r.docNum === docNum);
+
+    if (docRegistrations.length === 0) {
       return { registered: false };
     }
 
     let isSameSite = true;
     if (lat && lng) {
       isSameSite = false;
-      for (const reg of registrations) {
+      for (const reg of docRegistrations) {
         if (reg.latitude && reg.longitude) {
           const distance = this.calculateDistance(lat, lng, Number(reg.latitude), Number(reg.longitude));
           if (distance <= 0.5) { // 500 meters
@@ -821,11 +826,11 @@ export class RegistrationService {
     const po = await this.productionOrderRepository.findOne({ where: { docNum } });
     const modelName = po ? (po.itemName || 'กระจกนิรภัยนำเข้า') : 'กระจกนิรภัยนำเข้า';
 
-    const latestReg = registrations[registrations.length - 1];
+    const latestReg = docRegistrations[docRegistrations.length - 1];
 
     return {
       registered: true,
-      count: registrations.length,
+      count: allRegistrations.length, // Total count across all product types/models
       modelName,
       profile: {
         firstName: latestReg.firstName,
@@ -836,7 +841,7 @@ export class RegistrationService {
         phone: latestReg.phone,
         email: latestReg.email,
       },
-      list: registrations.map((r, idx) => ({
+      list: allRegistrations.map((r, idx) => ({
         index: idx + 1,
         id: r.id,
         registeredAt: r.registeredAt,
