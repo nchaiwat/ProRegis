@@ -28,9 +28,11 @@ export default function QrScannerModal({ onClose, onScanSuccess, lang }: QrScann
       if (cancelled || !isMountedRef.current) return;
 
       let Html5Qrcode: typeof import("html5-qrcode").Html5Qrcode;
+      let Html5QrcodeSupportedFormats: typeof import("html5-qrcode").Html5QrcodeSupportedFormats;
       try {
         const mod = await import("html5-qrcode");
         Html5Qrcode = mod.Html5Qrcode;
+        Html5QrcodeSupportedFormats = mod.Html5QrcodeSupportedFormats;
       } catch {
         if (!isMountedRef.current) return;
         setErrorMsg(
@@ -70,8 +72,16 @@ export default function QrScannerModal({ onClose, onScanSuccess, lang }: QrScann
       };
 
       const config = {
-        fps: 15,
+        fps: 20,
         aspectRatio: 1.0,
+        qrbox: (width: number, height: number) => {
+          const size = Math.min(width, height) * 0.7;
+          return { width: size, height: size };
+        },
+        formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+        experimentalFeatures: {
+          useBarCodeDetectorIfSupported: true,
+        },
       };
 
       try {
