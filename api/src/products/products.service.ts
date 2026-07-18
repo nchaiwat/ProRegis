@@ -8,6 +8,7 @@ import { SystemSetting } from '../backoffice/system-setting.entity';
 import { SapService } from '../sap/sap.service';
 import { BackofficeService } from '../backoffice/backoffice.service';
 import { TelegramService } from '../telegram/telegram.service';
+import { AuditLog } from '../audit/audit-log.entity';
 
 export interface Product {
   token: string;
@@ -48,6 +49,8 @@ export class ProductsService {
     private readonly generationLogRepository: Repository<GenerationLog>,
     @InjectRepository(SystemSetting)
     private readonly systemSettingRepository: Repository<SystemSetting>,
+    @InjectRepository(AuditLog)
+    private readonly auditLogRepository: Repository<AuditLog>,
     private readonly sapService: SapService,
     @Inject(forwardRef(() => BackofficeService))
     private readonly backofficeService: BackofficeService,
@@ -287,15 +290,38 @@ export class ProductsService {
     }
 
     let po = await this.productionOrderRepository.findOne({ where: { docNum } });
-    if (!po) {
+    if (po) {
+      await this.auditLogRepository.save(this.auditLogRepository.create({
+        actorUsername: 'CUSTOMER',
+        action: 'DB_CACHE_HIT',
+        resource: 'ProductionOrder',
+        resourceId: docNum,
+      })).catch(() => {});
+    } else {
       this.logger.log(`[PRODUCTS SERVICE] Production Order not found in local DB. Fetching from SAP: DocNum=${docNum}`);
       let sapPo;
       try {
         sapPo = await this.sapService.getProductionOrder(docNum);
+        
+        await this.auditLogRepository.save(this.auditLogRepository.create({
+          actorUsername: 'CUSTOMER',
+          action: 'SAP_FETCH_SUCCESS',
+          resource: 'ProductionOrder',
+          resourceId: docNum,
+          details: JSON.stringify({ reason: 'customer_lookup' }),
+        })).catch(() => {});
       } catch (err) {
         const errorSummary = err.message && err.message.length > 300 
           ? err.message.substring(0, 300) + '... (truncated)' 
           : err.message;
+        
+        await this.auditLogRepository.save(this.auditLogRepository.create({
+          actorUsername: 'CUSTOMER',
+          action: 'SAP_FETCH_ERROR',
+          resource: 'ProductionOrder',
+          resourceId: docNum,
+          details: JSON.stringify({ error: errorSummary }),
+        })).catch(() => {});
         
         const telegramMessage = [
           `🟦 <b>[ProRegis Alert] SAP B1 Connection Failed</b>`,

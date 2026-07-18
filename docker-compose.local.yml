@@ -59,7 +59,7 @@ services:
     image: nginx:alpine
     container_name: proregis-nginx-local
     ports:
-      - "80:80"
+      - "8080:80"
       - "443:443"
     volumes:
       - ./nginx.local.conf:/etc/nginx/nginx.conf:ro

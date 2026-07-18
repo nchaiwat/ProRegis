@@ -6,6 +6,7 @@ import { GenerationLog } from './generation-log.entity';
 import { ProductionOrder } from '../production-order/production-order.entity';
 import { Registration } from '../registration/registration.entity';
 import { SystemSetting } from './system-setting.entity';
+import { AuditLog } from '../audit/audit-log.entity';
 import { TelegramService, formatThaiDateTime } from '../telegram/telegram.service';
 import { SapService, SapProductionOrderInfo } from '../sap/sap.service';
 import { ProductsService } from '../products/products.service';
@@ -63,6 +64,8 @@ export class BackofficeService implements OnModuleInit {
     private readonly registrationRepository: Repository<Registration>,
     @InjectRepository(SystemSetting)
     private readonly systemSettingRepository: Repository<SystemSetting>,
+    @InjectRepository(AuditLog)
+    private readonly auditLogRepository: Repository<AuditLog>,
     private readonly telegramService: TelegramService,
     private readonly sapService: SapService,
     @Inject(forwardRef(() => ProductsService))
@@ -525,6 +528,190 @@ export class BackofficeService implements OnModuleInit {
       count: parseInt(t.count, 10),
     }));
 
+    // =========================================================================
+    // Category A: CRM & Technician New Statistics
+    // =========================================================================
+    
+    // A1. Installation Position Distribution
+    const installRaw = await this.registrationRepository.createQueryBuilder('reg')
+      .select('reg.installationPosition', 'position')
+      .addSelect('COUNT(reg.id)', 'count')
+      .groupBy('reg.installationPosition')
+      .getRawMany();
+    const installationPositionStats = installRaw.map(r => ({
+      label: r.position || 'ไม่ระบุ',
+      count: parseInt(r.count, 10) || 0,
+    }));
+
+    // A2. Marketing Consent Analysis (optionalConsent)
+    const consentRaw = await this.registrationRepository.createQueryBuilder('reg')
+      .select('reg.optionalConsent', 'optionalConsent')
+      .addSelect('COUNT(reg.id)', 'count')
+      .groupBy('reg.optionalConsent')
+      .getRawMany();
+    let optIn = 0;
+    let optOut = 0;
+    for (const c of consentRaw) {
+      const count = parseInt(c.count, 10) || 0;
+      if (c.optionalConsent === true || c.optionalConsent === 'true' || c.optionalConsent === 1 || c.optionalConsent === '1') {
+        optIn += count;
+      } else {
+        optOut += count;
+      }
+    }
+    const consentStats = { optIn, optOut };
+
+    // A3. Purchase / Registration Size per Phone
+    const purchaseRaw = await this.registrationRepository.createQueryBuilder('reg')
+      .select('reg.phone', 'phone')
+      .addSelect('COUNT(reg.id)', 'count')
+      .groupBy('reg.phone')
+      .getRawMany();
+    let size1 = 0;
+    let size2_3 = 0;
+    let size4_6 = 0;
+    let size7plus = 0;
+    for (const p of purchaseRaw) {
+      const count = parseInt(p.count, 10) || 0;
+      if (count === 1) size1++;
+      else if (count <= 3) size2_3++;
+      else if (count <= 6) size4_6++;
+      else size7plus++;
+    }
+    const purchaseSizeStats = { size1, size2_3, size4_6, size7plus };
+
+    // A4. Inventory Lag / Days to Register & A5. Month of Production of Registered items
+    const regWithPoQuery = this.registrationRepository.createQueryBuilder('reg')
+      .innerJoin(ProductionOrder, 'po', 'reg.docNum = po.docNum')
+      .select('reg.registeredAt', 'registeredAt')
+      .addSelect('po.orderDate', 'orderDate')
+      .addSelect('po.startDate', 'startDate');
+    if (startDate) {
+      regWithPoQuery.andWhere('reg.registeredAt >= :startDate', { startDate: new Date(startDate) });
+    }
+    if (endDate) {
+      regWithPoQuery.andWhere('reg.registeredAt <= :endDate', { endDate: new Date(endDate) });
+    }
+    const regWithPo = await regWithPoQuery.getRawMany();
+
+    let lagUnder30 = 0;
+    let lag30to90 = 0;
+    let lag90to180 = 0;
+    let lagOver180 = 0;
+    const prodMonthCounts: Record<string, number> = {};
+
+    for (const row of regWithPo) {
+      const regDate = new Date(row.registeredAt);
+      const prodDateStr = row.orderDate || row.startDate;
+      if (prodDateStr) {
+        const prodDate = new Date(prodDateStr);
+        if (!isNaN(prodDate.getTime())) {
+          const diffTime = Math.abs(regDate.getTime() - prodDate.getTime());
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          
+          if (diffDays <= 30) lagUnder30++;
+          else if (diffDays <= 90) lag30to90++;
+          else if (diffDays <= 180) lag90to180++;
+          else lagOver180++;
+
+          const monthKey = prodDate.toISOString().substring(0, 7); // "YYYY-MM"
+          prodMonthCounts[monthKey] = (prodMonthCounts[monthKey] || 0) + 1;
+        }
+      }
+    }
+    const lagTimeStats = {
+      under30: lagUnder30,
+      thirtyToNinety: lag30to90,
+      ninetyToOneEighty: lag90to180,
+      overOneEighty: lagOver180,
+    };
+    const productionMonthStats = Object.entries(prodMonthCounts)
+      .map(([month, count]) => ({ month, count }))
+      .sort((a, b) => a.month.localeCompare(b.month));
+
+    // =========================================================================
+    // Category B: Technical & System Admin New Statistics
+    // =========================================================================
+
+    // B1. API usage - grouped audit log counts
+    const auditLogsQuery = this.auditLogRepository.createQueryBuilder('log')
+      .select('log.action', 'action')
+      .addSelect('COUNT(log.id)', 'count')
+      .groupBy('log.action');
+    if (startDate) {
+      auditLogsQuery.andWhere('log.loggedAt >= :startDate', { startDate: new Date(startDate) });
+    }
+    if (endDate) {
+      auditLogsQuery.andWhere('log.loggedAt <= :endDate', { endDate: new Date(endDate) });
+    }
+    const auditRaw = await auditLogsQuery.getRawMany();
+    const apiUsageStats = auditRaw.map(a => ({
+      action: a.action,
+      count: parseInt(a.count, 10) || 0,
+    }));
+
+    // B2. DB Cache Hits vs SAP Fallbacks
+    const dbHitsQuery = this.auditLogRepository.createQueryBuilder('log')
+      .where('log.action = :action', { action: 'DB_CACHE_HIT' });
+    const sapSuccessQuery = this.auditLogRepository.createQueryBuilder('log')
+      .where('log.action = :action', { action: 'SAP_FETCH_SUCCESS' });
+    const sapErrorQuery = this.auditLogRepository.createQueryBuilder('log')
+      .where('log.action = :action', { action: 'SAP_FETCH_ERROR' });
+    if (startDate) {
+      dbHitsQuery.andWhere('log.loggedAt >= :startDate', { startDate: new Date(startDate) });
+      sapSuccessQuery.andWhere('log.loggedAt >= :startDate', { startDate: new Date(startDate) });
+      sapErrorQuery.andWhere('log.loggedAt >= :startDate', { startDate: new Date(startDate) });
+    }
+    if (endDate) {
+      dbHitsQuery.andWhere('log.loggedAt <= :endDate', { endDate: new Date(endDate) });
+      sapSuccessQuery.andWhere('log.loggedAt <= :endDate', { endDate: new Date(endDate) });
+      sapErrorQuery.andWhere('log.loggedAt <= :endDate', { endDate: new Date(endDate) });
+    }
+    const dbCacheHits = await dbHitsQuery.getCount();
+    const sapSuccesses = await sapSuccessQuery.getCount();
+    const sapErrors = await sapErrorQuery.getCount();
+    const sapFallbackStats = { dbCacheHits, sapSuccesses, sapErrors };
+
+    // B3. Errors list
+    const errorsQuery = this.auditLogRepository.createQueryBuilder('log')
+      .select(['log.id', 'log.action', 'log.details', 'log.loggedAt'])
+      .where("log.action = 'ERROR' OR log.action = 'SAP_FETCH_ERROR'")
+      .orderBy('log.loggedAt', 'DESC')
+      .limit(10);
+    const errorsRaw = await errorsQuery.getMany();
+    const errorStats = errorsRaw.map(e => ({
+      message: e.details || 'ข้อผิดพลาดเครือข่าย/บริการหลังบ้าน',
+      action: e.action,
+      time: e.loggedAt.toISOString(),
+    }));
+
+    // B4. SMS OTP Requests vs Verifications
+    const otpReqQuery = this.auditLogRepository.createQueryBuilder('log')
+      .where('log.action = :action', { action: 'OTP_REQUEST' });
+    const otpVerifyQuery = this.auditLogRepository.createQueryBuilder('log')
+      .where('log.action = :action', { action: 'OTP_VERIFY_SUCCESS' });
+    if (startDate) {
+      otpReqQuery.andWhere('log.loggedAt >= :startDate', { startDate: new Date(startDate) });
+      otpVerifyQuery.andWhere('log.loggedAt >= :startDate', { startDate: new Date(startDate) });
+    }
+    if (endDate) {
+      otpReqQuery.andWhere('log.loggedAt <= :endDate', { endDate: new Date(endDate) });
+      otpVerifyQuery.andWhere('log.loggedAt <= :endDate', { endDate: new Date(endDate) });
+    }
+    const otpRequests = await otpReqQuery.getCount();
+    const otpVerifications = await otpVerifyQuery.getCount();
+    const smsOtpStats = { otpRequests, otpVerifications };
+
+    // B5. Database volumes
+    const totalRegCount = await this.registrationRepository.count();
+    const totalLogCount = await this.auditLogRepository.count();
+    const totalPoCount = await this.productionOrderRepository.count();
+    const dbVolumeStats = {
+      registrations: totalRegCount,
+      auditLogs: totalLogCount,
+      productionOrders: totalPoCount,
+    };
+
     return {
       totalGenerated,
       totalRegistered,
@@ -533,6 +720,18 @@ export class BackofficeService implements OnModuleInit {
       markers,
       productStats,
       timelineStats,
+      // Category A New Stats
+      installationPositionStats,
+      consentStats,
+      purchaseSizeStats,
+      lagTimeStats,
+      productionMonthStats,
+      // Category B New Stats
+      apiUsageStats,
+      sapFallbackStats,
+      errorStats,
+      smsOtpStats,
+      dbVolumeStats,
     };
   }
 
@@ -693,7 +892,15 @@ export class BackofficeService implements OnModuleInit {
     if (docNum) {
       try {
         let po = await this.productionOrderRepository.findOne({ where: { docNum } });
-        if (!po) {
+        if (po) {
+          // Log DB Cache Hit
+          await this.auditLogRepository.save(this.auditLogRepository.create({
+            actorUsername: 'SUPPORT',
+            action: 'DB_CACHE_HIT',
+            resource: 'ProductionOrder',
+            resourceId: docNum,
+          })).catch(() => {});
+        } else {
           const sapInfo = await this.sapService.getProductionOrder(docNum);
           if (sapInfo) {
             po = this.productionOrderRepository.create({
@@ -707,6 +914,15 @@ export class BackofficeService implements OnModuleInit {
               completedQty: sapInfo.completedQty || 0,
             });
             await this.productionOrderRepository.save(po);
+            
+            // Log SAP Fetch Success
+            await this.auditLogRepository.save(this.auditLogRepository.create({
+              actorUsername: 'SUPPORT',
+              action: 'SAP_FETCH_SUCCESS',
+              resource: 'ProductionOrder',
+              resourceId: docNum,
+              details: JSON.stringify({ reason: 'support_lookup' }),
+            })).catch(() => {});
           } else {
             if (this.sapService.getIsMockMode()) {
               const defaultSuffix = docNum.substring(5, 9) || '205';
@@ -718,6 +934,15 @@ export class BackofficeService implements OnModuleInit {
                 completedQty: 0,
               });
               await this.productionOrderRepository.save(po);
+
+              // Log SAP Fetch Success (Mock)
+              await this.auditLogRepository.save(this.auditLogRepository.create({
+                actorUsername: 'SUPPORT',
+                action: 'SAP_FETCH_SUCCESS',
+                resource: 'ProductionOrder',
+                resourceId: docNum,
+                details: JSON.stringify({ reason: 'mock_support_lookup' }),
+              })).catch(() => {});
             } else {
               throw new BadRequestException(`ไม่พบเลขที่สั่งผลิต (PD) ${docNum} นี้ในระบบ SAP B1`);
             }
@@ -729,6 +954,16 @@ export class BackofficeService implements OnModuleInit {
       } catch (err) {
         console.error('[SAP ERROR] Failed to fetch product details in checkProduct:', err);
         const detailMsg = err.response?.data?.error?.message?.value || err.message;
+        
+        // Log SAP Fetch Error
+        await this.auditLogRepository.save(this.auditLogRepository.create({
+          actorUsername: 'SUPPORT',
+          action: 'SAP_FETCH_ERROR',
+          resource: 'ProductionOrder',
+          resourceId: docNum,
+          details: JSON.stringify({ error: detailMsg }),
+        })).catch(() => {});
+
         throw new BadRequestException(`ข้อผิดพลาดจาก SAP B1: ${detailMsg}`);
       }
     }
