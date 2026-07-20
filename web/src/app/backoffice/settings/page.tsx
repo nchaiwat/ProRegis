@@ -699,7 +699,7 @@ export default function SettingsAdminPage() {
                   type="text"
                   value={sapCompanyDb}
                   onChange={(e) => setSapCompanyDb(e.target.value)}
-                  placeholder="SBO_WA_Test_20260531"
+                  placeholder="ชื่อ Company Database ใน SAP B1"
                   className="w-full h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary"
                 />
               </div>

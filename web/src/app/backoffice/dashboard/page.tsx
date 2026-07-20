@@ -911,33 +911,55 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* B3. System Error Logs status tracker */}
+            {/* B3. System Transactions & Errors status tracker */}
             <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl p-5 shadow-sm space-y-4 lg:col-span-2">
               <div className="flex justify-between items-center">
                 <div className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-red-600">bug_report</span>
-                  <h4 className="font-bold text-sm text-primary">รายงานข้อผิดพลาดล่าหลังของระบบ (System Errors Tracker)</h4>
+                  <span className="material-symbols-outlined text-secondary">analytics</span>
+                  <h4 className="font-bold text-sm text-primary">รายงานธุรกรรมและข้อผิดพลาดล่าสุด (System Transactions & Errors Tracker)</h4>
                 </div>
-                <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full border border-red-200">
+                <span className="text-[10px] font-bold text-primary bg-surface-variant px-2 py-0.5 rounded-full border border-outline-variant">
                   ล่าสุด 10 รายการ
                 </span>
               </div>
 
               <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1 custom-scrollbar pt-1">
                 {data.errorStats && data.errorStats.length > 0 ? (
-                  data.errorStats.map((err, i) => (
-                    <div key={i} className="bg-red-50/50 border border-red-200/50 rounded-xl p-3 space-y-1.5">
-                      <div className="flex justify-between items-center text-[10px] font-bold text-red-700">
-                        <span className="font-mono bg-red-100 px-2 py-0.5 rounded border border-red-200">{err.action}</span>
-                        <span>{new Date(err.time).toLocaleString("th-TH")}</span>
+                  data.errorStats.map((err, i) => {
+                    const isSuccess = err.action === 'SAP_FETCH_SUCCESS';
+                    return (
+                      <div 
+                        key={i} 
+                        className={`border rounded-xl p-3 space-y-1.5 transition-all ${
+                          isSuccess 
+                            ? 'bg-green-50/40 border-green-200/50 hover:bg-green-50/70' 
+                            : 'bg-red-50/50 border-red-200/50 hover:bg-red-50/80'
+                        }`}
+                      >
+                        <div className="flex justify-between items-center text-[10px] font-bold">
+                          <span className={`font-mono px-2 py-0.5 rounded border ${
+                            isSuccess 
+                              ? 'bg-green-100 text-green-700 border-green-200' 
+                              : 'bg-red-100 text-red-700 border-red-200'
+                          }`}>
+                            {err.action}
+                          </span>
+                          <span className={isSuccess ? 'text-green-600/80' : 'text-red-600/80'}>
+                            {new Date(err.time).toLocaleString("th-TH")}
+                          </span>
+                        </div>
+                        <p className={`text-xs font-semibold leading-relaxed break-words ${
+                          isSuccess ? 'text-green-900' : 'text-red-900'
+                        }`}>
+                          {err.message}
+                        </p>
                       </div>
-                      <p className="text-xs text-red-900 font-semibold leading-relaxed break-words">{err.message}</p>
-                    </div>
-                  ))
+                    );
+                  })
                 ) : (
                   <div className="flex flex-col items-center justify-center py-16 gap-2 text-green-600">
                     <span className="material-symbols-outlined !text-[36px]">check_circle</span>
-                    <p className="text-xs font-bold">ไม่พบข้อผิดพลาดระบบสะสม (System Status Healthy)</p>
+                    <p className="text-xs font-bold">ไม่พบประวัติการใช้งานสะสม (System Status Healthy)</p>
                   </div>
                 )}
               </div>

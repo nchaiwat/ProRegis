@@ -672,15 +672,15 @@ export class BackofficeService implements OnModuleInit {
     const sapErrors = await sapErrorQuery.getCount();
     const sapFallbackStats = { dbCacheHits, sapSuccesses, sapErrors };
 
-    // B3. Errors list
+    // B3. Transactions & Errors list
     const errorsQuery = this.auditLogRepository.createQueryBuilder('log')
       .select(['log.id', 'log.action', 'log.details', 'log.loggedAt'])
-      .where("log.action = 'ERROR' OR log.action = 'SAP_FETCH_ERROR'")
+      .where("log.action = 'ERROR' OR log.action = 'SAP_FETCH_ERROR' OR log.action = 'SAP_FETCH_SUCCESS'")
       .orderBy('log.loggedAt', 'DESC')
       .limit(10);
     const errorsRaw = await errorsQuery.getMany();
     const errorStats = errorsRaw.map(e => ({
-      message: e.details || 'ข้อผิดพลาดเครือข่าย/บริการหลังบ้าน',
+      message: e.details || (e.action === 'SAP_FETCH_SUCCESS' ? 'ดึงข้อมูลใบสั่งผลิตจาก SAP สำเร็จ' : 'ข้อผิดพลาดเครือข่าย/บริการหลังบ้าน'),
       action: e.action,
       time: e.loggedAt.toISOString(),
     }));

@@ -473,9 +473,9 @@ export class ProductsService {
 
       // 7. Screen Inclusion
       if (nameUpper.includes('ไม่มีมุ้ง')) {
-        screenType = { th: 'ไม่มีมุ้งลวด', en: 'Without Screen' };
+        screenType = { th: 'ไม่มีมุ้ง', en: 'Without Net' };
       } else if (nameUpper.includes('มุ้ง') || nameUpper.includes('SCREEN')) {
-        screenType = { th: 'มีมุ้งลวด', en: 'With Screen' };
+        screenType = { th: 'มีมุ้ง', en: 'With Net' };
       }
     }
 
