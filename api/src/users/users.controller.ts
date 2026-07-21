@@ -30,6 +30,7 @@ export class UsersController {
       status: u.status,
       failedAttempts: u.failedAttempts,
       lockedUntil: u.lockedUntil,
+      isAdAuth: u.isAdAuth,
       createdAt: u.createdAt,
     }));
   }
@@ -47,6 +48,7 @@ export class UsersController {
       mobile: string | null;
       telegramId: string | null;
       pinCode?: string | null;
+      isAdAuth?: boolean;
     },
   ) {
     const user = await this.usersService.createUser(
@@ -60,6 +62,7 @@ export class UsersController {
       body.mobile,
       body.telegramId,
       body.pinCode,
+      body.isAdAuth,
     );
     return {
       success: true,
@@ -86,6 +89,7 @@ export class UsersController {
       mobile: string | null;
       telegramId: string | null;
       pinCode?: string | null;
+      isAdAuth?: boolean;
     },
   ) {
     const user = await this.usersService.updateUser(id, body);

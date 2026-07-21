@@ -164,6 +164,7 @@ export class UsersService implements OnApplicationBootstrap {
     mobile: string | null,
     telegramId: string | null,
     pinCode?: string | null,
+    isAdAuth?: boolean,
   ): Promise<User> {
     // Validate username uniqueness
     const existing = await this.findByUsername(username.trim());
@@ -194,6 +195,7 @@ export class UsersService implements OnApplicationBootstrap {
       mobile: mobile || null,
       telegramId: telegramId || null,
       pinCode: pinCode || null,
+      isAdAuth: isAdAuth || false,
     });
 
     return this.userRepository.save(newUser);
@@ -211,6 +213,7 @@ export class UsersService implements OnApplicationBootstrap {
       mobile: string | null;
       telegramId: string | null;
       pinCode?: string | null;
+      isAdAuth?: boolean;
     },
   ): Promise<User> {
     const user = await this.findById(id);
@@ -232,6 +235,7 @@ export class UsersService implements OnApplicationBootstrap {
     user.mobile = data.mobile || null;
     user.telegramId = data.telegramId || null;
     user.pinCode = data.pinCode || null;
+    user.isAdAuth = data.isAdAuth !== undefined ? data.isAdAuth : user.isAdAuth;
 
     if (data.status === UserStatus.ACTIVE) {
       user.failedAttempts = 0;

@@ -15,7 +15,7 @@ export class AuthController {
 
   @Post('login')
   async login(
-    @Body() body: { username: string; passwordPlain: string },
+    @Body() body: { username: string; passwordPlain: string; loginMethod?: 'DB' | 'AD' },
     @Req() req: Request,
   ) {
     const ipAddress =
@@ -61,22 +61,88 @@ export class AuthController {
       }
     }
 
-    // Verify password or PIN code
-    const isPasswordCorrect = await bcrypt.compare(body.passwordPlain || '', user.passwordHash);
-    const isPinCorrect = !!(user.pinCode && body.passwordPlain === user.pinCode);
+    const loginMethod = body.loginMethod || 'DB';
+    let loginSuccess = false;
 
-    if (!isPasswordCorrect && !isPinCorrect) {
-      await this.usersService.recordFailedAttempt(user);
-      await this.auditService.logAction(
-        user.username,
-        'LOGIN_FAILED',
-        'Auth',
-        user.id,
-        ipAddress,
-        userAgent,
-        { reason: 'Incorrect credentials', failedAttempts: user.failedAttempts },
-      );
-      throw new UnauthorizedException('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
+    if (loginMethod === 'AD') {
+      if (!user.isAdAuth) {
+        throw new UnauthorizedException('บัญชีผู้ใช้นี้ไม่ได้เปิดใช้งาน Active Directory');
+      }
+
+      const isPasswordCorrect = await bcrypt.compare(body.passwordPlain || '', user.passwordHash);
+      const isPinCorrect = !!(user.pinCode && body.passwordPlain === user.pinCode);
+      loginSuccess = isPasswordCorrect || isPinCorrect;
+
+      if (!loginSuccess) {
+        // Try AD Gateway
+        const gatewayUrl = process.env.AD_GATEWAY_URL || 'http://192.168.12.8:3100/api/v2/login';
+        const appId = process.env.AD_APP_ID || 'ProRegis';
+        const secretKey = process.env.AD_SECRET_KEY || 'd69f9e5a88e734c56e2978a63bf720c22635a9c0c32b5e2a2205510657e4e138';
+
+        const now = new Date();
+        const tzOffset = 7 * 60 * 60 * 1000; // Thailand local timezone (UTC+7)
+        const thTime = new Date(now.getTime() + tzOffset);
+        const timestamp = thTime.toISOString().split('.')[0] + 'Z';
+
+        try {
+          const response = await fetch(gatewayUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              app_id: appId,
+              secret_key: secretKey,
+              username: user.username,
+              password: body.passwordPlain,
+              timestamp,
+            }),
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            if (data && data.status === 'success') {
+              loginSuccess = true;
+              // Synchronize password to local DB cache
+              await this.usersService.updateUserPasswordAndPin(user.id, body.passwordPlain);
+            }
+          }
+        } catch (err) {
+          console.error('[AD GATEWAY ERROR]', err);
+        }
+      }
+
+      if (!loginSuccess) {
+        await this.usersService.recordFailedAttempt(user);
+        await this.auditService.logAction(
+          user.username,
+          'LOGIN_FAILED',
+          'Auth',
+          user.id,
+          ipAddress,
+          userAgent,
+          { reason: 'AD credentials incorrect or gateway error', failedAttempts: user.failedAttempts },
+        );
+        throw new UnauthorizedException('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
+      }
+
+    } else {
+      // DB Login
+      const isPasswordCorrect = await bcrypt.compare(body.passwordPlain || '', user.passwordHash);
+      const isPinCorrect = !!(user.pinCode && body.passwordPlain === user.pinCode);
+      loginSuccess = isPasswordCorrect || isPinCorrect;
+
+      if (!loginSuccess) {
+        await this.usersService.recordFailedAttempt(user);
+        await this.auditService.logAction(
+          user.username,
+          'LOGIN_FAILED',
+          'Auth',
+          user.id,
+          ipAddress,
+          userAgent,
+          { reason: 'Incorrect credentials', failedAttempts: user.failedAttempts },
+        );
+        throw new UnauthorizedException('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
+      }
     }
 
     // Successful Login

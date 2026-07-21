@@ -20,6 +20,7 @@ interface UserEntry {
   status: string;
   failedAttempts: number;
   lockedUntil: string | null;
+  isAdAuth: boolean;
   createdAt: string;
 }
 
@@ -50,6 +51,7 @@ export default function UserAdminPage() {
   const [newMobile, setNewMobile] = useState("");
   const [newTelegramId, setNewTelegramId] = useState("");
   const [newPinCode, setNewPinCode] = useState("");
+  const [newIsAdAuth, setNewIsAdAuth] = useState(false);
   const [createError, setCreateError] = useState("");
   const [isCreating, setIsCreating] = useState(false);
 
@@ -64,6 +66,7 @@ export default function UserAdminPage() {
   const [editMobile, setEditMobile] = useState("");
   const [editTelegramId, setEditTelegramId] = useState("");
   const [editPinCode, setEditPinCode] = useState("");
+  const [editIsAdAuth, setEditIsAdAuth] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [updateError, setUpdateError] = useState("");
 
@@ -171,6 +174,7 @@ export default function UserAdminPage() {
           mobile: newMobile.trim() || null,
           telegramId: newTelegramId.trim() || null,
           pinCode: newPinCode.trim() || null,
+          isAdAuth: newIsAdAuth,
         }),
       });
 
@@ -187,6 +191,7 @@ export default function UserAdminPage() {
         setNewMobile("");
         setNewTelegramId("");
         setNewPinCode("");
+        setNewIsAdAuth(false);
         fetchUsers();
       } else {
         setCreateError(data?.message || "เกิดข้อผิดพลาดในการสร้างผู้ใช้");
@@ -231,6 +236,7 @@ export default function UserAdminPage() {
           mobile: editMobile.trim() || null,
           telegramId: editTelegramId.trim() || null,
           pinCode: editPinCode.trim() || null,
+          isAdAuth: editIsAdAuth,
         }),
       });
 
@@ -320,6 +326,7 @@ export default function UserAdminPage() {
           mobile: user.mobile,
           telegramId: user.telegramId,
           pinCode: user.pinCode,
+          isAdAuth: user.isAdAuth,
         }),
       });
 
@@ -623,7 +630,14 @@ export default function UserAdminPage() {
                       <td className="px-4 py-3.5 text-outline font-semibold">
                         <code>{String(user.systemSeqId).padStart(4, "0")}</code>
                       </td>
-                      <td className="px-4 py-3.5 font-bold text-primary">{user.username}</td>
+                      <td className="px-4 py-3.5 font-bold text-primary">
+                        <div className="flex items-center gap-1.5">
+                          <span>{user.username}</span>
+                          {user.isAdAuth && (
+                            <span className="bg-sky-50 text-sky-700 text-[10px] font-extrabold px-1.5 py-0.5 rounded border border-sky-200 uppercase tracking-wider scale-90 origin-left">AD</span>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-4 py-3.5 text-primary font-medium">
                         {user.firstName || user.lastName
                           ? `${user.firstName} ${user.lastName}`.trim()
@@ -713,6 +727,7 @@ export default function UserAdminPage() {
                             setEditMobile(user.mobile || "");
                             setEditTelegramId(user.telegramId || "");
                             setEditPinCode(user.pinCode || "");
+                            setEditIsAdAuth(user.isAdAuth || false);
                             setUpdateError("");
                           }}
                           title="แก้ไขข้อมูลผู้ใช้"
@@ -898,6 +913,18 @@ export default function UserAdminPage() {
                     className="w-full h-11 px-3 bg-surface-container-low border border-outline-variant rounded-lg text-sm outline-none focus:border-secondary focus:ring-1 focus:ring-secondary transition-all font-mono font-bold"
                   />
                 </div>
+
+                <div className="flex flex-col gap-1.5 col-span-1 sm:col-span-2 pt-2">
+                  <label className="flex items-center gap-2.5 text-sm font-bold text-primary cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={newIsAdAuth}
+                      onChange={(e) => setNewIsAdAuth(e.target.checked)}
+                      className="w-4 h-4 rounded text-secondary border-outline-variant focus:ring-secondary cursor-pointer"
+                    />
+                    <span>อนุญาตให้ผู้ใช้นี้เข้าสู่ระบบด้วย Active Directory (AD Account)</span>
+                  </label>
+                </div>
               </div>
 
               <div className="flex flex-col gap-1.5">
@@ -1039,6 +1066,18 @@ export default function UserAdminPage() {
                     placeholder="ใส่ PIN 6 หลัก"
                     className="w-full h-11 px-3 bg-surface-container-low border border-outline-variant rounded-lg text-sm outline-none focus:border-secondary focus:ring-1 focus:ring-secondary transition-all font-mono font-bold"
                   />
+                </div>
+
+                <div className="flex flex-col gap-1.5 col-span-1 sm:col-span-2 pt-2">
+                  <label className="flex items-center gap-2.5 text-sm font-bold text-primary cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={editIsAdAuth}
+                      onChange={(e) => setEditIsAdAuth(e.target.checked)}
+                      className="w-4 h-4 rounded text-secondary border-outline-variant focus:ring-secondary cursor-pointer"
+                    />
+                    <span>อนุญาตให้ผู้ใช้นี้เข้าสู่ระบบด้วย Active Directory (AD Account)</span>
+                  </label>
                 </div>
               </div>
 

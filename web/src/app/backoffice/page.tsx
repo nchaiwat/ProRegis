@@ -8,6 +8,7 @@ export default function BackofficePage() {
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [loginMethod, setLoginMethod] = useState<"DB" | "AD">("DB");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -25,7 +26,11 @@ export default function BackofficePage() {
       const res = await fetch(`${getApiBaseUrl()}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: username.trim(), passwordPlain: password.trim() }),
+        body: JSON.stringify({
+          username: username.trim(),
+          passwordPlain: password.trim(),
+          loginMethod,
+        }),
       });
 
       const data = await res.json().catch(() => ({}));
@@ -79,6 +84,32 @@ export default function BackofficePage() {
           </p>
 
           <form onSubmit={handleLogin} className="space-y-4">
+            {/* Login Method Selector */}
+            <div className="grid grid-cols-2 p-1 bg-slate-100 rounded-xl border border-outline-variant">
+              <button
+                type="button"
+                onClick={() => { setLoginMethod("DB"); setError(""); }}
+                className={`py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  loginMethod === "DB"
+                    ? "bg-secondary text-white shadow-sm"
+                    : "text-slate-600 hover:text-primary"
+                }`}
+              >
+                Database (DB)
+              </button>
+              <button
+                type="button"
+                onClick={() => { setLoginMethod("AD"); setError(""); }}
+                className={`py-2 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                  loginMethod === "AD"
+                    ? "bg-secondary text-white shadow-sm"
+                    : "text-slate-600 hover:text-primary"
+                }`}
+              >
+                Active Directory (AD)
+              </button>
+            </div>
+
             {/* Username */}
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-bold text-on-surface-variant uppercase tracking-wider">

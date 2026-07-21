@@ -69,6 +69,9 @@ export class User {
   @Column({ name: 'locked_until', type: 'timestamp', nullable: true })
   lockedUntil: Date | null;
 
+  @Column({ name: 'is_ad_auth', type: 'boolean', default: false })
+  isAdAuth: boolean;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
