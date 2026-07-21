@@ -97,6 +97,18 @@ export class BackofficeController {
   }
 
   // -------------------------------------------------------------------------
+  // GET /backoffice/auth-logs?limit=100 - Restricted to SYSTEM_ADMIN
+  // -------------------------------------------------------------------------
+  @Get('auth-logs')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('SYSTEM_ADMIN')
+  async getAuthLogs(@Query('limit') limit?: string) {
+    const parsedLimit = limit ? parseInt(limit, 10) : 100;
+    const logs = await this.backofficeService.getAuthLogs(parsedLimit);
+    return { logs };
+  }
+
+  // -------------------------------------------------------------------------
   // GET /backoffice/next-sequence?docNum=xxx
   // -------------------------------------------------------------------------
   @Get('next-sequence')

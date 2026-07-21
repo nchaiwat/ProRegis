@@ -410,6 +410,14 @@ export class BackofficeService implements OnModuleInit {
     });
   }
 
+  async getAuthLogs(limit = 100): Promise<AuditLog[]> {
+    return this.auditLogRepository.find({
+      where: { resource: 'Auth' },
+      order: { loggedAt: 'DESC' },
+      take: limit,
+    });
+  }
+
   // -------------------------------------------------------------------------
   // Get Dashboard Summary
   // -------------------------------------------------------------------------

@@ -26,6 +26,7 @@ export class AuthController {
 
     const usernameNormalized = (body.username || '').trim();
     const user = await this.usersService.findByUsername(usernameNormalized);
+    const loginMethod = body.loginMethod || 'DB';
 
     if (!user) {
       // Log failure (without revealing username if non-existent, but standard audits check it)
@@ -36,13 +37,22 @@ export class AuthController {
         null,
         ipAddress,
         userAgent,
-        { reason: 'Username not found' },
+        { reason: 'Username not found in database', loginMethod },
       );
       throw new UnauthorizedException('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
     }
 
     // Check brute-force lockout status
     if (user.status === UserStatus.SUSPENDED) {
+      await this.auditService.logAction(
+        user.username,
+        'LOGIN_FAILED',
+        'Auth',
+        user.id,
+        ipAddress,
+        userAgent,
+        { reason: 'Account status is suspended', loginMethod },
+      );
       throw new UnauthorizedException('บัญชีผู้ใช้นี้ถูกปิดการใช้งาน กรุณาติดต่อผู้ดูแลระบบ');
     }
 
@@ -50,6 +60,15 @@ export class AuthController {
       const now = new Date();
       if (now < user.lockedUntil) {
         const secondsLeft = Math.ceil((user.lockedUntil.getTime() - now.getTime()) / 1000);
+        await this.auditService.logAction(
+          user.username,
+          'LOGIN_FAILED',
+          'Auth',
+          user.id,
+          ipAddress,
+          userAgent,
+          { reason: `Account locked (temporary lockout). Seconds left: ${secondsLeft}`, loginMethod },
+        );
         throw new UnauthorizedException(
           `บัญชีผู้ใช้นี้ถูกล็อคเนื่องจากใส่รหัสผ่านผิดเกินกำหนด กรุณาลองใหม่ในอีก ${secondsLeft} วินาที`,
         );
@@ -61,17 +80,27 @@ export class AuthController {
       }
     }
 
-    const loginMethod = body.loginMethod || 'DB';
     let loginSuccess = false;
 
     if (loginMethod === 'AD') {
       if (!user.isAdAuth) {
+        await this.auditService.logAction(
+          user.username,
+          'LOGIN_FAILED',
+          'Auth',
+          user.id,
+          ipAddress,
+          userAgent,
+          { reason: 'AD login is not enabled for this user account', loginMethod: 'AD' },
+        );
         throw new UnauthorizedException('บัญชีผู้ใช้นี้ไม่ได้เปิดใช้งาน Active Directory');
       }
 
       const isPasswordCorrect = await bcrypt.compare(body.passwordPlain || '', user.passwordHash);
       const isPinCorrect = !!(user.pinCode && body.passwordPlain === user.pinCode);
       loginSuccess = isPasswordCorrect || isPinCorrect;
+
+      let adError = 'AD local cache password mismatch';
 
       if (!loginSuccess) {
         // Try AD Gateway
@@ -103,9 +132,14 @@ export class AuthController {
               loginSuccess = true;
               // Synchronize password to local DB cache
               await this.usersService.updateUserPasswordAndPin(user.id, body.passwordPlain);
+            } else {
+              adError = data?.message || `AD Gateway returned status: ${data?.status || 'failed'}`;
             }
+          } else {
+            adError = `AD Gateway HTTP error ${response.status}: ${response.statusText}`;
           }
         } catch (err) {
+          adError = `AD Gateway connection failed: ${err.message}`;
           console.error('[AD GATEWAY ERROR]', err);
         }
       }
@@ -119,7 +153,7 @@ export class AuthController {
           user.id,
           ipAddress,
           userAgent,
-          { reason: 'AD credentials incorrect or gateway error', failedAttempts: user.failedAttempts },
+          { reason: adError, loginMethod: 'AD', failedAttempts: user.failedAttempts },
         );
         throw new UnauthorizedException('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
       }
@@ -139,7 +173,7 @@ export class AuthController {
           user.id,
           ipAddress,
           userAgent,
-          { reason: 'Incorrect credentials', failedAttempts: user.failedAttempts },
+          { reason: 'DB password or PIN incorrect', loginMethod: 'DB', failedAttempts: user.failedAttempts },
         );
         throw new UnauthorizedException('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
       }
@@ -166,6 +200,7 @@ export class AuthController {
       user.id,
       ipAddress,
       userAgent,
+      { loginMethod },
     );
 
     // Fetch allowed menus for the user's role
