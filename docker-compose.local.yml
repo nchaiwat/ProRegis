@@ -23,6 +23,10 @@ services:
     container_name: proregis-api-local
     ports:
       - "3001:3001"
+    env_file:
+      - ./api/.env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       - PORT=3001
       - DB_HOST=postgres

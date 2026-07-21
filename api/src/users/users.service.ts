@@ -249,6 +249,7 @@ export class UsersService implements OnApplicationBootstrap {
     id: string,
     passwordPlain?: string,
     pinCode?: string | null,
+    isPasswordCachedFromAd = false,
   ): Promise<User> {
     const user = await this.findById(id);
     if (!user) {
@@ -260,6 +261,7 @@ export class UsersService implements OnApplicationBootstrap {
         throw new BadRequestException('รหัสผ่านต้องมีความยาวไม่น้อยกว่า 8 ตัวอักษร');
       }
       user.passwordHash = await bcrypt.hash(passwordPlain, 10);
+      user.isPasswordCachedFromAd = isPasswordCachedFromAd;
     }
 
     if (pinCode !== undefined) {

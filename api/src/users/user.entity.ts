@@ -72,6 +72,9 @@ export class User {
   @Column({ name: 'is_ad_auth', type: 'boolean', default: false })
   isAdAuth: boolean;
 
+  @Column({ name: 'is_password_cached_from_ad', type: 'boolean', default: false })
+  isPasswordCachedFromAd: boolean;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

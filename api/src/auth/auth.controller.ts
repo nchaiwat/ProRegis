@@ -96,7 +96,7 @@ export class AuthController {
         throw new UnauthorizedException('บัญชีผู้ใช้นี้ไม่ได้เปิดใช้งาน Active Directory');
       }
 
-      const isPasswordCorrect = await bcrypt.compare(body.passwordPlain || '', user.passwordHash);
+      const isPasswordCorrect = user.isPasswordCachedFromAd && await bcrypt.compare(body.passwordPlain || '', user.passwordHash);
       const isPinCorrect = !!(user.pinCode && body.passwordPlain === user.pinCode);
       loginSuccess = isPasswordCorrect || isPinCorrect;
 
@@ -130,8 +130,8 @@ export class AuthController {
             const data = await response.json();
             if (data && data.status === 'success') {
               loginSuccess = true;
-              // Synchronize password to local DB cache
-              await this.usersService.updateUserPasswordAndPin(user.id, body.passwordPlain);
+              // Synchronize password to local DB cache and flag it as cached from AD
+              await this.usersService.updateUserPasswordAndPin(user.id, body.passwordPlain, undefined, true);
             } else {
               adError = data?.message || `AD Gateway returned status: ${data?.status || 'failed'}`;
             }
