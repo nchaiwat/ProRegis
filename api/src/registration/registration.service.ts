@@ -244,7 +244,7 @@ export class RegistrationService {
         
         // Construct Telegram Alert message
         const alertMessage = [
-          `🟦 <b>[ProRegis]</b> · ${timeStr}`,
+          `🔳 <b>[ProRegis]</b> · ${timeStr}`,
           `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
           `🚨 <b>ตรวจพบการลงทะเบียนซ้ำ! (Double Registration)</b>\n`,
           `📦 <b>Production Order (PD):</b> <code>${docNum}</code>`,
@@ -426,7 +426,7 @@ export class RegistrationService {
       : 'ลูกค้าปฏิเสธการแชร์พิกัด';
 
     const message = [
-      `🟦 <b>[ProRegis]</b> · ${timeStr}`,
+      `🔳 <b>[ProRegis]</b> · ${timeStr}`,
       `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
       `🔔 <b>ลงทะเบียนรับประกันสินค้าสำเร็จ (Warranty Registration)</b>\n`,
       `📦 <b>Production Order (PD):</b> <code>${docNum}</code>`,

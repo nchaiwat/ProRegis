@@ -232,7 +232,7 @@ export class BackofficeService implements OnModuleInit {
       // Trigger Telegram Alert
       const timeStr = formatThaiDateTime(new Date());
       const alertMsg = [
-        `🟦 <b>[ProRegis]</b> · ${timeStr}`,
+        `🔳 <b>[ProRegis]</b> · ${timeStr}`,
         `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
         `⚠️ <b>ตรวจพบการพยายามสร้าง QR Code ซ้ำซ้อน!</b>\n`,
         `👤 <b>ผู้ส่งคำขอ:</b> <code>${actor}</code>`,
@@ -369,7 +369,7 @@ export class BackofficeService implements OnModuleInit {
     // ส่งแจ้งเตือนการสร้างคิวอาร์โค้ดกลุ่มใหม่ไปที่ Telegram Group
     const timeStr = formatThaiDateTime(new Date());
     const alertMsg = [
-      `🟦 <b>[ProRegis]</b> · ${timeStr}`,
+      `🔳 <b>[ProRegis]</b> · ${timeStr}`,
       `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
       `📦 <b>มีการสร้างรหัส QR Code Batch ใหม่! (New QR Batch)</b>\n`,
       `👤 <b>ผู้ดำเนินการ:</b> <code>${actor}</code>`,

@@ -324,7 +324,7 @@ export class ProductsService {
         })).catch(() => {});
         
         const telegramMessage = [
-          `🟦 <b>[ProRegis Alert] SAP B1 Connection Failed</b>`,
+          `🔳 <b>[ProRegis Alert] SAP B1 Connection Failed</b>`,
           `📍 <b>DocNum:</b> <code>${docNum}</code>`,
           `🕒 <b>Time:</b> ${new Date().toLocaleString('th-TH')}`,
           `⚠️ <b>Error:</b> <code>${errorSummary}</code>`,
