@@ -464,118 +464,23 @@ export default function CheckerPage() {
                   </div>
                 </div>
 
-                {/* 1.1 Product Image Upload Section */}
-                <div className="border-t border-outline-variant/60 pt-4 space-y-4">
+                {/* 1.1 Product Image Section */}
+                <div className="border-t border-outline-variant/60 pt-4 space-y-3">
                   <h4 className="font-bold text-xs text-outline uppercase tracking-wider">รูปภาพสินค้าสำหรับแสดงผลรับประกัน</h4>
                   
-                  <div className="flex flex-col md:flex-row gap-6 items-start">
-                    {/* Left: Current Image Preview */}
-                    <div className="w-full md:w-48 h-48 bg-surface-container rounded-2xl border border-outline-variant/80 overflow-hidden flex items-center justify-center relative shrink-0 shadow-inner">
-                      {checkResult.product.imageBase64 ? (
-                        <img 
-                          src={checkResult.product.imageBase64} 
-                          alt="Product Preview" 
-                          className="w-full h-full object-cover" 
-                        />
-                      ) : (
-                        <div className="flex flex-col items-center justify-center text-center p-4 text-outline gap-1.5">
-                          <span className="material-symbols-outlined text-4xl">broken_image</span>
-                          <span className="text-[10px] font-bold">ไม่มีรูปสินค้าในระบบ</span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Right: Upload Interface */}
-                    <div className="flex-grow w-full space-y-4">
-                      <div className="bg-surface-container-low border border-dashed border-outline-variant rounded-2xl p-5 text-center flex flex-col items-center justify-center relative group hover:border-secondary transition-all">
-                        <span className="material-symbols-outlined text-outline text-3xl mb-1.5 group-hover:scale-110 duration-200">cloud_upload</span>
-                        <p className="text-xs text-on-surface-variant font-bold">เลือกไฟล์รูปภาพเพื่ออัปโหลด</p>
-                        <p className="text-[10px] text-outline mt-0.5">WebP, PNG, JPG (ระบบจะลดขนาดและบีบอัดภาพอัตโนมัติ)</p>
-                        
-                        <input 
-                          type="file"
-                          accept="image/*"
-                          onChange={handleImageUploadChange}
-                          className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-                          disabled={uploadingImage}
-                        />
+                  <div className="w-full sm:w-64 h-48 bg-surface-container rounded-2xl border border-outline-variant/80 overflow-hidden flex items-center justify-center relative shadow-inner">
+                    {checkResult.product.imageBase64 ? (
+                      <img 
+                        src={checkResult.product.imageBase64} 
+                        alt="Product Preview" 
+                        className="w-full h-full object-cover" 
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center justify-center text-center p-4 text-outline gap-1.5">
+                        <span className="material-symbols-outlined text-4xl">broken_image</span>
+                        <span className="text-[10px] font-bold">ไม่มีรูปสินค้าในระบบ</span>
                       </div>
-
-                      {uploadPreview && (
-                        <div className="bg-secondary-container/10 border border-secondary-container/20 rounded-xl p-3.5 space-y-2 animate-success">
-                          <div className="flex justify-between items-center text-xs font-bold text-primary">
-                            <span>ภาพจำลองตัวอย่าง (Compressed Preview)</span>
-                            {compressedSizeInfo && (
-                              <span className="text-secondary bg-secondary-container/20 px-2 py-0.5 rounded-full text-[10px]">
-                                {compressedSizeInfo}
-                              </span>
-                            )}
-                          </div>
-                          
-                          {/* Scope Select Toggle Option */}
-                          <div className="space-y-1.5 pt-1">
-                            <label className="text-[10px] text-outline font-bold uppercase tracking-wider block">ขอบเขตการใช้งานรูปภาพ</label>
-                            <div className="flex flex-col gap-2">
-                              <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-on-surface-variant">
-                                <input 
-                                  type="radio" 
-                                  name="imageScope" 
-                                  checked={imageScope === "prefix"}
-                                  onChange={() => setImageScope("prefix")}
-                                  className="text-secondary focus:ring-secondary focus:ring-0"
-                                />
-                                <span>ภาพมาตรฐานของกลุ่มรุ่นและสีนี้ทั้งหมด (ทุกขนาด): <code>{(() => {
-                                  if (checkResult.product.itemCode.includes('-')) {
-                                    const parts = checkResult.product.itemCode.split('-');
-                                    return parts.slice(0, parts.length - 1).join('-');
-                                  }
-                                  return checkResult.product.itemCode;
-                                })()}</code></span>
-                              </label>
-                              <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-on-surface-variant">
-                                <input 
-                                  type="radio" 
-                                  name="imageScope" 
-                                  checked={imageScope === "exact"}
-                                  onChange={() => setImageScope("exact")}
-                                  className="text-secondary focus:ring-secondary focus:ring-0"
-                                />
-                                <span>บันทึกเฉพาะรหัสสินค้านี้เท่านั้น (ขนาดเดียว): <code>{checkResult.product.itemCode}</code></span>
-                              </label>
-                            </div>
-                          </div>
-
-                          <div className="flex gap-2 pt-2">
-                            <button
-                              type="button"
-                              onClick={saveProductImage}
-                              disabled={uploadingImage}
-                              className="h-10 px-5 bg-secondary text-white font-extrabold text-xs rounded-lg shadow hover:opacity-95 active:scale-95 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
-                            >
-                              {uploadingImage ? (
-                                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                              ) : (
-                                <>
-                                  <span className="material-symbols-outlined text-base">save</span>
-                                  <span>บันทึกรูปภาพ</span>
-                                </>
-                              )}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setUploadPreview(null);
-                                setCompressedSizeInfo("");
-                              }}
-                              disabled={uploadingImage}
-                              className="h-10 px-4 border border-outline-variant text-outline hover:text-primary font-extrabold text-xs rounded-lg hover:bg-surface-container-low active:scale-95 transition-all cursor-pointer flex items-center justify-center"
-                            >
-                              ยกเลิก
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
+                    )}
                   </div>
                 </div>
 
