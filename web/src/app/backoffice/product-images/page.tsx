@@ -487,14 +487,28 @@ export default function ProductImagesPage() {
                     <div className="p-3.5 flex-grow flex flex-col justify-between gap-3 text-sm">
                       <div className="space-y-1">
                         <div className="flex flex-col gap-1 items-start">
-                          <span className="inline-flex items-center gap-0.5 px-2 py-0.5 text-[8.5px] font-black rounded bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
-                            <span className="material-symbols-outlined text-[10px] !fill-1">verified_user</span>
-                            ลงทะเบียนแล้ว {item.registrationCount || 0} ชิ้น
-                          </span>
-                          <span className="inline-flex items-center gap-0.5 px-2 py-0.5 text-[8.5px] font-black rounded bg-blue-500/10 text-blue-600 border border-blue-500/20">
-                            <span className="material-symbols-outlined text-[10px] !fill-1">category</span>
-                            ใช้งานกับ {item.itemCodeCount || 0} รหัสสินค้า
-                          </span>
+                          {item.registrationCount && item.registrationCount > 0 ? (
+                            <span className="inline-flex items-center gap-0.5 px-2 py-0.5 text-[8.5px] font-black rounded bg-emerald-500/10 text-emerald-600 border border-emerald-500/20">
+                              <span className="material-symbols-outlined text-[10px] !fill-1">verified_user</span>
+                              ลงทะเบียนแล้ว {item.registrationCount} ชิ้น
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-0.5 px-2 py-0.5 text-[8.5px] font-bold rounded bg-slate-500/5 text-slate-400 border border-slate-500/10 opacity-75">
+                              <span className="material-symbols-outlined text-[10px]">verified_user</span>
+                              ลงทะเบียนแล้ว 0 ชิ้น
+                            </span>
+                          )}
+                          {item.itemCodeCount && item.itemCodeCount > 0 ? (
+                            <span className="inline-flex items-center gap-0.5 px-2 py-0.5 text-[8.5px] font-black rounded bg-blue-500/10 text-blue-600 border border-blue-500/20">
+                              <span className="material-symbols-outlined text-[10px] !fill-1">category</span>
+                              ใช้งานกับ {item.itemCodeCount} รหัสสินค้า
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-0.5 px-2 py-0.5 text-[8.5px] font-bold rounded bg-slate-500/5 text-slate-400 border border-slate-500/10 opacity-75">
+                              <span className="material-symbols-outlined text-[10px]">category</span>
+                              ใช้งานกับ 0 รหัสสินค้า
+                            </span>
+                          )}
                         </div>
                         <p className="font-bold text-xs text-primary font-mono truncate tracking-tight pt-1">{item.itemCode}</p>
                         <p className="text-[10px] text-on-surface-variant truncate">{item.itemName || "สินค้าทั่วไป"}</p>
