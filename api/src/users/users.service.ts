@@ -355,4 +355,9 @@ export class UsersService implements OnApplicationBootstrap {
     }
     return this.rolePermissionRepository.save(perm);
   }
+
+  // Find users by role
+  async findUsersByRole(role: UserRole): Promise<User[]> {
+    return this.userRepository.find({ where: { role } });
+  }
 }

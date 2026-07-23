@@ -9,6 +9,8 @@ import { SapService } from '../sap/sap.service';
 import { BackofficeService } from '../backoffice/backoffice.service';
 import { TelegramService } from '../telegram/telegram.service';
 import { AuditLog } from '../audit/audit-log.entity';
+import { UsersService } from '../users/users.service';
+import { UserRole, UserStatus } from '../users/user.entity';
 
 export interface Product {
   token: string;
@@ -56,6 +58,7 @@ export class ProductsService {
     private readonly backofficeService: BackofficeService,
     private readonly configService: ConfigService,
     private readonly telegramService: TelegramService,
+    private readonly usersService: UsersService,
   ) {}
 
   private readonly products: Record<string, Product> = {
@@ -248,6 +251,28 @@ export class ProductsService {
           });
           await this.productMetadataRepository.save(prefixMeta);
           this.logger.log(`[PRODUCTS SERVICE] Auto-created empty prefix metadata box for: ${prefix}`);
+
+          // Notify Telegram to all IMAGE_EDITOR users
+          try {
+            const editors = await this.usersService.findUsersByRole(UserRole.IMAGE_EDITOR);
+            const activeEditors = editors.filter(e => e.telegramId && e.status === UserStatus.ACTIVE);
+            if (activeEditors.length > 0) {
+              const message = [
+                `⚠️ <b>[ProRegis] ตรวจพบกลุ่มสินค้าใหม่ที่ยังไม่มีรูปภาพ</b>`,
+                `• <b>กลุ่มสินค้า (Product Group):</b> <code>${prefix}</code>`,
+                `• <b>รหัสสินค้าเริ่มต้น:</b> <code>${itemCode}</code>`,
+                `• <b>ชื่อกลุ่มสินค้า:</b> กลุ่มสินค้าโมเดล ${prefix}`,
+                ``,
+                `<i>กรุณาเข้าสู่ระบบ Backoffice เพื่ออัปโหลดรูปภาพสำหรับกลุ่มสินค้านี้</i>`
+              ].join('\n');
+
+              for (const editor of activeEditors) {
+                await this.telegramService.sendDirectMessage(editor.telegramId!, message);
+              }
+            }
+          } catch (telErr) {
+            this.logger.error(`[PRODUCTS SERVICE] Failed to send Telegram alert for new group ${prefix}: ${telErr.message}`);
+          }
         }
       }
     }

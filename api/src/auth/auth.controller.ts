@@ -96,14 +96,14 @@ export class AuthController {
         throw new UnauthorizedException('บัญชีผู้ใช้นี้ไม่ได้เปิดใช้งาน Active Directory');
       }
 
-      const isPasswordCorrect = user.isPasswordCachedFromAd && await bcrypt.compare(body.passwordPlain || '', user.passwordHash);
+      // Fast check with PIN code if set
       const isPinCorrect = !!(user.pinCode && body.passwordPlain === user.pinCode);
-      loginSuccess = isPasswordCorrect || isPinCorrect;
+      loginSuccess = isPinCorrect;
 
-      let adError = 'AD local cache password mismatch';
+      let adError = 'AD authentication failed';
 
       if (!loginSuccess) {
-        // Try AD Gateway
+        // Always try AD Gateway directly, do not verify against local cache
         const gatewayUrl = process.env.AD_GATEWAY_URL || 'http://192.168.12.8:3100/api/v2/login';
         const appId = process.env.AD_APP_ID || 'ProRegis';
         const secretKey = process.env.AD_SECRET_KEY || 'd69f9e5a88e734c56e2978a63bf720c22635a9c0c32b5e2a2205510657e4e138';
@@ -130,8 +130,7 @@ export class AuthController {
             const data = await response.json();
             if (data && data.status === 'success') {
               loginSuccess = true;
-              // Synchronize password to local DB cache and flag it as cached from AD
-              await this.usersService.updateUserPasswordAndPin(user.id, body.passwordPlain, undefined, true);
+              // Do NOT update user password cache in local DB to avoid credentials leak
             } else {
               adError = data?.message || `AD Gateway returned status: ${data?.status || 'failed'}`;
             }

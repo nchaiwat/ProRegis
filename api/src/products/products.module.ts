@@ -11,6 +11,7 @@ import { GenerationLog } from '../backoffice/generation-log.entity';
 import { SystemSetting } from '../backoffice/system-setting.entity';
 import { TelegramModule } from '../telegram/telegram.module';
 import { AuditLog } from '../audit/audit-log.entity';
+import { UsersModule } from '../users/users.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { AuditLog } from '../audit/audit-log.entity';
     SapModule,
     forwardRef(() => BackofficeModule),
     TelegramModule,
+    UsersModule,
   ],
   controllers: [ProductsController],
   providers: [ProductsService],
