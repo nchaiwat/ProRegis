@@ -874,9 +874,10 @@ export default function UserAdminPage() {
                     onChange={(e) => setNewRole(e.target.value)}
                     className="w-full h-11 px-3 bg-surface-container-low border border-outline-variant rounded-lg text-sm outline-none focus:border-secondary"
                   >
-                    <option value="CRM_MANAGER">CRM_MANAGER (ดูแลข้อมูลลูกค้า)</option>
-                    <option value="QR_GENERATOR">QR_GENERATOR (ฝ่ายผลิตสร้างคิวอาร์)</option>
-                    <option value="SYSTEM_ADMIN">SYSTEM_ADMIN (ดูแลระบบทั้งหมด)</option>
+                    <option value="CRM_MANAGER">CRM_MANAGER</option>
+                    <option value="QR_GENERATOR">QR_GENERATOR</option>
+                    <option value="IMAGE_EDITOR">IMAGE_EDITOR</option>
+                    <option value="SYSTEM_ADMIN">SYSTEM_ADMIN</option>
                   </select>
                 </div>
 
@@ -1028,9 +1029,10 @@ export default function UserAdminPage() {
                     disabled={editingUser.username === "admin"}
                     className="w-full h-11 px-3 bg-surface-container-low border border-outline-variant rounded-lg text-sm outline-none focus:border-secondary disabled:opacity-50"
                   >
-                    <option value="CRM_MANAGER">CRM_MANAGER (ดูแลข้อมูลลูกค้า)</option>
-                    <option value="QR_GENERATOR">QR_GENERATOR (ฝ่ายผลิตสร้างคิวอาร์)</option>
-                    <option value="SYSTEM_ADMIN">SYSTEM_ADMIN (ดูแลระบบทั้งหมด)</option>
+                    <option value="CRM_MANAGER">CRM_MANAGER</option>
+                    <option value="QR_GENERATOR">QR_GENERATOR</option>
+                    <option value="IMAGE_EDITOR">IMAGE_EDITOR</option>
+                    <option value="SYSTEM_ADMIN">SYSTEM_ADMIN</option>
                   </select>
                 </div>
 
