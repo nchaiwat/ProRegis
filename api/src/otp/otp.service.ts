@@ -130,6 +130,12 @@ export class OtpService {
         };
       } catch (err) {
         console.error(`[OTP SERVICE] SMTP Send Error:`, err);
+        try {
+          const fs = require('fs');
+          fs.writeFileSync('d:\\Python\\ProRegis\\email_error.txt', `Email: ${cleanContact}\nError: ${err.message}\nStack: ${err.stack}\n`);
+        } catch (fsErr) {
+          console.error('Failed to write email error to file', fsErr);
+        }
         await this.auditLogRepository.save(this.auditLogRepository.create({
           actorUsername: 'CUSTOMER',
           action: 'OTP_REQUEST',
