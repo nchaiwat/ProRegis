@@ -58,6 +58,8 @@ export class OtpService {
       const smtpPassSetting = await this.systemSettingRepository.findOne({ where: { key: 'SMTP_PASS' } });
       const smtpFromNameSetting = await this.systemSettingRepository.findOne({ where: { key: 'SMTP_FROM_NAME' } });
       const smtpFromEmailSetting = await this.systemSettingRepository.findOne({ where: { key: 'SMTP_FROM_EMAIL' } });
+      const smtpEmailSubjectSetting = await this.systemSettingRepository.findOne({ where: { key: 'SMTP_EMAIL_SUBJECT' } });
+      const smtpEmailBodySetting = await this.systemSettingRepository.findOne({ where: { key: 'SMTP_EMAIL_BODY' } });
 
       const smtpHost = smtpHostSetting?.value || 'smtp.gmail.com';
       const smtpPort = parseInt(smtpPortSetting?.value || '587', 10);
@@ -67,9 +69,29 @@ export class OtpService {
       const smtpFromName = smtpFromNameSetting?.value || 'Window Asia Warranty';
       const smtpFromEmail = smtpFromEmailSetting?.value || smtpUser;
 
+      const subject = smtpEmailSubjectSetting?.value || 'รหัสยืนยันตัวตนสำหรับการลงทะเบียนรับประกันสินค้า (Warranty Verification OTP)';
+      let body = smtpEmailBodySetting?.value || `
+        <div style="font-family: sans-serif; padding: 20px; max-width: 600px; border: 1px solid #e2e8f0; border-radius: 12px;">
+          <h2 style="color: #0f172a; margin-bottom: 16px;">ยืนยันตัวตนการรับประกันสินค้า Window Asia</h2>
+          <p style="color: #475569; font-size: 14px; line-height: 1.5;">เรียน ลูกค้าผู้มีอุปการคุณ</p>
+          <p style="color: #475569; font-size: 14px; line-height: 1.5;">รหัสยืนยันตัวตน (OTP) ของคุณคือ:</p>
+          <div style="background-color: #f1f5f9; padding: 15px; text-align: center; border-radius: 8px; margin: 20px 0;">
+            <span style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #2563eb;">{code}</span>
+          </div>
+          <p style="color: #ef4444; font-size: 12px; font-weight: 600;">*รหัส OTP นี้จะมีอายุการใช้งาน 5 นาที</p>
+          <p style="color: #64748b; font-size: 12px; border-top: 1px solid #e2e8f0; padding-top: 15px; margin-top: 25px;">
+            หากคุณไม่ได้ส่งคำขอนี้ โปรดเพิกเฉยต่ออีเมลฉบับนี้<br>
+            บริษัท วินโดว์ เอเชีย จำกัด (มหาชน)
+          </p>
+        </div>
+      `;
+
       const code = Math.floor(100000 + Math.random() * 900000).toString();
       this.otpStore.set(cleanContact, { code, expiresAt });
       console.log(`[OTP SERVICE] Generated SMTP OTP ${code} for email ${cleanContact}`);
+
+      // Replace {code} placeholder
+      body = body.replace(/{code}/g, code);
 
       try {
         const transporter = nodemailer.createTransport({
@@ -88,22 +110,8 @@ export class OtpService {
         const mailOptions = {
           from: `"${smtpFromName}" <${smtpFromEmail}>`,
           to: cleanContact,
-          subject: 'รหัสยืนยันตัวตนสำหรับการลงทะเบียนรับประกันสินค้า (Warranty Verification OTP)',
-          html: `
-            <div style="font-family: sans-serif; padding: 20px; max-width: 600px; border: 1px solid #e2e8f0; border-radius: 12px;">
-              <h2 style="color: #0f172a; margin-bottom: 16px;">ยืนยันตัวตนการรับประกันสินค้า Window Asia</h2>
-              <p style="color: #475569; font-size: 14px; line-height: 1.5;">เรียน ลูกค้าผู้มีอุปการคุณ</p>
-              <p style="color: #475569; font-size: 14px; line-height: 1.5;">รหัสยืนยันตัวตน (OTP) ของคุณคือ:</p>
-              <div style="background-color: #f1f5f9; padding: 15px; text-align: center; border-radius: 8px; margin: 20px 0;">
-                <span style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #2563eb;">${code}</span>
-              </div>
-              <p style="color: #ef4444; font-size: 12px; font-weight: 600;">*รหัส OTP นี้จะมีอายุการใช้งาน 5 นาที</p>
-              <p style="color: #64748b; font-size: 12px; border-top: 1px solid #e2e8f0; padding-top: 15px; margin-top: 25px;">
-                หากคุณไม่ได้ส่งคำขอนี้ โปรดเพิกเฉยต่ออีเมลฉบับนี้<br>
-                บริษัท วินโดว์ เอเชีย จำกัด (มหาชน)
-              </p>
-            </div>
-          `,
+          subject: subject,
+          html: body.replace(/{code}/g, code),
         };
 
         await transporter.sendMail(mailOptions);

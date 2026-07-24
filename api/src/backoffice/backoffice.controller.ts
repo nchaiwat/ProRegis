@@ -208,6 +208,24 @@ export class BackofficeController {
     return { success: true };
   }
 
+  @Post('settings/test-email')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('SYSTEM_ADMIN')
+  async testEmailSettings(@Body() body: {
+    smtpHost: string;
+    smtpPort: string;
+    smtpSecure: string;
+    smtpUser: string;
+    smtpPass: string;
+    smtpFromName: string;
+    smtpFromEmail: string;
+    testEmail: string;
+    subject?: string;
+    bodyTemplate?: string;
+  }) {
+    return this.backofficeService.testSmtpSetting(body);
+  }
+
   // -------------------------------------------------------------------------
   // POST /backoffice/clear-test-data - Restricted to SYSTEM_ADMIN
   // -------------------------------------------------------------------------

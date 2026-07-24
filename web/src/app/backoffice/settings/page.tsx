@@ -55,6 +55,12 @@ export default function SettingsAdminPage() {
   const [smtpPass, setSmtpPass] = useState("");
   const [smtpFromName, setSmtpFromName] = useState("Window Asia Warranty");
   const [smtpFromEmail, setSmtpFromEmail] = useState("itwindowasia@gmail.com");
+  const [smtpEmailSubject, setSmtpEmailSubject] = useState("");
+  const [smtpEmailBody, setSmtpEmailBody] = useState("");
+  const [testEmail, setTestEmail] = useState("");
+  const [isTestingEmail, setIsTestingEmail] = useState(false);
+  const [testEmailError, setTestEmailError] = useState("");
+  const [testEmailSuccess, setTestEmailSuccess] = useState("");
 
   // Password Visibility Toggle and Timer
   const [showPassword, setShowPassword] = useState(false);
@@ -157,6 +163,8 @@ export default function SettingsAdminPage() {
         setSmtpPass(data.SMTP_PASS?.value || "");
         setSmtpFromName(data.SMTP_FROM_NAME?.value || "Window Asia Warranty");
         setSmtpFromEmail(data.SMTP_FROM_EMAIL?.value || "itwindowasia@gmail.com");
+        setSmtpEmailSubject(data.SMTP_EMAIL_SUBJECT?.value || "");
+        setSmtpEmailBody(data.SMTP_EMAIL_BODY?.value || "");
       } else {
         const errData = await res.json().catch(() => ({}));
         setError(errData.message || "ไม่สามารถดึงข้อมูลการตั้งค่าได้");
@@ -199,6 +207,8 @@ export default function SettingsAdminPage() {
       { key: "SMTP_PASS", value: smtpPass },
       { key: "SMTP_FROM_NAME", value: smtpFromName },
       { key: "SMTP_FROM_EMAIL", value: smtpFromEmail },
+      { key: "SMTP_EMAIL_SUBJECT", value: smtpEmailSubject },
+      { key: "SMTP_EMAIL_BODY", value: smtpEmailBody },
     ];
 
     try {
@@ -232,6 +242,51 @@ export default function SettingsAdminPage() {
       setError("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleTestEmailSend = async () => {
+    if (!testEmail) {
+      setTestEmailError("โปรดระบุอีเมลปลายทางสำหรับการทดสอบ");
+      return;
+    }
+    setIsTestingEmail(true);
+    setTestEmailError("");
+    setTestEmailSuccess("");
+    const token = sessionStorage.getItem("bo_token");
+
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/backoffice/settings/test-email`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          smtpHost,
+          smtpPort,
+          smtpSecure,
+          smtpUser,
+          smtpPass,
+          smtpFromName,
+          smtpFromEmail,
+          testEmail,
+          subject: smtpEmailSubject,
+          bodyTemplate: smtpEmailBody,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setTestEmailSuccess(data.message || "ส่งอีเมลทดสอบสำเร็จ!");
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        setTestEmailError(errData.message || "การส่งอีเมลทดสอบล้มเหลว");
+      }
+    } catch {
+      setTestEmailError("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์");
+    } finally {
+      setIsTestingEmail(false);
     }
   };
 
@@ -715,6 +770,100 @@ export default function SettingsAdminPage() {
                   />
                 </div>
               </div>
+            </div>
+
+            {/* Email OTP Subject */}
+            <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6">
+              <div className="md:w-1/4">
+                <label className="text-xs font-bold text-primary">หัวข้ออีเมล OTP (Email Subject)</label>
+                <p className="text-[10px] text-outline font-semibold mt-0.5">
+                  อัปเดต: {formatDateTime(dbSettings.SMTP_EMAIL_SUBJECT?.updatedAt)}
+                </p>
+              </div>
+              <div className="flex-1">
+                <input
+                  type="text"
+                  value={smtpEmailSubject}
+                  onChange={(e) => setSmtpEmailSubject(e.target.value)}
+                  placeholder="เช่น รหัสยืนยันตัวตนสำหรับการลงทะเบียนรับประกันสินค้า (Warranty Verification OTP)"
+                  className="w-full h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary"
+                />
+              </div>
+            </div>
+
+            {/* Email OTP Body Template */}
+            <div className="flex flex-col md:flex-row md:items-start gap-2 md:gap-6">
+              <div className="md:w-1/4">
+                <label className="text-xs font-bold text-primary">รูปแบบข้อความอีเมล (Email HTML Template)</label>
+                <p className="text-[10px] text-outline font-semibold mt-0.5">
+                  อัปเดต: {formatDateTime(dbSettings.SMTP_EMAIL_BODY?.updatedAt)}
+                </p>
+                <p className="text-[9px] text-outline font-normal mt-1 leading-relaxed">
+                  * ใช้ตัวแปร <code className="font-bold text-secondary">{`{code}`}</code> เพื่อแทนที่รหัส OTP 6 หลักในเทมเพลต HTML
+                </p>
+              </div>
+              <div className="flex-1">
+                <textarea
+                  value={smtpEmailBody}
+                  onChange={(e) => setSmtpEmailBody(e.target.value)}
+                  placeholder="ป้อนเทมเพลต HTML ของอีเมล..."
+                  rows={8}
+                  className="w-full p-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-mono bg-surface-container-low focus:border-secondary resize-y"
+                />
+              </div>
+            </div>
+
+            {/* Test Email Send Panel */}
+            <div className="pt-4 border-t border-outline-variant/40 space-y-4">
+              <h3 className="text-xs font-bold text-primary flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[16px] text-secondary">experimental_class</span>
+                ทดสอบระบบส่งอีเมล OTP (SMTP Test Delivery)
+              </h3>
+              <div className="flex flex-col md:flex-row md:items-center gap-4">
+                <div className="flex-1">
+                  <input
+                    type="email"
+                    value={testEmail}
+                    onChange={(e) => setTestEmail(e.target.value)}
+                    placeholder="ระบุอีเมลผู้รับเพื่อทดสอบ (เช่น test@gmail.com)"
+                    className="w-full h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleTestEmailSend}
+                  disabled={isTestingEmail || !testEmail}
+                  className={`h-11 px-6 rounded-xl font-bold text-xs transition-all active:scale-[0.98] flex items-center gap-2 cursor-pointer ${
+                    isTestingEmail || !testEmail
+                      ? "bg-surface-variant text-outline-variant cursor-not-allowed"
+                      : "bg-secondary text-white hover:opacity-95 shadow-sm"
+                  }`}
+                >
+                  {isTestingEmail ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      <span>กำลังส่ง...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="material-symbols-outlined text-[16px]">send</span>
+                      <span>ทดสอบส่งอีเมล</span>
+                    </>
+                  )}
+                </button>
+              </div>
+              {testEmailError && (
+                <div className="p-3.5 bg-error/10 border border-error/20 rounded-xl flex gap-2 text-xs text-error font-semibold leading-relaxed animate-success">
+                  <span className="material-symbols-outlined flex-shrink-0 text-[18px]">error</span>
+                  <span>{testEmailError}</span>
+                </div>
+              )}
+              {testEmailSuccess && (
+                <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl flex gap-2 text-xs text-emerald-800 font-semibold leading-relaxed animate-success">
+                  <span className="material-symbols-outlined flex-shrink-0 text-[18px] text-emerald-600">check_circle</span>
+                  <span>{testEmailSuccess}</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
