@@ -96,55 +96,49 @@ export class AuthController {
         throw new UnauthorizedException('บัญชีผู้ใช้นี้ไม่ได้เปิดใช้งาน Active Directory');
       }
 
-      // Fast check with PIN code if set
-      const isPinCorrect = !!(user.pinCode && body.passwordPlain === user.pinCode);
-      loginSuccess = isPinCorrect;
-
       let adError = 'AD authentication failed';
 
-      if (!loginSuccess) {
-        // Always try AD Gateway directly, do not verify against local cache
-        const gatewayUrl = process.env.AD_GATEWAY_URL || 'http://172.17.0.1:3101/api/v2/login';
-        const appId = process.env.AD_APP_ID || 'ProRegis';
-        const secretKey = process.env.AD_SECRET_KEY || 'd69f9e5a88e734c56e2978a63bf720c22635a9c0c32b5e2a2205510657e4e138';
+      // Always try AD Gateway directly, do not verify against local cache or PIN
+      const gatewayUrl = process.env.AD_GATEWAY_URL || 'http://172.17.0.1:3101/api/v2/login';
+      const appId = process.env.AD_APP_ID || 'ProRegis';
+      const secretKey = process.env.AD_SECRET_KEY || 'd69f9e5a88e734c56e2978a63bf720c22635a9c0c32b5e2a2205510657e4e138';
 
-        const now = new Date();
-        const tzOffset = 7 * 60 * 60 * 1000; // Thailand local timezone (UTC+7)
-        const thTime = new Date(now.getTime() + tzOffset);
-        const timestamp = thTime.toISOString().split('.')[0] + 'Z';
+      const now = new Date();
+      const tzOffset = 7 * 60 * 60 * 1000; // Thailand local timezone (UTC+7)
+      const thTime = new Date(now.getTime() + tzOffset);
+      const timestamp = thTime.toISOString().split('.')[0] + 'Z';
 
-        try {
-          const response = await fetch(gatewayUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Forwarded-For': ipAddress || '157.173.219.153',
-              'X-Real-IP': ipAddress || '157.173.219.153',
-            },
-            body: JSON.stringify({
-              app_id: appId,
-              secret_key: secretKey,
-              username: user.username,
-              password: body.passwordPlain,
-              timestamp,
-            }),
-          });
+      try {
+        const response = await fetch(gatewayUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Forwarded-For': ipAddress || '157.173.219.153',
+            'X-Real-IP': ipAddress || '157.173.219.153',
+          },
+          body: JSON.stringify({
+            app_id: appId,
+            secret_key: secretKey,
+            username: user.username,
+            password: body.passwordPlain,
+            timestamp,
+          }),
+        });
 
-          if (response.ok) {
-            const data = await response.json();
-            if (data && data.status === 'success') {
-              loginSuccess = true;
-              // Do NOT update user password cache in local DB to avoid credentials leak
-            } else {
-              adError = data?.message || `AD Gateway returned status: ${data?.status || 'failed'}`;
-            }
+        if (response.ok) {
+          const data = await response.json();
+          if (data && data.status === 'success') {
+            loginSuccess = true;
+            // Do NOT update user password cache in local DB to avoid credentials leak
           } else {
-            adError = `AD Gateway HTTP error ${response.status}: ${response.statusText}`;
+            adError = data?.message || `AD Gateway returned status: ${data?.status || 'failed'}`;
           }
-        } catch (err) {
-          adError = `AD Gateway connection failed: ${err.message}`;
-          console.error('[AD GATEWAY ERROR]', err);
+        } else {
+          adError = `AD Gateway HTTP error ${response.status}: ${response.statusText}`;
         }
+      } catch (err) {
+        adError = `AD Gateway connection failed: ${err.message}`;
+        console.error('[AD GATEWAY ERROR]', err);
       }
 
       if (!loginSuccess) {
@@ -163,6 +157,22 @@ export class AuthController {
 
     } else {
       // DB Login
+      // Enforce that AD users must not use DB login
+      if (user.isAdAuth) {
+        await this.auditService.logAction(
+          user.username,
+          'LOGIN_FAILED',
+          'Auth',
+          user.id,
+          ipAddress,
+          userAgent,
+          { reason: 'User is configured for AD login but attempted DB login', loginMethod: 'DB' },
+        );
+        throw new UnauthorizedException(
+          'บัญชีผู้ใช้นี้เข้าสู่ระบบผ่าน Active Directory เท่านั้น กรุณาเลือกวิธีเข้าสู่ระบบเป็น Active Directory',
+        );
+      }
+
       const isPasswordCorrect = await bcrypt.compare(body.passwordPlain || '', user.passwordHash);
       const isPinCorrect = !!(user.pinCode && body.passwordPlain === user.pinCode);
       loginSuccess = isPasswordCorrect || isPinCorrect;
