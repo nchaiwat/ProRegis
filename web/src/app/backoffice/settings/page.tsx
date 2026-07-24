@@ -46,8 +46,19 @@ export default function SettingsAdminPage() {
   const [smsProjectKey, setSmsProjectKey] = useState("");
   const [smsOtpMode, setSmsOtpMode] = useState("TEST");
 
+  // Email & SMTP settings
+  const [emailOtpMode, setEmailOtpMode] = useState("TEST");
+  const [smtpHost, setSmtpHost] = useState("smtp.gmail.com");
+  const [smtpPort, setSmtpPort] = useState("587");
+  const [smtpSecure, setSmtpSecure] = useState("false");
+  const [smtpUser, setSmtpUser] = useState("itwindowasia@gmail.com");
+  const [smtpPass, setSmtpPass] = useState("");
+  const [smtpFromName, setSmtpFromName] = useState("Window Asia Warranty");
+  const [smtpFromEmail, setSmtpFromEmail] = useState("itwindowasia@gmail.com");
+
   // Password Visibility Toggle and Timer
   const [showPassword, setShowPassword] = useState(false);
+  const [showSmtpPassword, setShowSmtpPassword] = useState(false);
   const [passwordTimer, setPasswordTimer] = useState(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -136,6 +147,16 @@ export default function SettingsAdminPage() {
         setSmsValidateUrl(data.SMS_VALIDATE_URL?.value || "https://portal-otp.smsmkt.com/api/otp-validate");
         setSmsProjectKey(data.SMS_PROJECT_KEY?.value || "");
         setSmsOtpMode(data.SMS_OTP_MODE?.value || "TEST");
+
+        // Populate Email & SMTP settings
+        setEmailOtpMode(data.EMAIL_OTP_MODE?.value || "TEST");
+        setSmtpHost(data.SMTP_HOST?.value || "smtp.gmail.com");
+        setSmtpPort(data.SMTP_PORT?.value || "587");
+        setSmtpSecure(data.SMTP_SECURE?.value || "false");
+        setSmtpUser(data.SMTP_USER?.value || "itwindowasia@gmail.com");
+        setSmtpPass(data.SMTP_PASS?.value || "");
+        setSmtpFromName(data.SMTP_FROM_NAME?.value || "Window Asia Warranty");
+        setSmtpFromEmail(data.SMTP_FROM_EMAIL?.value || "itwindowasia@gmail.com");
       } else {
         const errData = await res.json().catch(() => ({}));
         setError(errData.message || "ไม่สามารถดึงข้อมูลการตั้งค่าได้");
@@ -170,6 +191,14 @@ export default function SettingsAdminPage() {
       { key: "SMS_VALIDATE_URL", value: smsValidateUrl },
       { key: "SMS_PROJECT_KEY", value: smsProjectKey },
       { key: "SMS_OTP_MODE", value: smsOtpMode },
+      { key: "EMAIL_OTP_MODE", value: emailOtpMode },
+      { key: "SMTP_HOST", value: smtpHost },
+      { key: "SMTP_PORT", value: smtpPort },
+      { key: "SMTP_SECURE", value: smtpSecure },
+      { key: "SMTP_USER", value: smtpUser },
+      { key: "SMTP_PASS", value: smtpPass },
+      { key: "SMTP_FROM_NAME", value: smtpFromName },
+      { key: "SMTP_FROM_EMAIL", value: smtpFromEmail },
     ];
 
     try {
@@ -374,28 +403,39 @@ export default function SettingsAdminPage() {
                   อัปเดต: {formatDateTime(dbSettings.VERIFICATION_MODE?.updatedAt)}
                 </span>
               </div>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 <button
                   type="button"
                   onClick={() => setVerificationMode("OTP")}
-                  className={`py-3 px-4 rounded-xl border text-center font-bold text-xs transition-all cursor-pointer ${
+                  className={`py-3 px-2 rounded-xl border text-center font-bold text-xs transition-all cursor-pointer ${
                     verificationMode === "OTP"
                       ? "border-secondary bg-secondary/5 text-secondary ring-1 ring-secondary"
                       : "border-outline-variant/60 text-outline hover:bg-surface-container-lowest"
                   }`}
                 >
-                  SMS OTP Verification
+                  SMS OTP
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setVerificationMode("EMAIL")}
+                  className={`py-3 px-2 rounded-xl border text-center font-bold text-xs transition-all cursor-pointer ${
+                    verificationMode === "EMAIL"
+                      ? "border-secondary bg-secondary/5 text-secondary ring-1 ring-secondary"
+                      : "border-outline-variant/60 text-outline hover:bg-surface-container-lowest"
+                  }`}
+                >
+                  Email OTP
                 </button>
                 <button
                   type="button"
                   onClick={() => setVerificationMode("LINE")}
-                  className={`py-3 px-4 rounded-xl border text-center font-bold text-xs transition-all cursor-pointer ${
+                  className={`py-3 px-2 rounded-xl border text-center font-bold text-xs transition-all cursor-pointer ${
                     verificationMode === "LINE"
                       ? "border-secondary bg-secondary/5 text-secondary ring-1 ring-secondary"
                       : "border-outline-variant/60 text-outline hover:bg-surface-container-lowest"
                   }`}
                 >
-                  LINE Login (LIFF)
+                  LINE Login
                 </button>
               </div>
             </div>
@@ -564,6 +604,195 @@ export default function SettingsAdminPage() {
                   placeholder="https://portal-otp.smsmkt.com/api/otp-validate"
                   className="w-full h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary"
                 />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* SECTION: EMAIL OTP GATEWAY CONFIGURATIONS */}
+        <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm p-6 space-y-6">
+          <h2 className="font-bold text-base text-primary border-b border-outline-variant/40 pb-3 flex items-center gap-2">
+            <span className="material-symbols-outlined text-secondary">mail</span>
+            ระบบส่งและยืนยัน Email OTP (Email SMTP Settings)
+          </h2>
+
+          <div className="space-y-4">
+            {/* EMAIL OTP MODE (REAL / TEST) */}
+            <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6">
+              <div className="md:w-1/4">
+                <label className="text-xs font-bold text-primary">การทำงานของ Email OTP (OTP Mode)</label>
+                <p className="text-[10px] text-outline font-semibold mt-0.5">
+                  อัปเดต: {formatDateTime(dbSettings.EMAIL_OTP_MODE?.updatedAt)}
+                </p>
+              </div>
+              <div className="flex-1">
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEmailOtpMode("LIVE")}
+                    className={`py-3 px-4 rounded-xl border text-center font-bold text-xs transition-all cursor-pointer ${
+                      emailOtpMode === "LIVE"
+                        ? "border-secondary bg-secondary/5 text-secondary ring-1 ring-secondary"
+                        : "border-outline-variant/60 text-outline hover:bg-surface-container-lowest"
+                    }`}
+                  >
+                    เปิดใช้งาน (ส่ง Email OTP จริง)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEmailOtpMode("TEST")}
+                    className={`py-3 px-4 rounded-xl border text-center font-bold text-xs transition-all cursor-pointer ${
+                      emailOtpMode === "TEST"
+                        ? "border-secondary bg-secondary/5 text-secondary ring-1 ring-secondary"
+                        : "border-outline-variant/60 text-outline hover:bg-surface-container-lowest"
+                    }`}
+                  >
+                    ปิดใช้งาน (ทดสอบ / บังคับใช้รหัส 123456)
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* SMTP Host */}
+            <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6">
+              <div className="md:w-1/4">
+                <label className="text-xs font-bold text-primary">SMTP Host</label>
+                <p className="text-[10px] text-outline font-semibold mt-0.5">
+                  อัปเดต: {formatDateTime(dbSettings.SMTP_HOST?.updatedAt)}
+                </p>
+              </div>
+              <div className="flex-1">
+                <input
+                  type="text"
+                  value={smtpHost}
+                  onChange={(e) => setSmtpHost(e.target.value)}
+                  placeholder="เช่น smtp.gmail.com"
+                  className="w-full h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary"
+                />
+              </div>
+            </div>
+
+            {/* SMTP Port & Secure */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6">
+                <div className="md:w-1/2">
+                  <label className="text-xs font-bold text-primary">SMTP Port</label>
+                  <p className="text-[10px] text-outline font-semibold mt-0.5">
+                    อัปเดต: {formatDateTime(dbSettings.SMTP_PORT?.updatedAt)}
+                  </p>
+                </div>
+                <div className="flex-1">
+                  <input
+                    type="text"
+                    value={smtpPort}
+                    onChange={(e) => setSmtpPort(e.target.value)}
+                    placeholder="เช่น 587 หรือ 465"
+                    className="w-full h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6">
+                <div className="md:w-1/2">
+                  <label className="text-xs font-bold text-primary">การเชื่อมต่อแบบ Secure (SSL/TLS)</label>
+                  <p className="text-[10px] text-outline font-semibold mt-0.5">
+                    อัปเดต: {formatDateTime(dbSettings.SMTP_SECURE?.updatedAt)}
+                  </p>
+                </div>
+                <div className="flex-1">
+                  <select
+                    value={smtpSecure}
+                    onChange={(e) => setSmtpSecure(e.target.value)}
+                    className="w-full h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-semibold bg-surface-container-low focus:border-secondary"
+                  >
+                    <option value="false">STARTTLS / TLS (Port 587 - แนะนำสำหรับ Gmail)</option>
+                    <option value="true">SSL (Port 465)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            {/* SMTP User (Username) */}
+            <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6">
+              <div className="md:w-1/4">
+                <label className="text-xs font-bold text-primary">SMTP Username (Email)</label>
+                <p className="text-[10px] text-outline font-semibold mt-0.5">
+                  อัปเดต: {formatDateTime(dbSettings.SMTP_USER?.updatedAt)}
+                </p>
+              </div>
+              <div className="flex-1">
+                <input
+                  type="text"
+                  value={smtpUser}
+                  onChange={(e) => setSmtpUser(e.target.value)}
+                  placeholder="เช่น itwindowasia@gmail.com"
+                  className="w-full h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary"
+                />
+              </div>
+            </div>
+
+            {/* SMTP Password */}
+            <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6">
+              <div className="md:w-1/4">
+                <label className="text-xs font-bold text-primary">SMTP Password (หรือ App Password)</label>
+                <p className="text-[10px] text-outline font-semibold mt-0.5">
+                  อัปเดต: {formatDateTime(dbSettings.SMTP_PASS?.updatedAt)}
+                </p>
+              </div>
+              <div className="flex-1 relative">
+                <input
+                  type={showSmtpPassword ? "text" : "password"}
+                  value={smtpPass}
+                  onChange={(e) => setSmtpPass(e.target.value)}
+                  placeholder="App Password 16 หลักจาก Google"
+                  className="w-full h-11 pl-4 pr-12 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowSmtpPassword(!showSmtpPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-outline hover:text-primary material-symbols-outlined !text-[18px] cursor-pointer"
+                >
+                  {showSmtpPassword ? "visibility_off" : "visibility"}
+                </button>
+              </div>
+            </div>
+
+            {/* SMTP From Details */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6">
+                <div className="md:w-1/2">
+                  <label className="text-xs font-bold text-primary">ชื่อผู้ส่ง (Sender Display Name)</label>
+                  <p className="text-[10px] text-outline font-semibold mt-0.5">
+                    อัปเดต: {formatDateTime(dbSettings.SMTP_FROM_NAME?.updatedAt)}
+                  </p>
+                </div>
+                <div className="flex-1">
+                  <input
+                    type="text"
+                    value={smtpFromName}
+                    onChange={(e) => setSmtpFromName(e.target.value)}
+                    placeholder="เช่น Window Asia Warranty"
+                    className="w-full h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6">
+                <div className="md:w-1/2">
+                  <label className="text-xs font-bold text-primary">อีเมลผู้ส่ง (Sender Address)</label>
+                  <p className="text-[10px] text-outline font-semibold mt-0.5">
+                    อัปเดต: {formatDateTime(dbSettings.SMTP_FROM_EMAIL?.updatedAt)}
+                  </p>
+                </div>
+                <div className="flex-1">
+                  <input
+                    type="text"
+                    value={smtpFromEmail}
+                    onChange={(e) => setSmtpFromEmail(e.target.value)}
+                    placeholder="เช่น itwindowasia@gmail.com"
+                    className="w-full h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary"
+                  />
+                </div>
               </div>
             </div>
           </div>

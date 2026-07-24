@@ -786,13 +786,21 @@ export class RegistrationService {
   }
 
   async checkStatus(docNum: string, phone: string, lat?: number, lng?: number) {
-    const cleanPhone = phone.replace(/\D/g, '');
-    
-    // Fetch all registrations under this customer's phone number to count cumulative warranties
-    const allRegistrations = await this.registrationRepository.find({
-      where: { phone: cleanPhone },
-      order: { registeredAt: 'ASC' }
-    });
+    const isEmail = phone.includes('@');
+    let allRegistrations;
+    if (isEmail) {
+      const cleanEmail = phone.trim().toLowerCase();
+      allRegistrations = await this.registrationRepository.find({
+        where: { email: cleanEmail },
+        order: { registeredAt: 'ASC' }
+      });
+    } else {
+      const cleanPhone = phone.replace(/\D/g, '');
+      allRegistrations = await this.registrationRepository.find({
+        where: { phone: cleanPhone },
+        order: { registeredAt: 'ASC' }
+      });
+    }
 
     // Check if the current docNum has been registered under this phone
     const docRegistrations = allRegistrations.filter(r => r.docNum === docNum);
@@ -873,11 +881,21 @@ export class RegistrationService {
       throw new BadRequestException('รหัส QR Code ไม่ถูกต้องหรือเสียหาย');
     }
 
-    const cleanPhone = dto.phone.replace(/\D/g, '');
-    const baseReg = await this.registrationRepository.findOne({
-      where: { docNum, phone: cleanPhone },
-      order: { registeredAt: 'DESC' }
-    });
+    const isEmail = dto.phone.includes('@');
+    let baseReg;
+    if (isEmail) {
+      const cleanEmail = dto.phone.trim().toLowerCase();
+      baseReg = await this.registrationRepository.findOne({
+        where: { docNum, email: cleanEmail },
+        order: { registeredAt: 'DESC' }
+      });
+    } else {
+      const cleanPhone = dto.phone.replace(/\D/g, '');
+      baseReg = await this.registrationRepository.findOne({
+        where: { docNum, phone: cleanPhone },
+        order: { registeredAt: 'DESC' }
+      });
+    }
 
     if (!baseReg) {
       throw new BadRequestException('ไม่พบข้อมูลการลงทะเบียนต้นแบบสำหรับบานนี้');

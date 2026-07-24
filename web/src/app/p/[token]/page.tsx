@@ -235,7 +235,7 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
 
   // System Config states (fetched dynamically from product specs payload)
   const [qrMode, setQrMode] = useState<"STATIC" | "DYNAMIC">("STATIC");
-  const [verificationMode, setVerificationMode] = useState<"OTP" | "LINE">("OTP");
+  const [verificationMode, setVerificationMode] = useState<"OTP" | "LINE" | "EMAIL">("OTP");
 
   // LINE LIFF auth states
   const [lineUserId, setLineUserId] = useState<string | null>(null);
@@ -353,12 +353,13 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
         try {
           const otpSession = JSON.parse(otpSessionStr);
           // OTP session valid for 30 minutes (1,800,000 ms)
-          if (Date.now() - otpSession.verifiedAt < 1800000 && otpSession.phone) {
-            setFormData((prev) => ({ ...prev, phone: otpSession.phone }));
+          if (Date.now() - otpSession.verifiedAt < 1800000 && (otpSession.phone || otpSession.email)) {
+            const contact = otpSession.phone || otpSession.email;
+            setFormData((prev) => ({ ...prev, phone: otpSession.phone || "", email: otpSession.email || "" }));
             setIsPhoneVerified(true);
-            storedPhone = otpSession.phone;
+            storedPhone = contact;
             // fetchProfileByPhone is async — it sets sessionLoaded=true in its finally block
-            fetchProfileByPhone(otpSession.phone);
+            fetchProfileByPhone(contact);
             return; // Don't call setSessionLoaded(true) here; fetchProfileByPhone will do it
           } else {
             localStorage.removeItem("proregis_otp_session");
@@ -415,15 +416,18 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
 
   const fetchProfileByPhone = async (phoneVal: string) => {
     try {
-      const res = await fetch(`${getApiBaseUrl()}/registration/by-phone`, {
+      const isEmail = phoneVal.includes('@');
+      const endpoint = isEmail ? "by-contact" : "by-phone";
+      const payload = isEmail ? { contact: phoneVal, otpCode: "SESSION_BYPASS" } : { phone: phoneVal, otpCode: "SESSION_BYPASS" };
+      const res = await fetch(`${getApiBaseUrl()}/registration/${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: phoneVal, otpCode: "SESSION_BYPASS" })
+        body: JSON.stringify(payload)
       });
       if (res.ok) {
         const list = await res.json();
         if (list && list.length > 0) {
-          const latest = list[list.length - 1];
+          const latest = list[0]; // most recent registration
           const profile = {
             firstName: latest.firstName || "",
             lastName: latest.lastName || "",
@@ -457,7 +461,7 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
                   email: profile.email || existingSession.email,
                   latitude: profile.latitude,
                   longitude: profile.longitude,
-                  phone: phoneVal,
+                  phone: isEmail ? (latest.phone || existingSession.phone || "") : phoneVal,
                   timestamp: existingSession.timestamp || Date.now()
                 }));
               } catch {}
@@ -491,14 +495,16 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
   // Helper to check if this lot (PD) is already registered at user's location
   const checkRegistrationStatus = async (resolvedDocNum: string, phoneVal: string, lat?: number, lng?: number, triggerModal = true) => {
     let activePhone = phoneVal;
+    const isEmailMode = verificationMode === "EMAIL";
     if (!activePhone) {
       // Fallback: check formData or local session
-      activePhone = formData.phone;
+      activePhone = isEmailMode ? formData.email : formData.phone;
       if (!activePhone) {
         const stored = localStorage.getItem("proregis_customer_session");
         if (stored) {
           try {
-            activePhone = JSON.parse(stored).phone || "";
+            const parsed = JSON.parse(stored);
+            activePhone = isEmailMode ? (parsed.email || "") : (parsed.phone || "");
           } catch {}
         }
       }
@@ -685,7 +691,7 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
           const data = await res.json();
           setProduct(data);
           if (data.qrMode) setQrMode(data.qrMode as "STATIC" | "DYNAMIC");
-          if (data.verificationMode) setVerificationMode(data.verificationMode as "OTP" | "LINE");
+          if (data.verificationMode) setVerificationMode(data.verificationMode as "OTP" | "LINE" | "EMAIL");
           if (data.smsOtpMode) setSmsOtpMode(data.smsOtpMode);
 
           // If QR Mode is STATIC, store docNum for use by the session check effect below
@@ -888,8 +894,14 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
     if (!formData.phone.trim() || !/^0\d{9}$/.test(formData.phone.replace(/[-]/g, ""))) {
       newErrors.phone = lang === "th" ? "โปรดระบุเบอร์โทรศัพท์ 10 หลัก (เช่น 0891234567)" : "Valid 10-digit mobile number required";
     }
-    if (formData.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      newErrors.email = lang === "th" ? "รูปแบบอีเมลไม่ถูกต้อง" : "Invalid email format";
+    if (verificationMode === "EMAIL") {
+      if (!formData.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+        newErrors.email = lang === "th" ? "โปรดระบุอีเมลที่ถูกต้องเพื่อยืนยันสิทธิ์" : "Valid email address is required";
+      }
+    } else {
+      if (formData.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+        newErrors.email = lang === "th" ? "รูปแบบอีเมลไม่ถูกต้อง" : "Invalid email format";
+      }
     }
 
     setErrors(newErrors);
@@ -905,9 +917,23 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
     return Object.keys(newErrors).length === 0;
   };
 
+  const validateEmailOnly = () => {
+    const newErrors: Record<string, string> = {};
+    if (!formData.email.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      newErrors.email = lang === "th" ? "โปรดระบุอีเมลที่ถูกต้อง (เช่น example@windowasia.com)" : "Valid email address required";
+    }
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const handleRequestOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validatePhoneOnly()) return;
+    const isEmailMode = verificationMode === "EMAIL";
+    if (isEmailMode) {
+      if (!validateEmailOnly()) return;
+    } else {
+      if (!validatePhoneOnly()) return;
+    }
 
     // Bypass OTP if LINE Mode is active or we have active full-profile session
     if (verificationMode === "LINE" || hasActiveSession) {
@@ -915,13 +941,14 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
       return;
     }
 
-    // Bypass OTP if a lightweight OTP session for this phone is still valid (30 min)
+    // Bypass OTP if a lightweight OTP session for this contact is still valid (30 min)
     const otpSessionStr = localStorage.getItem("proregis_otp_session");
     if (otpSessionStr) {
       try {
         const otpSession = JSON.parse(otpSessionStr);
+        const contactVal = isEmailMode ? formData.email : formData.phone;
         if (
-          otpSession.phone === formData.phone &&
+          otpSession.phone === contactVal &&
           Date.now() - otpSession.verifiedAt < 1800000
         ) {
           setIsPhoneVerified(true);
@@ -934,10 +961,11 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
 
     setIsSubmitting(true);
     try {
+      const contactVal = isEmailMode ? formData.email : formData.phone;
       const res = await fetch(`${getApiBaseUrl()}/otp/request`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: formData.phone })
+        body: JSON.stringify({ phone: contactVal })
       });
       if (res.ok) {
         const resData = await res.json();
@@ -1123,12 +1151,17 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
   const handleVerifyOtp = async () => {
     setIsSubmitting(true);
     let verifySuccess = false;
+    const isEmailMode = verificationMode === "EMAIL";
+    const contactVal = isEmailMode ? formData.email : formData.phone;
 
     try {
-      const res = await fetch(`${getApiBaseUrl()}/registration/by-phone`, {
+      const endpoint = isEmailMode ? "by-contact" : "by-phone";
+      const payload = isEmailMode ? { contact: contactVal, otpCode: otpCode } : { phone: contactVal, otpCode: otpCode };
+      
+      const res = await fetch(`${getApiBaseUrl()}/registration/${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: formData.phone, otpCode: otpCode })
+        body: JSON.stringify(payload)
       });
       if (res.ok) {
         verifySuccess = true;
@@ -1161,10 +1194,11 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
         if (smsOtpMode === "TEST" && (otpCode === "123456" || otpCode === "654321")) {
           verifySuccess = true;
           try {
-            const bypassRes = await fetch(`${getApiBaseUrl()}/registration/by-phone`, {
+            const bypassPayload = isEmailMode ? { contact: contactVal, otpCode: "SESSION_BYPASS" } : { phone: contactVal, otpCode: "SESSION_BYPASS" };
+            const bypassRes = await fetch(`${getApiBaseUrl()}/registration/${endpoint}`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ phone: formData.phone, otpCode: "SESSION_BYPASS" })
+              body: JSON.stringify(bypassPayload)
             });
             if (bypassRes.ok) {
               const list = await bypassRes.json();
@@ -1203,15 +1237,19 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
 
     if (!verifySuccess) {
       setIsSubmitting(false);
-      setOtpError(lang === "th" ? "รหัส OTP ไม่ถูกต้อง โปรดป้อนรหัสที่ได้รับจาก SMS" : "Invalid OTP code. Enter the code received via SMS.");
+      setOtpError(
+        isEmailMode
+          ? (lang === "th" ? "รหัส OTP ไม่ถูกต้อง โปรดป้อนรหัสที่ได้รับจากอีเมล" : "Invalid OTP code. Enter the code received via email.")
+          : (lang === "th" ? "รหัส OTP ไม่ถูกต้อง โปรดป้อนรหัสที่ได้รับจาก SMS" : "Invalid OTP code. Enter the code received via SMS.")
+      );
       return;
     }
 
     setShowOtpModal(false);
 
-    // Save lightweight OTP session so same phone won't need OTP again within 30 min
+    // Save lightweight OTP session so same contact won't need OTP again within 30 min
     localStorage.setItem("proregis_otp_session", JSON.stringify({
-      phone: formData.phone,
+      phone: contactVal,
       verifiedAt: Date.now()
     }));
 
@@ -1225,7 +1263,7 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               docNum: actualDocNum,
-              phone: formData.phone,
+              phone: contactVal,
               latitude: gpsLocation?.latitude,
               longitude: gpsLocation?.longitude
             })
@@ -1659,25 +1697,46 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
 
               {!canShowFullForm ? (
                 <form onSubmit={handleRequestOtp} className="space-y-6">
-                  <div className="flex flex-col gap-2">
-                    <label className="text-sm font-bold text-on-surface" htmlFor="phone">
-                      {lang === "th" ? "โปรดระบุเบอร์โทรศัพท์เพื่อยืนยันตัวตนก่อนกรอกที่อยู่ติดตั้ง" : "Enter your phone number to verify identity before entering address"} <span className="text-error font-bold">*</span>
-                    </label>
-                    <div className="relative">
-                      <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline-variant">phone</span>
-                      <input 
-                        type="tel"
-                        id="phone"
-                        name="phone"
-                        value={formData.phone}
-                        onChange={handleInputChange}
-                        placeholder="0891234567"
-                        maxLength={10}
-                        className="w-full h-14 pl-12 pr-4 bg-surface-container-low border-b-2 border-transparent focus:border-secondary focus:ring-0 rounded-t outline-none text-base font-semibold"
-                      />
+                  {verificationMode === "EMAIL" ? (
+                    <div className="flex flex-col gap-2">
+                      <label className="text-sm font-bold text-on-surface" htmlFor="email">
+                        {lang === "th" ? "โปรดระบุอีเมลเพื่อยืนยันตัวตนก่อนกรอกที่อยู่ติดตั้ง" : "Enter your email address to verify identity before entering address"} <span className="text-error font-bold">*</span>
+                      </label>
+                      <div className="relative">
+                        <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline-variant">mail</span>
+                        <input 
+                          type="email"
+                          id="email"
+                          name="email"
+                          value={formData.email}
+                          onChange={handleInputChange}
+                          placeholder="example@windowasia.com"
+                          className="w-full h-14 pl-12 pr-4 bg-surface-container-low border-b-2 border-transparent focus:border-secondary focus:ring-0 rounded-t outline-none text-base font-semibold"
+                        />
+                      </div>
+                      {errors.email && <span className="text-xs text-error font-semibold">{errors.email}</span>}
                     </div>
-                    {errors.phone && <span className="text-xs text-error font-semibold">{errors.phone}</span>}
-                  </div>
+                  ) : (
+                    <div className="flex flex-col gap-2">
+                      <label className="text-sm font-bold text-on-surface" htmlFor="phone">
+                        {lang === "th" ? "โปรดระบุเบอร์โทรศัพท์เพื่อยืนยันตัวตนก่อนกรอกที่อยู่ติดตั้ง" : "Enter your phone number to verify identity before entering address"} <span className="text-error font-bold">*</span>
+                      </label>
+                      <div className="relative">
+                        <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline-variant">phone</span>
+                        <input 
+                          type="tel"
+                          id="phone"
+                          name="phone"
+                          value={formData.phone}
+                          onChange={handleInputChange}
+                          placeholder="0891234567"
+                          maxLength={10}
+                          className="w-full h-14 pl-12 pr-4 bg-surface-container-low border-b-2 border-transparent focus:border-secondary focus:ring-0 rounded-t outline-none text-base font-semibold"
+                        />
+                      </div>
+                      {errors.phone && <span className="text-xs text-error font-semibold">{errors.phone}</span>}
+                    </div>
+                  )}
 
                   {submitError && (
                     <div className="p-4 bg-error/10 border border-error/20 rounded-xl flex gap-2.5 text-xs text-error font-semibold leading-relaxed animate-success">
@@ -1696,7 +1755,11 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
                         <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                       ) : (
                         <>
-                          <span>{lang === "th" ? "ขอรหัส OTP" : "Request OTP"}</span>
+                          <span>
+                            {verificationMode === "EMAIL"
+                              ? (lang === "th" ? "ขอรหัส OTP ทางอีเมล" : "Request Email OTP")
+                              : (lang === "th" ? "ขอรหัส OTP" : "Request OTP")}
+                          </span>
                           <span className="material-symbols-outlined text-[20px]">arrow_forward</span>
                         </>
                       )}
@@ -1851,19 +1914,28 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="flex flex-col gap-2">
-                          <label className="text-xs font-bold text-on-surface" htmlFor="phone">{t.phone} <span className="text-error font-bold">*</span></label>
+                          <label className="text-xs font-bold text-on-surface" htmlFor="phone">
+                            {t.phone} {(verificationMode === "OTP" || verificationMode === "EMAIL") && <span className="text-error font-bold">*</span>}
+                          </label>
                           <input 
                             type="tel"
                             id="phone"
                             name="phone"
                             value={formData.phone}
-                            disabled={verificationMode === "OTP"}
-                            className="h-12 px-4 bg-surface-container-low/60 text-outline border-b-2 border-transparent rounded-t outline-none text-sm font-medium cursor-not-allowed"
+                            onChange={handleInputChange}
+                            disabled={verificationMode === "OTP" || hasActiveSession}
+                            className={`h-12 px-4 border-b-2 border-transparent focus:border-secondary focus:ring-0 rounded-t outline-none text-sm font-medium ${
+                              verificationMode === "OTP" || hasActiveSession
+                                ? "bg-surface-container-low/60 text-outline cursor-not-allowed"
+                                : "bg-surface-container-low"
+                            }`}
                           />
                           {errors.phone && <span className="text-xs text-error font-semibold">{errors.phone}</span>}
                         </div>
                         <div className="flex flex-col gap-2">
-                          <label className="text-xs font-bold text-on-surface" htmlFor="email">{t.email} (Optional)</label>
+                          <label className="text-xs font-bold text-on-surface" htmlFor="email">
+                            {t.email} {verificationMode === "EMAIL" && <span className="text-error font-bold">*</span>}
+                          </label>
                           <input 
                             type="email"
                             id="email"
@@ -1871,7 +1943,12 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
                             value={formData.email}
                             onChange={handleInputChange}
                             placeholder="john.doe@example.com"
-                            className="h-12 px-4 bg-surface-container-low border-b-2 border-transparent focus:border-secondary focus:ring-0 rounded-t outline-none text-sm font-medium"
+                            disabled={verificationMode === "EMAIL" || hasActiveSession}
+                            className={`h-12 px-4 border-b-2 border-transparent focus:border-secondary focus:ring-0 rounded-t outline-none text-sm font-medium ${
+                              verificationMode === "EMAIL" || hasActiveSession
+                                ? "bg-surface-container-low/60 text-outline cursor-not-allowed"
+                                : "bg-surface-container-low"
+                            }`}
                           />
                           {errors.email && <span className="text-xs text-error font-semibold">{errors.email}</span>}
                         </div>
@@ -1987,7 +2064,7 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
                     </>
                   )}
 
-                  {/* Always render Back to phone edit button at the bottom of the form block */}
+                  {/* Always render Back to contact edit button at the bottom of the form block */}
                   <div className="pt-4 flex">
                     <button 
                       type="button"
@@ -2013,7 +2090,9 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
                       className="w-full h-14 border-2 border-outline-variant text-secondary font-bold rounded-xl hover:bg-surface-container-low transition-all active:scale-[0.98] flex items-center justify-center gap-2 text-base cursor-pointer"
                     >
                       <span className="material-symbols-outlined text-[20px]">arrow_back</span>
-                      {lang === "th" ? "แก้ไขเบอร์โทรศัพท์" : "Change Phone Number"}
+                      {verificationMode === "EMAIL"
+                        ? (lang === "th" ? "แก้ไขอีเมล" : "Change Email Address")
+                        : (lang === "th" ? "แก้ไขเบอร์โทรศัพท์" : "Change Phone Number")}
                     </button>
                   </div>
                 </form>

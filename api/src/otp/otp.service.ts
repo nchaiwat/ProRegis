@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SystemSetting } from '../backoffice/system-setting.entity';
 import { AuditLog } from '../audit/audit-log.entity';
+import * as nodemailer from 'nodemailer';
 
 interface OtpData {
   code?: string;
@@ -50,9 +51,97 @@ export class OtpService {
     const expiresAt = Date.now() + durationSeconds * 1000;
 
     if (channel === 'email') {
+      const emailModeSetting = await this.systemSettingRepository.findOne({ where: { key: 'EMAIL_OTP_MODE' } });
+      const emailMode = emailModeSetting?.value || 'TEST';
+
+      if (emailMode === 'LIVE') {
+        const smtpHostSetting = await this.systemSettingRepository.findOne({ where: { key: 'SMTP_HOST' } });
+        const smtpPortSetting = await this.systemSettingRepository.findOne({ where: { key: 'SMTP_PORT' } });
+        const smtpSecureSetting = await this.systemSettingRepository.findOne({ where: { key: 'SMTP_SECURE' } });
+        const smtpUserSetting = await this.systemSettingRepository.findOne({ where: { key: 'SMTP_USER' } });
+        const smtpPassSetting = await this.systemSettingRepository.findOne({ where: { key: 'SMTP_PASS' } });
+        const smtpFromNameSetting = await this.systemSettingRepository.findOne({ where: { key: 'SMTP_FROM_NAME' } });
+        const smtpFromEmailSetting = await this.systemSettingRepository.findOne({ where: { key: 'SMTP_FROM_EMAIL' } });
+
+        const smtpHost = smtpHostSetting?.value || 'smtp.gmail.com';
+        const smtpPort = parseInt(smtpPortSetting?.value || '587', 10);
+        const smtpSecure = smtpSecureSetting?.value === 'true';
+        const smtpUser = smtpUserSetting?.value || 'itwindowasia@gmail.com';
+        const smtpPass = smtpPassSetting?.value || '';
+        const smtpFromName = smtpFromNameSetting?.value || 'Window Asia Warranty';
+        const smtpFromEmail = smtpFromEmailSetting?.value || smtpUser;
+
+        const code = Math.floor(100000 + Math.random() * 900000).toString();
+        this.otpStore.set(cleanContact, { code, expiresAt });
+        console.log(`[OTP SERVICE] Generated LIVE SMTP OTP ${code} for email ${cleanContact}`);
+
+        try {
+          const transporter = nodemailer.createTransport({
+            host: smtpHost,
+            port: smtpPort,
+            secure: smtpSecure,
+            auth: {
+              user: smtpUser,
+              pass: smtpPass,
+            },
+            tls: {
+              rejectUnauthorized: false,
+            },
+          });
+
+          const mailOptions = {
+            from: `"${smtpFromName}" <${smtpFromEmail}>`,
+            to: cleanContact,
+            subject: 'รหัสยืนยันตัวตนสำหรับการลงทะเบียนรับประกันสินค้า (Warranty Verification OTP)',
+            html: `
+              <div style="font-family: sans-serif; padding: 20px; max-width: 600px; border: 1px solid #e2e8f0; border-radius: 12px;">
+                <h2 style="color: #0f172a; margin-bottom: 16px;">ยืนยันตัวตนการรับประกันสินค้า Window Asia</h2>
+                <p style="color: #475569; font-size: 14px; line-height: 1.5;">เรียน ลูกค้าผู้มีอุปการคุณ</p>
+                <p style="color: #475569; font-size: 14px; line-height: 1.5;">รหัสยืนยันตัวตน (OTP) ของคุณคือ:</p>
+                <div style="background-color: #f1f5f9; padding: 15px; text-align: center; border-radius: 8px; margin: 20px 0;">
+                  <span style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #2563eb;">${code}</span>
+                </div>
+                <p style="color: #ef4444; font-size: 12px; font-weight: 600;">*รหัส OTP นี้จะมีอายุการใช้งาน 5 นาที</p>
+                <p style="color: #64748b; font-size: 12px; border-top: 1px solid #e2e8f0; padding-top: 15px; margin-top: 25px;">
+                  หากคุณไม่ได้ส่งคำขอนี้ โปรดเพิกเฉยต่ออีเมลฉบับนี้<br>
+                  บริษัท วินโดว์ เอเชีย จำกัด (มหาชน)
+                </p>
+              </div>
+            `,
+          };
+
+          await transporter.sendMail(mailOptions);
+
+          await this.auditLogRepository.save(this.auditLogRepository.create({
+            actorUsername: 'CUSTOMER',
+            action: 'OTP_REQUEST',
+            resource: 'EMAIL',
+            resourceId: cleanContact,
+            details: JSON.stringify({ provider: 'SMTP', mode: 'LIVE', success: true }),
+          })).catch(() => {});
+
+          return {
+            success: true,
+            expiresIn: durationSeconds,
+          };
+        } catch (err) {
+          console.error(`[OTP SERVICE] SMTP Send Error:`, err);
+          await this.auditLogRepository.save(this.auditLogRepository.create({
+            actorUsername: 'CUSTOMER',
+            action: 'OTP_REQUEST',
+            resource: 'EMAIL',
+            resourceId: cleanContact,
+            details: JSON.stringify({ provider: 'SMTP', mode: 'LIVE', success: false, error: err.message }),
+          })).catch(() => {});
+
+          throw new BadRequestException('ไม่สามารถส่งรหัส OTP ไปยังอีเมลปลายทางได้ โปรดตรวจสอบความถูกต้องของอีเมลหรือการตั้งค่า SMTP Server');
+        }
+      }
+
+      // Default mock flow
       const code = '123456';
       this.otpStore.set(cleanContact, { code, expiresAt });
-      console.log(`[OTP SERVICE] Generated OTP ${code} for email ${cleanContact}`);
+      console.log(`[OTP SERVICE] Generated Mock OTP ${code} for email ${cleanContact}`);
       
       await this.auditLogRepository.save(this.auditLogRepository.create({
         actorUsername: 'CUSTOMER',

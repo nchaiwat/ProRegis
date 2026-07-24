@@ -95,6 +95,14 @@ export class BackofficeService implements OnModuleInit {
       { key: 'SMS_VALIDATE_URL', value: 'https://portal-otp.smsmkt.com/api/otp-validate' },
       { key: 'SMS_PROJECT_KEY', value: 'mZP-------' },
       { key: 'SMS_OTP_MODE', value: 'TEST' },
+      { key: 'EMAIL_OTP_MODE', value: 'TEST' },
+      { key: 'SMTP_HOST', value: 'smtp.gmail.com' },
+      { key: 'SMTP_PORT', value: '587' },
+      { key: 'SMTP_SECURE', value: 'false' },
+      { key: 'SMTP_USER', value: 'itwindowasia@gmail.com' },
+      { key: 'SMTP_PASS', value: '' },
+      { key: 'SMTP_FROM_NAME', value: 'Window Asia Warranty' },
+      { key: 'SMTP_FROM_EMAIL', value: 'itwindowasia@gmail.com' },
     ];
     for (const setting of defaultSettings) {
       try {
@@ -122,6 +130,14 @@ export class BackofficeService implements OnModuleInit {
     const now = new Date();
     if (!result['QR_CODE_MODE']) result['QR_CODE_MODE'] = { value: 'STATIC', updatedAt: now };
     if (!result['VERIFICATION_MODE']) result['VERIFICATION_MODE'] = { value: 'OTP', updatedAt: now };
+    if (!result['EMAIL_OTP_MODE']) result['EMAIL_OTP_MODE'] = { value: 'TEST', updatedAt: now };
+    if (!result['SMTP_HOST']) result['SMTP_HOST'] = { value: 'smtp.gmail.com', updatedAt: now };
+    if (!result['SMTP_PORT']) result['SMTP_PORT'] = { value: '587', updatedAt: now };
+    if (!result['SMTP_SECURE']) result['SMTP_SECURE'] = { value: 'false', updatedAt: now };
+    if (!result['SMTP_USER']) result['SMTP_USER'] = { value: 'itwindowasia@gmail.com', updatedAt: now };
+    if (!result['SMTP_PASS']) result['SMTP_PASS'] = { value: '', updatedAt: now };
+    if (!result['SMTP_FROM_NAME']) result['SMTP_FROM_NAME'] = { value: 'Window Asia Warranty', updatedAt: now };
+    if (!result['SMTP_FROM_EMAIL']) result['SMTP_FROM_EMAIL'] = { value: 'itwindowasia@gmail.com', updatedAt: now };
     return result;
   }
 
