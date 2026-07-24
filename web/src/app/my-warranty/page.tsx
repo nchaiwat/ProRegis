@@ -144,6 +144,7 @@ export default function MyWarrantyPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [registrations, setRegistrations] = useState<RegistrationHistoryItem[]>([]);
   const [resendCooldown, setResendCooldown] = useState(0);
+  const [otpExpiryTimer, setOtpExpiryTimer] = useState(0);
 
   useEffect(() => {
     // Check for active session when mounting
@@ -175,6 +176,14 @@ export default function MyWarrantyPage() {
     }
     return () => clearTimeout(timer);
   }, [resendCooldown]);
+
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (otpExpiryTimer > 0) {
+      timer = setTimeout(() => setOtpExpiryTimer(otpExpiryTimer - 1), 1000);
+    }
+    return () => clearTimeout(timer);
+  }, [otpExpiryTimer]);
 
   const fetchRegistrations = async (contactVal: string, otpVal: string) => {
     setIsLoading(true);
@@ -303,6 +312,7 @@ export default function MyWarrantyPage() {
       setTargetContact(targetVal);
       setStep(3); // Go to Verify OTP step
       setResendCooldown(60);
+      setOtpExpiryTimer(300);
     } catch (err: any) {
       setError(err.message || (lang === "th" ? "เกิดข้อผิดพลาดในการส่ง OTP" : "Failed to send OTP"));
     } finally {
@@ -339,6 +349,7 @@ export default function MyWarrantyPage() {
       });
       if (!res.ok) throw new Error("Failed to resend OTP");
       setResendCooldown(60);
+      setOtpExpiryTimer(300);
     } catch (err: any) {
       setError(lang === "th" ? "เกิดข้อผิดพลาดในการส่ง OTP ใหม่" : "Failed to resend OTP");
     } finally {
@@ -575,7 +586,9 @@ export default function MyWarrantyPage() {
           <div className="w-full bg-surface-container-lowest border border-outline-variant rounded-2xl p-6 md:p-8 shadow-sm animate-fade-in">
             <div className="text-center mb-6">
               <div className="w-16 h-16 rounded-full bg-secondary/10 flex items-center justify-center mx-auto mb-4">
-                <span className="material-symbols-outlined text-secondary !text-3xl">sms_failed</span>
+                <span className="material-symbols-outlined text-secondary !text-3xl">
+                  {selectedChannel === "email" ? "mail" : "sms"}
+                </span>
               </div>
               <h2 className="font-bold text-2xl text-primary mb-2">
                 {localT[lang].otpTitle}
@@ -586,6 +599,17 @@ export default function MyWarrantyPage() {
                   selectedChannel === "sms" ? localT[lang].smsChannelName : localT[lang].emailChannelName
                 )}
               </p>
+              {otpExpiryTimer > 0 ? (
+                <p className="text-xs font-bold text-secondary mt-2">
+                  {lang === "th"
+                    ? `รหัส OTP จะหมดอายุใน ${Math.floor(otpExpiryTimer / 60)}:${String(otpExpiryTimer % 60).padStart(2, "0")} นาที`
+                    : `OTP will expire in ${Math.floor(otpExpiryTimer / 60)}:${String(otpExpiryTimer % 60).padStart(2, "0")} min`}
+                </p>
+              ) : (
+                <p className="text-xs font-bold text-error mt-2">
+                  {lang === "th" ? "รหัส OTP หมดอายุแล้ว โปรดกดส่งรหัสใหม่อีกครั้ง" : "OTP has expired. Please request a new code."}
+                </p>
+              )}
             </div>
 
             <form onSubmit={handleVerifyOtp} className="space-y-5">
@@ -644,16 +668,18 @@ export default function MyWarrantyPage() {
                     {error}
                   </p>
                 )}
-                <p className="text-[10px] text-outline text-center mt-1">
-                  {lang === "th" ? "เพื่อทดสอบ โปรดป้อน: 123456" : "For testing, enter: 123456"}
-                </p>
+                {selectedChannel === "sms" && (
+                  <p className="text-[10px] text-outline text-center mt-1">
+                    {lang === "th" ? "เพื่อทดสอบ โปรดป้อน: 123456" : "For testing, enter: 123456"}
+                  </p>
+                )}
               </div>
 
               <button
                 type="submit"
-                disabled={otpCode.length !== 6 || isLoading}
+                disabled={otpCode.length !== 6 || isLoading || otpExpiryTimer === 0}
                 className={`w-full h-12 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-base ${
-                  otpCode.length === 6 && !isLoading
+                  otpCode.length === 6 && !isLoading && otpExpiryTimer > 0
                     ? "bg-secondary text-white hover:opacity-95 shadow-md active:scale-95 cursor-pointer"
                     : "bg-surface-container-high text-outline-variant cursor-not-allowed"
                 }`}

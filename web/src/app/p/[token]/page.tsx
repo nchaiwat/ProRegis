@@ -236,6 +236,7 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
   // System Config states (fetched dynamically from product specs payload)
   const [qrMode, setQrMode] = useState<"STATIC" | "DYNAMIC">("STATIC");
   const [verificationMode, setVerificationMode] = useState<"OTP" | "LINE" | "EMAIL">("OTP");
+  const isEmailMode = verificationMode === "EMAIL";
 
   // LINE LIFF auth states
   const [lineUserId, setLineUserId] = useState<string | null>(null);
@@ -273,6 +274,7 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
   const [otpCode, setOtpCode] = useState("");
   const [otpError, setOtpError] = useState("");
   const [otpTimer, setOtpTimer] = useState(0);
+  const [otpExpiryTimer, setOtpExpiryTimer] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [refRegNumber, setRefRegNumber] = useState("");
   const [hasActiveSession, setHasActiveSession] = useState(false);
@@ -765,6 +767,15 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
     }
   }, [otpTimer]);
 
+  useEffect(() => {
+    if (otpExpiryTimer > 0) {
+      const interval = setInterval(() => {
+        setOtpExpiryTimer((prev) => prev - 1);
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [otpExpiryTimer]);
+
   // After both product AND session data (including async fetchProfileByPhone) are ready,
   // run the duplicate/status check for STATIC QR.
   useEffect(() => {
@@ -972,6 +983,7 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
         setIsSubmitting(false);
         setShowOtpModal(true);
         setOtpTimer(60);
+        setOtpExpiryTimer(300);
         setOtpError("");
         setOtpRefCode(resData.refCode || "");
         return;
@@ -990,6 +1002,7 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
       setIsSubmitting(false);
       setShowOtpModal(true);
       setOtpTimer(60);
+      setOtpExpiryTimer(300);
       setOtpError("");
       setOtpRefCode("MOCK");
     }, 800);
@@ -2559,17 +2572,32 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
           <div className="bg-white border border-outline-variant rounded-2xl p-6 md:p-8 max-w-sm w-full space-y-6 shadow-2xl">
             <div className="text-center space-y-2">
               <div className="w-12 h-12 bg-secondary-container rounded-full flex items-center justify-center mx-auto">
-                <span className="material-symbols-outlined text-secondary text-2xl">sms</span>
+                <span className="material-symbols-outlined text-secondary text-2xl">
+                  {isEmailMode ? "mail" : "sms"}
+                </span>
               </div>
               <h3 className="font-bold text-lg text-primary">{t.otpTitle}</h3>
               <p className="text-xs text-on-surface-variant leading-relaxed">
-                {t.otpSubtitle.replace("{phone}", formData.phone)}
+                {isEmailMode
+                  ? (lang === "th" ? `ระบบได้ส่งรหัส OTP (6 หลัก) ไปยังอีเมล ${formData.email} แล้ว` : `We sent a 6-digit OTP code to email ${formData.email}`)
+                  : t.otpSubtitle.replace("{phone}", formData.phone)}
                 {otpRefCode && (
                   <span className="block font-black text-secondary mt-1.5 text-xs bg-secondary-container/10 border border-secondary/20 rounded-md py-1">
                     Ref Code: {otpRefCode}
                   </span>
                 )}
               </p>
+              {otpExpiryTimer > 0 ? (
+                <p className="text-xs font-bold text-secondary">
+                  {lang === "th"
+                    ? `รหัส OTP จะหมดอายุใน ${Math.floor(otpExpiryTimer / 60)}:${String(otpExpiryTimer % 60).padStart(2, "0")} นาที`
+                    : `OTP will expire in ${Math.floor(otpExpiryTimer / 60)}:${String(otpExpiryTimer % 60).padStart(2, "0")} min`}
+                </p>
+              ) : (
+                <p className="text-xs font-bold text-error">
+                  {lang === "th" ? "รหัส OTP หมดอายุแล้ว โปรดขอรหัสใหม่อีกครั้ง" : "OTP has expired. Please request a new code."}
+                </p>
+              )}
             </div>
 
             <div className="space-y-4">
@@ -2617,7 +2645,7 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
                 />
 
                 {otpError && <p className="text-xs text-error font-semibold text-center mt-1">{otpError}</p>}
-                {smsOtpMode === "TEST" && (
+                {!isEmailMode && smsOtpMode === "TEST" && (
                   <p className="text-[10px] text-outline text-center mt-1">
                     {lang === "th" ? "เพื่อทดสอบ โปรดป้อน: 123456" : "For testing, enter: 123456"}
                   </p>
@@ -2626,9 +2654,9 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
 
               <button
                 onClick={handleVerifyOtp}
-                disabled={otpCode.length !== 6 || isSubmitting}
+                disabled={otpCode.length !== 6 || isSubmitting || otpExpiryTimer === 0}
                 className={`w-full h-12 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-base ${
-                  otpCode.length === 6 && !isSubmitting
+                  otpCode.length === 6 && !isSubmitting && otpExpiryTimer > 0
                     ? "bg-secondary text-white hover:opacity-95 shadow-md active:scale-95 cursor-pointer"
                     : "bg-surface-variant text-outline-variant cursor-not-allowed"
                 }`}
@@ -2655,6 +2683,7 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
                   <button 
                     onClick={async () => {
                       setOtpTimer(60);
+                      setOtpExpiryTimer(300);
                       setOtpCode("");
                       setOtpError("");
                       // Resend request to API

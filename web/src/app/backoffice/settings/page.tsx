@@ -816,7 +816,7 @@ export default function SettingsAdminPage() {
             {/* Test Email Send Panel */}
             <div className="pt-4 border-t border-outline-variant/40 space-y-4">
               <h3 className="text-xs font-bold text-primary flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[16px] text-secondary">experimental_class</span>
+                <span className="material-symbols-outlined text-[16px] text-secondary">mail</span>
                 ทดสอบระบบส่งอีเมล OTP (SMTP Test Delivery)
               </h3>
               <div className="flex flex-col md:flex-row md:items-center gap-4">
