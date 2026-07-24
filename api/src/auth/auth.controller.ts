@@ -104,7 +104,7 @@ export class AuthController {
 
       if (!loginSuccess) {
         // Always try AD Gateway directly, do not verify against local cache
-        const gatewayUrl = process.env.AD_GATEWAY_URL || 'http://wa-dbs2.wa.net:3100/api/v2/login';
+        const gatewayUrl = process.env.AD_GATEWAY_URL || 'http://172.17.0.1:3101/api/v2/login';
         const appId = process.env.AD_APP_ID || 'ProRegis';
         const secretKey = process.env.AD_SECRET_KEY || 'd69f9e5a88e734c56e2978a63bf720c22635a9c0c32b5e2a2205510657e4e138';
 
