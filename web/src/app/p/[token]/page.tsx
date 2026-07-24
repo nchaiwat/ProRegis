@@ -301,7 +301,7 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
     return prov;
   };
 
-  const canShowFullForm = isPhoneVerified || verificationMode === "LINE" || hasActiveSession;
+  const canShowFullForm = isPhoneVerified || (verificationMode === "LINE" && lineUserId) || hasActiveSession;
 
   const t = translations[lang];
 
@@ -1498,7 +1498,7 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
                     setStep(2);
                   }
                 }}
-                className="w-full md:w-auto min-w-[320px] h-14 bg-secondary text-white font-bold rounded-xl shadow-md hover:opacity-95 active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-base cursor-pointer"
+                className="w-full md:w-auto min-w-[320px] h-12 bg-secondary text-white font-bold rounded-xl shadow-md hover:opacity-95 active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-base cursor-pointer"
               >
                 <span>{t.nextConsent}</span>
                 <span className="material-symbols-outlined">arrow_forward</span>
@@ -1627,7 +1627,7 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
                       if (mandatoryConsent) setStep(3);
                     }}
                     disabled={!mandatoryConsent}
-                    className={`w-full h-14 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-base ${
+                    className={`w-full h-12 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-base ${
                       mandatoryConsent
                         ? "bg-secondary text-white hover:opacity-95 cursor-pointer shadow-md active:scale-[0.98]"
                         : "bg-surface-variant text-outline-variant cursor-not-allowed"
@@ -1638,7 +1638,7 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
                   </button>
                   <button 
                     onClick={() => setStep(1)}
-                    className="w-full h-14 border-2 border-outline-variant text-secondary font-bold rounded-xl hover:bg-surface-container-low transition-all active:scale-[0.98] flex items-center justify-center gap-2 text-base cursor-pointer"
+                    className="w-full h-12 border-2 border-outline-variant text-secondary font-bold rounded-xl hover:bg-surface-container-low transition-all active:scale-[0.98] flex items-center justify-center gap-2 text-base cursor-pointer"
                   >
                     <span className="material-symbols-outlined text-[20px]">arrow_back</span>
                     {t.back}
@@ -1696,84 +1696,177 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
               )}
 
               {!canShowFullForm ? (
-                <form onSubmit={handleRequestOtp} className="space-y-6">
-                  {verificationMode === "EMAIL" ? (
-                    <div className="flex flex-col gap-2">
-                      <label className="text-sm font-bold text-on-surface" htmlFor="email">
-                        {lang === "th" ? "โปรดระบุอีเมลเพื่อยืนยันตัวตนก่อนกรอกที่อยู่ติดตั้ง" : "Enter your email address to verify identity before entering address"} <span className="text-error font-bold">*</span>
-                      </label>
-                      <div className="relative">
-                        <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline-variant">mail</span>
-                        <input 
-                          type="email"
-                          id="email"
-                          name="email"
-                          value={formData.email}
-                          onChange={handleInputChange}
-                          placeholder="example@windowasia.com"
-                          className="w-full h-14 pl-12 pr-4 bg-surface-container-low border-b-2 border-transparent focus:border-secondary focus:ring-0 rounded-t outline-none text-base font-semibold"
-                        />
+                <div className="space-y-6 animate-fade-in">
+                  {/* Verification Method Selection Tabs */}
+                  <div className="space-y-3">
+                    <label className="text-xs font-bold text-outline uppercase tracking-wider">
+                      {t.selectVerificationMethod}
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setVerificationMode("OTP")}
+                        className={`h-12 px-2 rounded-xl border text-center font-bold text-xs transition-all cursor-pointer ${
+                          verificationMode === "OTP"
+                            ? "border-secondary bg-secondary/5 text-secondary ring-1 ring-secondary"
+                            : "border-outline-variant/60 text-outline hover:bg-surface-container-lowest"
+                        }`}
+                      >
+                        {t.smsOtp}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setVerificationMode("EMAIL")}
+                        className={`h-12 px-2 rounded-xl border text-center font-bold text-xs transition-all cursor-pointer ${
+                          verificationMode === "EMAIL"
+                            ? "border-secondary bg-secondary/5 text-secondary ring-1 ring-secondary"
+                            : "border-outline-variant/60 text-outline hover:bg-surface-container-lowest"
+                        }`}
+                      >
+                        {t.emailOtp}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setVerificationMode("LINE");
+                          // Automatically try LIFF login if available and not logged in
+                          const liff = (window as any).liff;
+                          if (liff && !liff.isLoggedIn()) {
+                            liff.login();
+                          }
+                        }}
+                        className={`h-12 px-2 rounded-xl border text-center font-bold text-xs transition-all cursor-pointer ${
+                          verificationMode === "LINE"
+                            ? "border-secondary bg-secondary/5 text-secondary ring-1 ring-secondary"
+                            : "border-outline-variant/60 text-outline hover:bg-surface-container-lowest"
+                        }`}
+                      >
+                        {t.lineLogin}
+                      </button>
+                    </div>
+                  </div>
+
+                  {verificationMode === "LINE" ? (
+                    <div className="space-y-6">
+                      <div className="flex flex-col items-center justify-center p-8 bg-surface-container-lowest rounded-2xl border border-outline-variant/60 shadow-sm gap-4 text-center">
+                        <div className="w-16 h-16 rounded-full bg-[#06C755]/10 flex items-center justify-center text-[#06C755]">
+                          <span className="material-symbols-outlined text-[36px]">chat</span>
+                        </div>
+                        <div className="space-y-1">
+                          <h3 className="font-bold text-sm text-primary">
+                            {t.lineLoginTitle}
+                          </h3>
+                          <p className="text-xs text-on-surface-variant max-w-sm">
+                            {t.lineLoginDesc}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const liff = (window as any).liff;
+                            if (liff) {
+                              liff.login();
+                            }
+                          }}
+                          className="h-12 px-6 bg-[#06C755] text-white font-bold rounded-xl shadow-md hover:bg-[#05b34c] transition-all flex items-center justify-center gap-2 cursor-pointer text-sm"
+                        >
+                          <span className="material-symbols-outlined">login</span>
+                          <span>{t.lineLoginBtn}</span>
+                        </button>
                       </div>
-                      {errors.email && <span className="text-xs text-error font-semibold">{errors.email}</span>}
+
+                      <div className="pt-2 flex flex-col md:flex-row gap-4">
+                        <button 
+                          type="button"
+                          onClick={() => setStep(2)}
+                          className="w-full md:flex-1 h-12 border-2 border-outline-variant text-secondary font-bold rounded-xl hover:bg-surface-container-low transition-all active:scale-[0.98] flex items-center justify-center gap-2 text-base cursor-pointer"
+                        >
+                          <span className="material-symbols-outlined text-[20px]">arrow_back</span>
+                          {t.back}
+                        </button>
+                      </div>
                     </div>
                   ) : (
-                    <div className="flex flex-col gap-2">
-                      <label className="text-sm font-bold text-on-surface" htmlFor="phone">
-                        {lang === "th" ? "โปรดระบุเบอร์โทรศัพท์เพื่อยืนยันตัวตนก่อนกรอกที่อยู่ติดตั้ง" : "Enter your phone number to verify identity before entering address"} <span className="text-error font-bold">*</span>
-                      </label>
-                      <div className="relative">
-                        <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline-variant">phone</span>
-                        <input 
-                          type="tel"
-                          id="phone"
-                          name="phone"
-                          value={formData.phone}
-                          onChange={handleInputChange}
-                          placeholder="0891234567"
-                          maxLength={10}
-                          className="w-full h-14 pl-12 pr-4 bg-surface-container-low border-b-2 border-transparent focus:border-secondary focus:ring-0 rounded-t outline-none text-base font-semibold"
-                        />
-                      </div>
-                      {errors.phone && <span className="text-xs text-error font-semibold">{errors.phone}</span>}
-                    </div>
-                  )}
-
-                  {submitError && (
-                    <div className="p-4 bg-error/10 border border-error/20 rounded-xl flex gap-2.5 text-xs text-error font-semibold leading-relaxed animate-success">
-                      <span className="material-symbols-outlined flex-shrink-0 text-[18px]">error</span>
-                      <span>{submitError}</span>
-                    </div>
-                  )}
-
-                  <div className="pt-6 flex flex-col md:flex-row gap-4">
-                    <button 
-                      type="submit"
-                      disabled={isSubmitting}
-                      className="w-full md:flex-1 h-14 bg-secondary text-white font-bold rounded-xl shadow-md hover:opacity-95 transition-all active:scale-[0.98] flex items-center justify-center gap-2 text-base cursor-pointer"
-                    >
-                      {isSubmitting ? (
-                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <form onSubmit={handleRequestOtp} className="space-y-6">
+                      {verificationMode === "EMAIL" ? (
+                        <div className="flex flex-col gap-2">
+                          <label className="text-sm font-bold text-on-surface" htmlFor="email">
+                            {lang === "th" ? "โปรดระบุอีเมลเพื่อยืนยันตัวตนก่อนกรอกที่อยู่ติดตั้ง" : "Enter your email address to verify identity before entering address"} <span className="text-error font-bold">*</span>
+                          </label>
+                          <div className="relative">
+                            <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline-variant">mail</span>
+                            <input 
+                              type="email"
+                              id="email"
+                              name="email"
+                              value={formData.email}
+                              onChange={handleInputChange}
+                              placeholder="example@windowasia.com"
+                              className="w-full h-14 pl-12 pr-4 bg-surface-container-low border-b-2 border-transparent focus:border-secondary focus:ring-0 rounded-t outline-none text-base font-semibold"
+                            />
+                          </div>
+                          {errors.email && <span className="text-xs text-error font-semibold">{errors.email}</span>}
+                        </div>
                       ) : (
-                        <>
-                          <span>
-                            {verificationMode === "EMAIL"
-                              ? (lang === "th" ? "ขอรหัส OTP ทางอีเมล" : "Request Email OTP")
-                              : (lang === "th" ? "ขอรหัส OTP" : "Request OTP")}
-                          </span>
-                          <span className="material-symbols-outlined text-[20px]">arrow_forward</span>
-                        </>
+                        <div className="flex flex-col gap-2">
+                          <label className="text-sm font-bold text-on-surface" htmlFor="phone">
+                            {lang === "th" ? "โปรดระบุเบอร์โทรศัพท์เพื่อยืนยันตัวตนก่อนกรอกที่อยู่ติดตั้ง" : "Enter your phone number to verify identity before entering address"} <span className="text-error font-bold">*</span>
+                          </label>
+                          <div className="relative">
+                            <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline-variant">phone</span>
+                            <input 
+                              type="tel"
+                              id="phone"
+                              name="phone"
+                              value={formData.phone}
+                              onChange={handleInputChange}
+                              placeholder="0891234567"
+                              maxLength={10}
+                              className="w-full h-14 pl-12 pr-4 bg-surface-container-low border-b-2 border-transparent focus:border-secondary focus:ring-0 rounded-t outline-none text-base font-semibold"
+                            />
+                          </div>
+                          {errors.phone && <span className="text-xs text-error font-semibold">{errors.phone}</span>}
+                        </div>
                       )}
-                    </button>
-                    <button 
-                      type="button"
-                      onClick={() => setStep(2)}
-                      className="w-full md:flex-1 h-14 border-2 border-outline-variant text-secondary font-bold rounded-xl hover:bg-surface-container-low transition-all active:scale-[0.98] flex items-center justify-center gap-2 text-base cursor-pointer"
-                    >
-                      <span className="material-symbols-outlined text-[20px]">arrow_back</span>
-                      {t.back}
-                    </button>
-                  </div>
-                </form>
+
+                      {submitError && (
+                        <div className="p-4 bg-error/10 border border-error/20 rounded-xl flex gap-2.5 text-xs text-error font-semibold leading-relaxed animate-success">
+                          <span className="material-symbols-outlined flex-shrink-0 text-[18px]">error</span>
+                          <span>{submitError}</span>
+                        </div>
+                      )}
+
+                      <div className="pt-6 flex flex-col md:flex-row gap-4">
+                        <button 
+                          type="submit"
+                          disabled={isSubmitting}
+                          className="w-full md:flex-1 h-12 bg-secondary text-white font-bold rounded-xl shadow-md hover:opacity-95 transition-all active:scale-[0.98] flex items-center justify-center gap-2 text-base cursor-pointer"
+                        >
+                          {isSubmitting ? (
+                            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                          ) : (
+                            <>
+                              <span>
+                                {verificationMode === "EMAIL"
+                                  ? (lang === "th" ? "ขอรหัส OTP ทางอีเมล" : "Request Email OTP")
+                                  : (lang === "th" ? "ขอรหัส OTP" : "Request OTP")}
+                              </span>
+                              <span className="material-symbols-outlined text-[20px]">arrow_forward</span>
+                            </>
+                          )}
+                        </button>
+                        <button 
+                          type="button"
+                          onClick={() => setStep(2)}
+                          className="w-full md:flex-1 h-12 border-2 border-outline-variant text-secondary font-bold rounded-xl hover:bg-surface-container-low transition-all active:scale-[0.98] flex items-center justify-center gap-2 text-base cursor-pointer"
+                        >
+                          <span className="material-symbols-outlined text-[20px]">arrow_back</span>
+                          {t.back}
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                </div>
               ) : (
                 <form onSubmit={handleRegisterSubmit} className="space-y-6">
                   {/* Name section is always shown */}
@@ -2049,7 +2142,7 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
                         <button 
                           type="submit"
                           disabled={isSubmitting}
-                          className="w-full md:flex-1 h-14 bg-secondary text-white font-bold rounded-xl shadow-md hover:opacity-95 transition-all active:scale-[0.98] flex items-center justify-center gap-2 text-base cursor-pointer"
+                          className="w-full md:flex-1 h-12 bg-secondary text-white font-bold rounded-xl shadow-md hover:opacity-95 transition-all active:scale-[0.98] flex items-center justify-center gap-2 text-base cursor-pointer"
                         >
                           {isSubmitting ? (
                             <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
@@ -2087,7 +2180,7 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
                         setShowAutofillPrompt(false);
                         setAutofilledProfile(null);
                       }}
-                      className="w-full h-14 border-2 border-outline-variant text-secondary font-bold rounded-xl hover:bg-surface-container-low transition-all active:scale-[0.98] flex items-center justify-center gap-2 text-base cursor-pointer"
+                      className="w-full h-12 border-2 border-outline-variant text-secondary font-bold rounded-xl hover:bg-surface-container-low transition-all active:scale-[0.98] flex items-center justify-center gap-2 text-base cursor-pointer"
                     >
                       <span className="material-symbols-outlined text-[20px]">arrow_back</span>
                       {verificationMode === "EMAIL"
@@ -2534,7 +2627,7 @@ export default function RegistrationPage({ params }: { params: Promise<{ token: 
               <button
                 onClick={handleVerifyOtp}
                 disabled={otpCode.length !== 6 || isSubmitting}
-                className={`w-full h-14 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-base ${
+                className={`w-full h-12 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-base ${
                   otpCode.length === 6 && !isSubmitting
                     ? "bg-secondary text-white hover:opacity-95 shadow-md active:scale-95 cursor-pointer"
                     : "bg-surface-variant text-outline-variant cursor-not-allowed"

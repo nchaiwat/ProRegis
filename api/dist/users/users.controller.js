@@ -26,16 +26,26 @@ let UsersController = class UsersController {
         const list = await this.usersService.findAll();
         return list.map(u => ({
             id: u.id,
+            systemSeqId: u.systemSeqId,
             username: u.username,
+            firstName: u.firstName,
+            lastName: u.lastName,
+            department: u.department,
+            email: u.email,
+            mobile: u.mobile,
+            telegramId: u.telegramId,
+            pinCode: u.pinCode,
+            lastLogin: u.lastLogin,
             role: u.role,
             status: u.status,
             failedAttempts: u.failedAttempts,
             lockedUntil: u.lockedUntil,
+            isAdAuth: u.isAdAuth,
             createdAt: u.createdAt,
         }));
     }
     async createUser(body) {
-        const user = await this.usersService.createUser(body.username, body.passwordPlain, body.role);
+        const user = await this.usersService.createUser(body.username, body.passwordPlain, body.role, body.firstName, body.lastName, body.department, body.email, body.mobile, body.telegramId, body.pinCode, body.isAdAuth);
         return {
             success: true,
             message: 'สร้างผู้ใช้งานสำเร็จ',
@@ -48,7 +58,7 @@ let UsersController = class UsersController {
         };
     }
     async updateUser(id, body) {
-        const user = await this.usersService.updateUserRoleAndStatus(id, body.role, body.status);
+        const user = await this.usersService.updateUser(id, body);
         return {
             success: true,
             message: 'ปรับปรุงข้อมูลผู้ใช้งานเรียบร้อยแล้ว',
@@ -58,6 +68,30 @@ let UsersController = class UsersController {
                 role: user.role,
                 status: user.status,
             },
+        };
+    }
+    async updatePasswordAndPin(id, body) {
+        await this.usersService.updateUserPasswordAndPin(id, body.passwordPlain, body.pinCode);
+        return {
+            success: true,
+            message: 'ปรับปรุงรหัสผ่านและ PIN Code เรียบร้อยแล้ว',
+        };
+    }
+    async testTelegram(id) {
+        const user = await this.usersService.findById(id);
+        if (!user) {
+            throw new common_1.NotFoundException('ไม่พบผู้ใช้ที่ระบุ');
+        }
+        if (!user.telegramId) {
+            throw new common_1.BadRequestException('ผู้ใช้นี้ไม่มี Telegram ID สำหรับการส่งข้อความทดสอบ');
+        }
+        const result = await this.usersService.sendTestTelegramMessage(user);
+        if (!result.success) {
+            throw new common_1.BadRequestException(`ส่งข้อความทดสอบไปยัง Telegram ล้มเหลว: ${result.error || 'โปรดตรวจสอบ Telegram ID หรือ Token บอท'}`);
+        }
+        return {
+            success: true,
+            message: 'ส่งข้อความทดสอบไปยัง Telegram สำเร็จ',
         };
     }
     async deleteUser(id) {
@@ -101,6 +135,21 @@ __decorate([
     __metadata("design:paramtypes", [String, Object]),
     __metadata("design:returntype", Promise)
 ], UsersController.prototype, "updateUser", null);
+__decorate([
+    (0, common_1.Put)(':id/password-pin'),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", Promise)
+], UsersController.prototype, "updatePasswordAndPin", null);
+__decorate([
+    (0, common_1.Post)(':id/test-telegram'),
+    __param(0, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], UsersController.prototype, "testTelegram", null);
 __decorate([
     (0, common_1.Delete)(':id'),
     __param(0, (0, common_1.Param)('id')),

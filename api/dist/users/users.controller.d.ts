@@ -5,17 +5,35 @@ export declare class UsersController {
     constructor(usersService: UsersService);
     getAllUsers(): Promise<{
         id: string;
+        systemSeqId: number;
         username: string;
+        firstName: string;
+        lastName: string;
+        department: string;
+        email: string | null;
+        mobile: string | null;
+        telegramId: string | null;
+        pinCode: string | null;
+        lastLogin: Date | null;
         role: UserRole;
         status: UserStatus;
         failedAttempts: number;
         lockedUntil: Date | null;
+        isAdAuth: boolean;
         createdAt: Date;
     }[]>;
     createUser(body: {
         username: string;
         passwordPlain: string;
         role: UserRole;
+        firstName: string;
+        lastName: string;
+        department: string;
+        email: string | null;
+        mobile: string | null;
+        telegramId: string | null;
+        pinCode?: string | null;
+        isAdAuth?: boolean;
     }): Promise<{
         success: boolean;
         message: string;
@@ -29,6 +47,14 @@ export declare class UsersController {
     updateUser(id: string, body: {
         role: UserRole;
         status: UserStatus;
+        firstName: string;
+        lastName: string;
+        department: string;
+        email: string | null;
+        mobile: string | null;
+        telegramId: string | null;
+        pinCode?: string | null;
+        isAdAuth?: boolean;
     }): Promise<{
         success: boolean;
         message: string;
@@ -38,6 +64,17 @@ export declare class UsersController {
             role: UserRole;
             status: UserStatus;
         };
+    }>;
+    updatePasswordAndPin(id: string, body: {
+        passwordPlain?: string;
+        pinCode?: string | null;
+    }): Promise<{
+        success: boolean;
+        message: string;
+    }>;
+    testTelegram(id: string): Promise<{
+        success: boolean;
+        message: string;
     }>;
     deleteUser(id: string): Promise<{
         success: boolean;

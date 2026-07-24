@@ -20,21 +20,37 @@ const typeorm_2 = require("typeorm");
 const config_1 = require("@nestjs/config");
 const product_metadata_entity_1 = require("./product-metadata.entity");
 const production_order_entity_1 = require("../production-order/production-order.entity");
+const system_setting_entity_1 = require("../backoffice/system-setting.entity");
 const sap_service_1 = require("../sap/sap.service");
 const backoffice_service_1 = require("../backoffice/backoffice.service");
+const telegram_service_1 = require("../telegram/telegram.service");
+const audit_log_entity_1 = require("../audit/audit-log.entity");
+const users_service_1 = require("../users/users.service");
+const user_entity_1 = require("../users/user.entity");
+const generation_log_entity_1 = require("../backoffice/generation-log.entity");
 let ProductsService = ProductsService_1 = class ProductsService {
     productMetadataRepository;
     productionOrderRepository;
+    generationLogRepository;
+    systemSettingRepository;
+    auditLogRepository;
     sapService;
     backofficeService;
     configService;
+    telegramService;
+    usersService;
     logger = new common_1.Logger(ProductsService_1.name);
-    constructor(productMetadataRepository, productionOrderRepository, sapService, backofficeService, configService) {
+    constructor(productMetadataRepository, productionOrderRepository, generationLogRepository, systemSettingRepository, auditLogRepository, sapService, backofficeService, configService, telegramService, usersService) {
         this.productMetadataRepository = productMetadataRepository;
         this.productionOrderRepository = productionOrderRepository;
+        this.generationLogRepository = generationLogRepository;
+        this.systemSettingRepository = systemSettingRepository;
+        this.auditLogRepository = auditLogRepository;
         this.sapService = sapService;
         this.backofficeService = backofficeService;
         this.configService = configService;
+        this.telegramService = telegramService;
+        this.usersService = usersService;
     }
     products = {
         'PR-2024-X1': {
@@ -177,20 +193,7 @@ let ProductsService = ProductsService_1 = class ProductsService {
                 this.logger.warn(`[PRODUCTS SERVICE] Failed to download image from ${url}: ${err.message}`);
             }
         }
-        this.logger.log(`[PRODUCTS SERVICE] Falling back and downloading placeholder image for ${itemCode}`);
-        try {
-            const response = await fetch(placeholder, { signal: AbortSignal.timeout(5000) });
-            if (response.ok) {
-                const buffer = await response.arrayBuffer();
-                const contentType = response.headers.get('content-type') || 'image/jpeg';
-                const base64Str = Buffer.from(buffer).toString('base64');
-                this.logger.log(`[PRODUCTS SERVICE] Downloaded placeholder image successfully`);
-                return `data:${contentType};base64,${base64Str}`;
-            }
-        }
-        catch (err) {
-            this.logger.error(`[PRODUCTS SERVICE] Failed to download placeholder image: ${err.message}`);
-        }
+        this.logger.log(`[PRODUCTS SERVICE] Returning placeholder image URL for ${itemCode}`);
         return placeholder;
     }
     async cacheProductMetadata(itemCode, itemName) {
@@ -221,7 +224,52 @@ let ProductsService = ProductsService_1 = class ProductsService {
                 this.logger.log(`[PRODUCTS SERVICE] Updated cached product metadata for ItemCode=${itemCode}`);
             }
         }
+        if (itemCode.includes('-')) {
+            const parts = itemCode.split('-');
+            if (parts.length >= 3) {
+                const prefix = parts.slice(0, 2).join('-');
+                let prefixMeta = await this.productMetadataRepository.findOne({ where: { itemCode: prefix } });
+                if (!prefixMeta) {
+                    prefixMeta = this.productMetadataRepository.create({
+                        itemCode: prefix,
+                        itemName: `กลุ่มสินค้าโมเดล ${prefix}`,
+                        imageBase64: null,
+                    });
+                    await this.productMetadataRepository.save(prefixMeta);
+                    this.logger.log(`[PRODUCTS SERVICE] Auto-created empty prefix metadata box for: ${prefix}`);
+                    try {
+                        const editors = await this.usersService.findUsersByRole(user_entity_1.UserRole.IMAGE_EDITOR);
+                        const activeEditors = editors.filter(e => e.telegramId && e.status === user_entity_1.UserStatus.ACTIVE);
+                        if (activeEditors.length > 0) {
+                            const message = [
+                                `⚠️ <b>[ProRegis] ตรวจพบกลุ่มสินค้าใหม่ที่ยังไม่มีรูปภาพ</b>`,
+                                `• <b>กลุ่มสินค้า (Product Group):</b> <code>${prefix}</code>`,
+                                `• <b>รหัสสินค้าเริ่มต้น:</b> <code>${itemCode}</code>`,
+                                `• <b>ชื่อกลุ่มสินค้า:</b> กลุ่มสินค้าโมเดล ${prefix}`,
+                                ``,
+                                `<i>กรุณาเข้าสู่ระบบ Backoffice เพื่ออัปโหลดรูปภาพสำหรับกลุ่มสินค้านี้</i>`
+                            ].join('\n');
+                            for (const editor of activeEditors) {
+                                await this.telegramService.sendDirectMessage(editor.telegramId, message);
+                            }
+                        }
+                    }
+                    catch (telErr) {
+                        this.logger.error(`[PRODUCTS SERVICE] Failed to send Telegram alert for new group ${prefix}: ${telErr.message}`);
+                    }
+                }
+            }
+        }
         return metadata;
+    }
+    formatManufactureDate(date, lang) {
+        if (!date)
+            return 'N/A';
+        const monthsTh = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+        const monthsEn = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const m = date.getMonth();
+        const y = date.getFullYear();
+        return lang === 'th' ? `${monthsTh[m]} ${y}` : `${monthsEn[m]} ${y}`;
     }
     async findOne(token) {
         if (this.products[token]) {
@@ -246,38 +294,230 @@ let ProductsService = ProductsService_1 = class ProductsService {
         if (!docNum) {
             throw new common_1.BadRequestException('ไม่พบรหัสใบสั่งผลิตใน QR Code');
         }
-        const po = await this.productionOrderRepository.findOne({ where: { docNum } });
-        if (!po) {
-            throw new common_1.BadRequestException('ไม่พบข้อมูลใบสั่งผลิตนี้ในระบบ หรือยังไม่ได้มีการสร้างรหัส QR Code จากทางหลังบ้าน');
+        let po = await this.productionOrderRepository.findOne({ where: { docNum } });
+        if (po) {
+            await this.auditLogRepository.save(this.auditLogRepository.create({
+                actorUsername: 'CUSTOMER',
+                action: 'DB_CACHE_HIT',
+                resource: 'ProductionOrder',
+                resourceId: docNum,
+            })).catch(() => { });
+        }
+        else {
+            this.logger.log(`[PRODUCTS SERVICE] Production Order not found in local DB. Fetching from SAP: DocNum=${docNum}`);
+            let sapPo;
+            try {
+                sapPo = await this.sapService.getProductionOrder(docNum);
+                await this.auditLogRepository.save(this.auditLogRepository.create({
+                    actorUsername: 'CUSTOMER',
+                    action: 'SAP_FETCH_SUCCESS',
+                    resource: 'ProductionOrder',
+                    resourceId: docNum,
+                    details: JSON.stringify({ reason: 'customer_lookup' }),
+                })).catch(() => { });
+            }
+            catch (err) {
+                const errorSummary = err.message && err.message.length > 300
+                    ? err.message.substring(0, 300) + '... (truncated)'
+                    : err.message;
+                await this.auditLogRepository.save(this.auditLogRepository.create({
+                    actorUsername: 'CUSTOMER',
+                    action: 'SAP_FETCH_ERROR',
+                    resource: 'ProductionOrder',
+                    resourceId: docNum,
+                    details: JSON.stringify({ error: errorSummary }),
+                })).catch(() => { });
+                const telegramMessage = [
+                    `🔳 <b>[ProRegis Alert] SAP B1 Connection Failed</b>`,
+                    `📍 <b>DocNum:</b> <code>${docNum}</code>`,
+                    `🕒 <b>Time:</b> ${new Date().toLocaleString('th-TH')}`,
+                    `⚠️ <b>Error:</b> <code>${errorSummary}</code>`,
+                    `━━━━━━━━━━━━━━━━━━━━━━━━━━`
+                ].join('\n');
+                try {
+                    await this.telegramService.sendMessage(telegramMessage);
+                }
+                catch (tgErr) {
+                    this.logger.error(`[PRODUCTS SERVICE] Failed to send Telegram alert: ${tgErr.message}`);
+                }
+                throw new common_1.BadRequestException('การเชื่อมต่อระบบบริการข้อมูลสินค้าขัดข้องชั่วคราว (ระบบได้รายงานให้ผู้ดูแลระบบทราบเรียบร้อยแล้ว) โปรดลองใหม่อีกครั้งภายหลัง');
+            }
+            if (!sapPo) {
+                throw new common_1.BadRequestException('ไม่พบข้อมูลใบสั่งผลิตนี้ในระบบ SAP B1');
+            }
+            po = this.productionOrderRepository.create({
+                docNum,
+                itemCode: sapPo.itemCode,
+                itemName: sapPo.itemName,
+                plannedQty: sapPo.plannedQty,
+                orderDate: sapPo.orderDate,
+                startDate: sapPo.startDate,
+                status: sapPo.status,
+                completedQty: sapPo.completedQty,
+            });
+            await this.productionOrderRepository.save(po);
+            this.logger.log(`[PRODUCTS SERVICE] Cached Production Order from SAP to local DB: DocNum=${docNum}`);
         }
         const itemCode = po.itemCode;
         const itemName = po.itemName || `กระจกนิรภัยนำเข้า ซีรีส์ ${docNum.substring(6, 9)}`;
-        const plannedQty = po.plannedQty || 100;
-        const metadata = await this.productMetadataRepository.findOne({ where: { itemCode } });
+        let metadata = await this.productMetadataRepository.findOne({ where: { itemCode } });
         if (!metadata) {
-            throw new common_1.BadRequestException('ไม่พบข้อมูลสเปกหรือรูปภาพของสินค้านี้ในฐานข้อมูล');
+            this.logger.log(`[PRODUCTS SERVICE] Product metadata not found in local DB for ItemCode=${itemCode}. Creating cached entry.`);
+            metadata = await this.cacheProductMetadata(itemCode, itemName);
+        }
+        let mfgDateTh = 'N/A';
+        let mfgDateEn = 'N/A';
+        if (po.startDate) {
+            const parsedDate = new Date(po.startDate);
+            if (!isNaN(parsedDate.getTime())) {
+                mfgDateTh = this.formatManufactureDate(parsedDate, 'th');
+                mfgDateEn = this.formatManufactureDate(parsedDate, 'en');
+            }
+        }
+        if (mfgDateTh === 'N/A' && po.createdAt) {
+            mfgDateTh = this.formatManufactureDate(po.createdAt, 'th');
+            mfgDateEn = this.formatManufactureDate(po.createdAt, 'en');
+        }
+        const plannedQtyValue = po.plannedQty > 0 ? `${po.plannedQty}` : 'N/A';
+        let productType = { th: 'กระจกและหน้าต่างโครงสร้าง', en: 'Structural Glass/Window' };
+        let productStyle = { th: 'N/A', en: 'N/A' };
+        let productPane = { th: 'N/A', en: 'N/A' };
+        let glassType = { th: 'กระจกเขียวใสตัดแสง', en: 'Green Tinted Glass' };
+        let glassThickness = { th: '5 มม.', en: '5 mm' };
+        let screenType = { th: 'N/A', en: 'N/A' };
+        const colorMap = {
+            'ขาว': { th: 'สีขาว', en: 'White' },
+            'อบขาว': { th: 'สีอบขาว', en: 'Powder White' },
+            'ดำ': { th: 'สีดำ', en: 'Black' },
+            'เทา': { th: 'สีเทา', en: 'Grey' },
+            'อลูมิเนียม': { th: 'สีอลูมิเนียม', en: 'Aluminum' },
+            'น้ำตาล': { th: 'สีน้ำตาล', en: 'Brown' },
+            'นต.': { th: 'สีน้ำตาล', en: 'Brown' },
+            'นต': { th: 'สีน้ำตาล', en: 'Brown' },
+            'ชา': { th: 'สีชา', en: 'Bronze' },
+            'เงิน': { th: 'สีเงิน', en: 'Silver' },
+        };
+        let matchedColor = { th: 'N/A', en: 'N/A' };
+        let matchedSize = { th: 'N/A', en: 'N/A' };
+        if (po.itemName) {
+            for (const [key, val] of Object.entries(colorMap)) {
+                if (po.itemName.includes(key)) {
+                    matchedColor = val;
+                    break;
+                }
+            }
+            const dimRegex = /(\d+)\s*[xX\*]\s*(\d+)/;
+            const dimMatch = po.itemName.match(dimRegex);
+            if (dimMatch) {
+                const w = dimMatch[1];
+                const h = dimMatch[2];
+                matchedSize = {
+                    th: `${w} x ${h} ซม.`,
+                    en: `${w} x ${h} cm`
+                };
+            }
+            const nameUpper = po.itemName.toUpperCase();
+            if (nameUpper.includes('WINDOW') || nameUpper.includes('หน้าต่าง') || nameUpper.includes('บานเลื่อน') || nameUpper.includes('บานกระทุ้ง')) {
+                productType = { th: 'หน้าต่าง', en: 'Window' };
+            }
+            else if (nameUpper.includes('DOOR') || nameUpper.includes('ประตู')) {
+                productType = { th: 'ประตู', en: 'Door' };
+            }
+            if (nameUpper.includes('SS')) {
+                productStyle = { th: 'บานเลื่อน (SS)', en: 'Sliding Window (SS)' };
+                productPane = { th: '2 บาน', en: '2 Panes' };
+            }
+            else if (nameUpper.includes('FSSF')) {
+                productStyle = { th: 'บานเลื่อน (FSSF)', en: 'Sliding Window (FSSF)' };
+                productPane = { th: '4 บาน', en: '4 Panes' };
+            }
+            else if (nameUpper.includes('กระทุ้ง') || nameUpper.includes('AWNING') || nameUpper.includes('AW')) {
+                productStyle = { th: 'บานกระทุ้ง', en: 'Awning Window' };
+                productPane = { th: '1 บาน', en: '1 Pane' };
+            }
+            else {
+                productStyle = { th: 'บานเลื่อน', en: 'Sliding Window' };
+            }
+            if (nameUpper.includes('เทมเปอร์') || nameUpper.includes('TEMPERED')) {
+                glassType = { th: 'กระจกเทมเปอร์', en: 'Tempered Glass' };
+            }
+            else if (nameUpper.includes('ลามิเนต') || nameUpper.includes('LAMINATED')) {
+                glassType = { th: 'กระจกลามิเนต', en: 'Laminated Glass' };
+            }
+            else if (nameUpper.includes('เขียว') || nameUpper.includes('GREEN')) {
+                glassType = { th: 'กระจกเขียวใสตัดแสง', en: 'Green Tinted Glass' };
+            }
+            const thickRegex = /(\d+)\s*(?:มิล|มม|mm)/i;
+            const thickMatch = po.itemName.match(thickRegex);
+            if (thickMatch) {
+                glassThickness = { th: `${thickMatch[1]} มม.`, en: `${thickMatch[1]} mm` };
+            }
+            if (nameUpper.includes('ไม่มีมุ้ง')) {
+                screenType = { th: 'ไม่มีมุ้ง', en: 'Without Net' };
+            }
+            else if (nameUpper.includes('มุ้ง') || nameUpper.includes('SCREEN')) {
+                screenType = { th: 'มีมุ้ง', en: 'With Net' };
+            }
+        }
+        const qrModeSetting = await this.systemSettingRepository.findOne({ where: { key: 'QR_CODE_MODE' } });
+        const qrMode = qrModeSetting ? qrModeSetting.value : 'STATIC';
+        const verificationModeSetting = await this.systemSettingRepository.findOne({ where: { key: 'VERIFICATION_MODE' } });
+        const verificationMode = verificationModeSetting ? verificationModeSetting.value : 'OTP';
+        const smsOtpModeSetting = await this.systemSettingRepository.findOne({ where: { key: 'SMS_OTP_MODE' } });
+        const smsOtpMode = smsOtpModeSetting ? smsOtpModeSetting.value : 'TEST';
+        let imageUrl = null;
+        const placeholderUrl = 'https://images.unsplash.com/photo-1513694203232-719a280e022f?q=80&w=800&auto=format&fit=crop';
+        if (itemCode && itemCode.includes('-')) {
+            const parts = itemCode.split('-');
+            if (parts.length >= 3) {
+                const prefix = parts.slice(0, parts.length - 1).join('-');
+                const prefixMetadata = await this.productMetadataRepository.findOne({ where: { itemCode: prefix } });
+                if (prefixMetadata && prefixMetadata.imageBase64 && !prefixMetadata.imageBase64.startsWith('http')) {
+                    imageUrl = prefixMetadata.imageBase64;
+                }
+            }
+        }
+        if (!imageUrl) {
+            imageUrl = metadata.imageBase64;
+        }
+        if (!imageUrl || imageUrl.startsWith('http') || imageUrl === placeholderUrl) {
+            imageUrl = placeholderUrl;
         }
         return {
             token: token,
             code: itemCode,
-            modelTh: metadata.itemName || 'กระจกหน้าต่างอลูมิเนียมนำเข้าซีรีส์ย่อย',
+            modelTh: metadata.itemName || 'กระจกหน้าต่างอลีมิเนียมนำเข้าซีรีส์ย่อย',
             modelEn: metadata.itemName || 'Imported Aluminum Window Sub-Series',
-            manufactureDate: 'ก.พ. 2026',
-            lotNo: `LOT-${docNum}`,
-            poNo: docNum,
-            imageUrl: metadata.imageBase64 || 'https://images.unsplash.com/photo-1513694203232-719a280e022f?q=80&w=800&auto=format&fit=crop',
+            manufactureDate: mfgDateTh,
+            lotNo: '',
+            poNo: plannedQtyValue,
+            imageUrl,
             warrantyPeriod: 'ตลอดอายุการใช้งาน (Lifetime Warranty)',
+            qrMode,
+            verificationMode,
+            smsOtpMode,
+            seqNum: seqNum || null,
             specs: {
                 th: [
-                    { label: 'เลขที่ใบสั่งผลิต', value: docNum },
-                    { label: 'ลำดับที่', value: seqNum ? `ชิ้นที่ ${parseInt(seqNum, 10)}` : '-' },
-                    { label: 'วันที่ผลิต', value: 'ก.พ. 2026' },
+                    { label: 'ประเภทสินค้า', value: productType.th },
+                    { label: 'รูปแบบสินค้า', value: productStyle.th },
+                    { label: 'ลักษณะบาน', value: productPane.th },
+                    { label: 'ลักษณะกระจก', value: glassType.th },
+                    { label: 'ความหนากระจก (มม.)', value: glassThickness.th },
+                    { label: 'แบบมี/ไม่มีมุ้ง', value: screenType.th },
+                    { label: 'ขนาด (กว้าง x สูง)', value: matchedSize.th },
+                    { label: 'สี', value: matchedColor.th },
                     { label: 'มาตรฐานควบคุม', value: 'ISO 9001:2015' },
                 ],
                 en: [
-                    { label: 'Production Order', value: docNum },
-                    { label: 'Unit No.', value: seqNum ? `Unit ${parseInt(seqNum, 10)}` : '-' },
-                    { label: 'Manufacture Date', value: 'Feb 2026' },
+                    { label: 'Product Type', value: productType.en },
+                    { label: 'Product Style', value: productStyle.en },
+                    { label: 'Pane Details', value: productPane.en },
+                    { label: 'Glass Type', value: glassType.en },
+                    { label: 'Glass Thickness', value: glassThickness.en },
+                    { label: 'Screen Inclusion', value: screenType.en },
+                    { label: 'Dimensions (W x H)', value: matchedSize.en },
+                    { label: 'Color', value: matchedColor.en },
                     { label: 'Compliance Standard', value: 'ISO 9001:2015' },
                 ]
             },
@@ -285,15 +525,29 @@ let ProductsService = ProductsService_1 = class ProductsService {
                 th: [
                     'ผลิตจากอลูมิเนียมหนาพิเศษ แข็งแรง ทนลมพายุได้ดีเยี่ยม',
                     'กระจกฉนวนประหยัดพลังงาน ช่วยสะท้อนรังสีความร้อนของดวงอาทิตย์',
-                    'ดีไซน์ขอบบางเพิ่มมุมมองภายนอกที่กว้างขวางขึ้น'
+                    'ไร้สารตะกั่วและสารที่เป็นอันตราย ได้รับการรับรองตามมาตรฐาน RoHS'
                 ],
                 en: [
                     'Heavy-duty aluminum profile designed for superior wind load resistance',
                     'Energy-efficient insulated glass pane helping reject solar heat',
-                    'Slim profile frame maximizing natural daylight and viewing area'
+                    'Lead-free and eco-friendly components, RoHS directive compliant'
                 ]
             }
         };
+    }
+    async uploadProductImage(itemCode, imageBase64) {
+        let metadata = await this.productMetadataRepository.findOne({ where: { itemCode } });
+        if (!metadata) {
+            metadata = this.productMetadataRepository.create({
+                itemCode,
+                itemName: itemCode.includes('-') ? `สินค้ากลุ่มรหัส ${itemCode}` : 'สินค้าทั่วไป',
+                imageBase64,
+            });
+        }
+        else {
+            metadata.imageBase64 = imageBase64;
+        }
+        return this.productMetadataRepository.save(metadata);
     }
 };
 exports.ProductsService = ProductsService;
@@ -301,11 +555,19 @@ exports.ProductsService = ProductsService = ProductsService_1 = __decorate([
     (0, common_1.Injectable)(),
     __param(0, (0, typeorm_1.InjectRepository)(product_metadata_entity_1.ProductMetadata)),
     __param(1, (0, typeorm_1.InjectRepository)(production_order_entity_1.ProductionOrder)),
-    __param(3, (0, common_1.Inject)((0, common_1.forwardRef)(() => backoffice_service_1.BackofficeService))),
+    __param(2, (0, typeorm_1.InjectRepository)(generation_log_entity_1.GenerationLog)),
+    __param(3, (0, typeorm_1.InjectRepository)(system_setting_entity_1.SystemSetting)),
+    __param(4, (0, typeorm_1.InjectRepository)(audit_log_entity_1.AuditLog)),
+    __param(6, (0, common_1.Inject)((0, common_1.forwardRef)(() => backoffice_service_1.BackofficeService))),
     __metadata("design:paramtypes", [typeorm_2.Repository,
+        typeorm_2.Repository,
+        typeorm_2.Repository,
+        typeorm_2.Repository,
         typeorm_2.Repository,
         sap_service_1.SapService,
         backoffice_service_1.BackofficeService,
-        config_1.ConfigService])
+        config_1.ConfigService,
+        telegram_service_1.TelegramService,
+        users_service_1.UsersService])
 ], ProductsService);
 //# sourceMappingURL=products.service.js.map

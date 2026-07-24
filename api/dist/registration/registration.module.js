@@ -15,15 +15,20 @@ const registration_entity_1 = require("./registration.entity");
 const production_order_entity_1 = require("../production-order/production-order.entity");
 const telegram_module_1 = require("../telegram/telegram.module");
 const otp_module_1 = require("../otp/otp.module");
+const sap_module_1 = require("../sap/sap.module");
+const generation_log_entity_1 = require("../backoffice/generation-log.entity");
+const system_setting_entity_1 = require("../backoffice/system-setting.entity");
+const product_metadata_entity_1 = require("../products/product-metadata.entity");
 let RegistrationModule = class RegistrationModule {
 };
 exports.RegistrationModule = RegistrationModule;
 exports.RegistrationModule = RegistrationModule = __decorate([
     (0, common_1.Module)({
         imports: [
-            typeorm_1.TypeOrmModule.forFeature([registration_entity_1.Registration, production_order_entity_1.ProductionOrder]),
+            typeorm_1.TypeOrmModule.forFeature([registration_entity_1.Registration, production_order_entity_1.ProductionOrder, generation_log_entity_1.GenerationLog, system_setting_entity_1.SystemSetting, product_metadata_entity_1.ProductMetadata]),
             telegram_module_1.TelegramModule,
             otp_module_1.OtpModule,
+            sap_module_1.SapModule,
         ],
         controllers: [registration_controller_1.RegistrationController],
         providers: [registration_service_1.RegistrationService],

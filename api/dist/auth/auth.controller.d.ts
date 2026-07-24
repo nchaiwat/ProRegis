@@ -8,6 +8,7 @@ export declare class AuthController {
     login(body: {
         username: string;
         passwordPlain: string;
+        loginMethod?: 'DB' | 'AD';
     }, req: Request): Promise<{
         success: boolean;
         token: string;

@@ -8,12 +8,15 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TelegramModule = void 0;
 const common_1 = require("@nestjs/common");
+const typeorm_1 = require("@nestjs/typeorm");
 const telegram_service_1 = require("./telegram.service");
+const system_setting_entity_1 = require("../backoffice/system-setting.entity");
 let TelegramModule = class TelegramModule {
 };
 exports.TelegramModule = TelegramModule;
 exports.TelegramModule = TelegramModule = __decorate([
     (0, common_1.Module)({
+        imports: [typeorm_1.TypeOrmModule.forFeature([system_setting_entity_1.SystemSetting])],
         providers: [telegram_service_1.TelegramService],
         exports: [telegram_service_1.TelegramService],
     })

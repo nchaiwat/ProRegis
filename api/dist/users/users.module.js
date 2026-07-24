@@ -13,12 +13,16 @@ const user_entity_1 = require("./user.entity");
 const role_permission_entity_1 = require("./role-permission.entity");
 const users_service_1 = require("./users.service");
 const users_controller_1 = require("./users.controller");
+const telegram_module_1 = require("../telegram/telegram.module");
 let UsersModule = class UsersModule {
 };
 exports.UsersModule = UsersModule;
 exports.UsersModule = UsersModule = __decorate([
     (0, common_1.Module)({
-        imports: [typeorm_1.TypeOrmModule.forFeature([user_entity_1.User, role_permission_entity_1.RolePermission])],
+        imports: [
+            typeorm_1.TypeOrmModule.forFeature([user_entity_1.User, role_permission_entity_1.RolePermission]),
+            telegram_module_1.TelegramModule,
+        ],
         providers: [users_service_1.UsersService],
         controllers: [users_controller_1.UsersController],
         exports: [users_service_1.UsersService],

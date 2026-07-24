@@ -16,9 +16,12 @@ exports.OtpController = void 0;
 const common_1 = require("@nestjs/common");
 const otp_service_1 = require("./otp.service");
 class RequestOtpDto {
+    contact;
     phone;
+    channel;
 }
 class VerifyOtpDto {
+    contact;
     phone;
     code;
 }
@@ -28,10 +31,19 @@ let OtpController = class OtpController {
         this.otpService = otpService;
     }
     async requestOtp(body) {
-        return this.otpService.generateAndSendOtp(body.phone);
+        const contact = body.contact || body.phone;
+        if (!contact) {
+            throw new common_1.BadRequestException('Contact or phone number is required.');
+        }
+        const channel = body.channel || (contact.includes('@') ? 'email' : 'sms');
+        return this.otpService.generateAndSendOtp(contact, channel);
     }
     async verifyOtp(body) {
-        const isVerified = await this.otpService.verifyOtp(body.phone, body.code);
+        const contact = body.contact || body.phone;
+        if (!contact) {
+            throw new common_1.BadRequestException('Contact or phone number is required.');
+        }
+        const isVerified = await this.otpService.verifyOtp(contact, body.code);
         return { success: isVerified };
     }
 };

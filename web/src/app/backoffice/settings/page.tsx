@@ -395,50 +395,6 @@ export default function SettingsAdminPage() {
               </div>
             </div>
 
-            {/* VERIFICATION MODE */}
-            <div className="space-y-3">
-              <div className="flex justify-between items-center">
-                <span className="text-xs font-bold text-primary">ระบบยืนยันตัวตน</span>
-                <span className="text-[10px] text-outline font-semibold">
-                  อัปเดต: {formatDateTime(dbSettings.VERIFICATION_MODE?.updatedAt)}
-                </span>
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setVerificationMode("OTP")}
-                  className={`py-3 px-2 rounded-xl border text-center font-bold text-xs transition-all cursor-pointer ${
-                    verificationMode === "OTP"
-                      ? "border-secondary bg-secondary/5 text-secondary ring-1 ring-secondary"
-                      : "border-outline-variant/60 text-outline hover:bg-surface-container-lowest"
-                  }`}
-                >
-                  SMS OTP
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setVerificationMode("EMAIL")}
-                  className={`py-3 px-2 rounded-xl border text-center font-bold text-xs transition-all cursor-pointer ${
-                    verificationMode === "EMAIL"
-                      ? "border-secondary bg-secondary/5 text-secondary ring-1 ring-secondary"
-                      : "border-outline-variant/60 text-outline hover:bg-surface-container-lowest"
-                  }`}
-                >
-                  Email OTP
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setVerificationMode("LINE")}
-                  className={`py-3 px-2 rounded-xl border text-center font-bold text-xs transition-all cursor-pointer ${
-                    verificationMode === "LINE"
-                      ? "border-secondary bg-secondary/5 text-secondary ring-1 ring-secondary"
-                      : "border-outline-variant/60 text-outline hover:bg-surface-container-lowest"
-                  }`}
-                >
-                  LINE Login
-                </button>
-              </div>
-            </div>
           </div>
         </div>
 
@@ -617,41 +573,6 @@ export default function SettingsAdminPage() {
           </h2>
 
           <div className="space-y-4">
-            {/* EMAIL OTP MODE (REAL / TEST) */}
-            <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6">
-              <div className="md:w-1/4">
-                <label className="text-xs font-bold text-primary">การทำงานของ Email OTP (OTP Mode)</label>
-                <p className="text-[10px] text-outline font-semibold mt-0.5">
-                  อัปเดต: {formatDateTime(dbSettings.EMAIL_OTP_MODE?.updatedAt)}
-                </p>
-              </div>
-              <div className="flex-1">
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setEmailOtpMode("LIVE")}
-                    className={`py-3 px-4 rounded-xl border text-center font-bold text-xs transition-all cursor-pointer ${
-                      emailOtpMode === "LIVE"
-                        ? "border-secondary bg-secondary/5 text-secondary ring-1 ring-secondary"
-                        : "border-outline-variant/60 text-outline hover:bg-surface-container-lowest"
-                    }`}
-                  >
-                    เปิดใช้งาน (ส่ง Email OTP จริง)
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEmailOtpMode("TEST")}
-                    className={`py-3 px-4 rounded-xl border text-center font-bold text-xs transition-all cursor-pointer ${
-                      emailOtpMode === "TEST"
-                        ? "border-secondary bg-secondary/5 text-secondary ring-1 ring-secondary"
-                        : "border-outline-variant/60 text-outline hover:bg-surface-container-lowest"
-                    }`}
-                  >
-                    ปิดใช้งาน (ทดสอบ / บังคับใช้รหัส 123456)
-                  </button>
-                </div>
-              </div>
-            </div>
 
             {/* SMTP Host */}
             <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6">

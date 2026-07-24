@@ -51,13 +51,16 @@ const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
 const user_entity_1 = require("./user.entity");
 const role_permission_entity_1 = require("./role-permission.entity");
+const telegram_service_1 = require("../telegram/telegram.service");
 const bcrypt = __importStar(require("bcryptjs"));
 let UsersService = class UsersService {
     userRepository;
     rolePermissionRepository;
-    constructor(userRepository, rolePermissionRepository) {
+    telegramService;
+    constructor(userRepository, rolePermissionRepository, telegramService) {
         this.userRepository = userRepository;
         this.rolePermissionRepository = rolePermissionRepository;
+        this.telegramService = telegramService;
     }
     async onApplicationBootstrap() {
         const permCount = await this.rolePermissionRepository.count();
@@ -93,18 +96,36 @@ let UsersService = class UsersService {
                     passwordHash: adminPass,
                     role: user_entity_1.UserRole.SYSTEM_ADMIN,
                     status: user_entity_1.UserStatus.ACTIVE,
+                    firstName: 'System',
+                    lastName: 'Admin',
+                    department: 'IT',
+                    email: 'admin@windowasia.com',
+                    mobile: '061-419-3518',
+                    telegramId: null,
                 },
                 {
                     username: 'factory1',
                     passwordHash: adminPass,
                     role: user_entity_1.UserRole.QR_GENERATOR,
                     status: user_entity_1.UserStatus.ACTIVE,
+                    firstName: 'Factory',
+                    lastName: 'One',
+                    department: 'PD',
+                    email: 'factory1@windowasia.com',
+                    mobile: '081-234-5679',
+                    telegramId: null,
                 },
                 {
                     username: 'crm1',
                     passwordHash: adminPass,
                     role: user_entity_1.UserRole.CRM_MANAGER,
                     status: user_entity_1.UserStatus.ACTIVE,
+                    firstName: 'CRM',
+                    lastName: 'One',
+                    department: 'CS',
+                    email: 'crm1@windowasia.com',
+                    mobile: '081-234-5680',
+                    telegramId: null,
                 },
             ];
             for (const u of defaultUsers) {
@@ -113,9 +134,44 @@ let UsersService = class UsersService {
             }
             console.log('[USERS SEED] Seeding completed.');
         }
+        const adminPerm = await this.rolePermissionRepository.findOne({ where: { role: user_entity_1.UserRole.SYSTEM_ADMIN } });
+        if (adminPerm) {
+            if (!adminPerm.allowedMenus.includes('product-images')) {
+                adminPerm.allowedMenus.push('product-images');
+                await this.rolePermissionRepository.save(adminPerm);
+            }
+        }
+        const editorPerm = await this.rolePermissionRepository.findOne({ where: { role: user_entity_1.UserRole.IMAGE_EDITOR } });
+        if (!editorPerm) {
+            const p = this.rolePermissionRepository.create({
+                role: user_entity_1.UserRole.IMAGE_EDITOR,
+                allowedMenus: ['product-images', 'checker'],
+            });
+            await this.rolePermissionRepository.save(p);
+        }
+        const editorUser = await this.userRepository.findOne({ where: { username: 'image_editor' } });
+        if (!editorUser) {
+            const editorPass = await bcrypt.hash('WindowAsia@2026', 10);
+            const u = this.userRepository.create({
+                username: 'image_editor',
+                passwordHash: editorPass,
+                role: user_entity_1.UserRole.IMAGE_EDITOR,
+                status: user_entity_1.UserStatus.ACTIVE,
+                firstName: 'Image',
+                lastName: 'Editor',
+                department: 'Design',
+                email: 'design@windowasia.com',
+                mobile: '088-888-8888',
+                telegramId: null,
+            });
+            await this.userRepository.save(u);
+        }
     }
     async findByUsername(username) {
-        return this.userRepository.findOne({ where: { username } });
+        return this.userRepository
+            .createQueryBuilder('user')
+            .where('LOWER(user.username) = LOWER(:username)', { username: username.trim() })
+            .getOne();
     }
     async findById(id) {
         return this.userRepository.findOne({ where: { id } });
@@ -125,33 +181,75 @@ let UsersService = class UsersService {
             order: { username: 'ASC' },
         });
     }
-    async createUser(username, passwordPlain, role) {
-        const existing = await this.findByUsername(username.trim().toLowerCase());
+    async createUser(username, passwordPlain, role, firstName, lastName, department, email, mobile, telegramId, pinCode, isAdAuth) {
+        const existing = await this.findByUsername(username.trim());
         if (existing) {
             throw new common_1.BadRequestException('ชื่อผู้ใช้นี้มีอยู่ในระบบแล้ว');
         }
         if (!passwordPlain || passwordPlain.length < 8) {
             throw new common_1.BadRequestException('รหัสผ่านต้องมีความยาวไม่น้อยกว่า 8 ตัวอักษร');
         }
+        if (pinCode && !/^\d{6}$/.test(pinCode)) {
+            throw new common_1.BadRequestException('PIN Code ต้องเป็นตัวเลข 6 หลักเท่านั้น');
+        }
         const passwordHash = await bcrypt.hash(passwordPlain, 10);
         const newUser = this.userRepository.create({
-            username: username.trim().toLowerCase(),
+            username: username.trim(),
             passwordHash,
             role,
             status: user_entity_1.UserStatus.ACTIVE,
+            firstName: firstName || '',
+            lastName: lastName || '',
+            department: department || '',
+            email: email || null,
+            mobile: mobile || null,
+            telegramId: telegramId || null,
+            pinCode: pinCode || null,
+            isAdAuth: isAdAuth || false,
         });
         return this.userRepository.save(newUser);
     }
-    async updateUserRoleAndStatus(id, role, status) {
+    async updateUser(id, data) {
         const user = await this.findById(id);
         if (!user) {
             throw new common_1.NotFoundException('ไม่พบผู้ใช้ที่ระบุ');
         }
-        user.role = role;
-        user.status = status;
-        if (status === user_entity_1.UserStatus.ACTIVE) {
+        if (data.pinCode && !/^\d{6}$/.test(data.pinCode)) {
+            throw new common_1.BadRequestException('PIN Code ต้องเป็นตัวเลข 6 หลักเท่านั้น');
+        }
+        user.role = data.role;
+        user.status = data.status;
+        user.firstName = data.firstName || '';
+        user.lastName = data.lastName || '';
+        user.department = data.department || '';
+        user.email = data.email || null;
+        user.mobile = data.mobile || null;
+        user.telegramId = data.telegramId || null;
+        user.pinCode = data.pinCode || null;
+        user.isAdAuth = data.isAdAuth !== undefined ? data.isAdAuth : user.isAdAuth;
+        if (data.status === user_entity_1.UserStatus.ACTIVE) {
             user.failedAttempts = 0;
             user.lockedUntil = null;
+        }
+        return this.userRepository.save(user);
+    }
+    async updateUserPasswordAndPin(id, passwordPlain, pinCode, isPasswordCachedFromAd = false) {
+        const user = await this.findById(id);
+        if (!user) {
+            throw new common_1.NotFoundException('ไม่พบผู้ใช้ที่ระบุ');
+        }
+        if (passwordPlain) {
+            if (passwordPlain.length < 8) {
+                throw new common_1.BadRequestException('รหัสผ่านต้องมีความยาวไม่น้อยกว่า 8 ตัวอักษร');
+            }
+            user.passwordHash = await bcrypt.hash(passwordPlain, 10);
+            user.isPasswordCachedFromAd = isPasswordCachedFromAd;
+        }
+        if (pinCode !== undefined) {
+            if (pinCode && !/^\d{6}$/.test(pinCode)) {
+                throw new common_1.BadRequestException('PIN Code ต้องเป็นตัวเลข 6 หลักเท่านั้น');
+            }
+            user.pinCode = pinCode || null;
         }
         return this.userRepository.save(user);
     }
@@ -183,6 +281,30 @@ let UsersService = class UsersService {
             await this.userRepository.save(user);
         }
     }
+    async recordSuccessfulLogin(user) {
+        user.failedAttempts = 0;
+        user.lockedUntil = null;
+        user.lastLogin = new Date();
+        await this.userRepository.save(user);
+    }
+    async sendTestTelegramMessage(user) {
+        if (!user.telegramId)
+            return { success: false, error: 'ไม่มี Telegram ID' };
+        const timeStr = (0, telegram_service_1.formatThaiDateTime)(new Date());
+        const message = [
+            `🪟 <b>ProRegis</b> · ${timeStr}`,
+            `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+            `📝 <b>ข้อความทดสอบการเชื่อมต่อ (Test Connection)</b>\n`,
+            `👤 <b>ผู้รับทดสอบ:</b> ${user.firstName} ${user.lastName} (${user.username})`,
+            `🔑 <b>User ID:</b> ${user.username}`,
+            `🏢 <b>แผนก:</b> ${user.department || '-'}`,
+            `📧 <b>อีเมล:</b> ${user.email || '-'}`,
+            `📞 <b>เบอร์โทร:</b> ${user.mobile || '-'}`,
+            `━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+            `🔍 <i>นี่คือการทดสอบการเชื่อมต่อระบบ หากได้รับข้อความนี้แสดงว่าบอทพร้อมทำงานแล้ว</i>`
+        ].join('\n');
+        return this.telegramService.sendDirectMessage(user.telegramId, message);
+    }
     async findAllowedMenusByRole(role) {
         const perm = await this.rolePermissionRepository.findOne({ where: { role } });
         return perm ? perm.allowedMenus : [];
@@ -200,6 +322,9 @@ let UsersService = class UsersService {
         }
         return this.rolePermissionRepository.save(perm);
     }
+    async findUsersByRole(role) {
+        return this.userRepository.find({ where: { role } });
+    }
 };
 exports.UsersService = UsersService;
 exports.UsersService = UsersService = __decorate([
@@ -207,6 +332,7 @@ exports.UsersService = UsersService = __decorate([
     __param(0, (0, typeorm_1.InjectRepository)(user_entity_1.User)),
     __param(1, (0, typeorm_1.InjectRepository)(role_permission_entity_1.RolePermission)),
     __metadata("design:paramtypes", [typeorm_2.Repository,
-        typeorm_2.Repository])
+        typeorm_2.Repository,
+        telegram_service_1.TelegramService])
 ], UsersService);
 //# sourceMappingURL=users.service.js.map

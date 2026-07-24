@@ -1,9 +1,12 @@
 import { OtpService } from './otp.service';
 declare class RequestOtpDto {
-    phone: string;
+    contact?: string;
+    phone?: string;
+    channel?: 'sms' | 'email';
 }
 declare class VerifyOtpDto {
-    phone: string;
+    contact?: string;
+    phone?: string;
     code: string;
 }
 export declare class OtpController {
@@ -12,6 +15,7 @@ export declare class OtpController {
     requestOtp(body: RequestOtpDto): Promise<{
         success: boolean;
         expiresIn: number;
+        refCode?: string;
     }>;
     verifyOtp(body: VerifyOtpDto): Promise<{
         success: boolean;

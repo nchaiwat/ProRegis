@@ -27,12 +27,26 @@ let BackofficeController = class BackofficeController {
         const ipAddress = req.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
             req.socket?.remoteAddress ||
             'unknown';
-        const rows = await this.backofficeService.generateBatch(actor, body.docNum, body.startSeq, body.quantity, ipAddress);
-        const csvContent = this.backofficeService.buildCsv(rows);
-        const filename = `QR_Batch_${body.docNum}_seq${String(body.startSeq).padStart(3, '0')}_qty${body.quantity}.csv`;
-        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-        res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-        res.send(Buffer.from(csvContent, 'utf8'));
+        try {
+            const rows = await this.backofficeService.generateBatch(actor, body.docNum, body.startSeq, body.quantity, ipAddress, body.preview);
+            if (body.preview) {
+                return res.json({ success: true, rows });
+            }
+            const csvContent = this.backofficeService.buildCsv(rows);
+            const filename = `QR_Batch_${body.docNum}_seq${String(body.startSeq).padStart(3, '0')}_qty${body.quantity}.csv`;
+            res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+            res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+            res.send(Buffer.from(csvContent, 'utf8'));
+        }
+        catch (err) {
+            const status = typeof err.getStatus === 'function' ? err.getStatus() : 400;
+            const message = err.message || 'เกิดข้อผิดพลาดในการสร้างไฟล์';
+            return res.status(status).json({
+                statusCode: status,
+                message: message,
+                error: err.name || 'Bad Request',
+            });
+        }
     }
     decryptToken(body) {
         const result = this.backofficeService.decryptToken(body.token);
@@ -46,6 +60,11 @@ let BackofficeController = class BackofficeController {
         const logs = await this.backofficeService.getLogs(parsedLimit);
         return { logs };
     }
+    async getAuthLogs(limit) {
+        const parsedLimit = limit ? parseInt(limit, 10) : 100;
+        const logs = await this.backofficeService.getAuthLogs(parsedLimit);
+        return { logs };
+    }
     async getNextSequence(docNum) {
         if (!docNum || !/^\d{9}$/.test(docNum)) {
             return { success: false, error: 'DocNum ต้องเป็นตัวเลข 9 หลัก' };
@@ -57,15 +76,38 @@ let BackofficeController = class BackofficeController {
         const summary = await this.backofficeService.getDashboardSummary(startDate, endDate);
         return { success: true, summary };
     }
-    async getProductionTracker() {
-        const data = await this.backofficeService.getProductionTrackerList();
+    async getProductionTracker(mode) {
+        const data = await this.backofficeService.getProductionTrackerList(mode);
         return { success: true, data };
     }
     async checkProduct(body) {
-        return this.backofficeService.checkProduct(body.token, body.label);
+        return this.backofficeService.checkProduct(body.token, body.label, body.registrationId);
+    }
+    async uploadProductImage(body) {
+        return this.backofficeService.uploadProductImage(body.itemCode, body.imageBase64);
+    }
+    async getCustomImages() {
+        return this.backofficeService.getCustomImages();
+    }
+    async deleteProductImage(itemCode) {
+        return this.backofficeService.deleteProductImage(itemCode);
     }
     async getLotSummary(docNum) {
         return this.backofficeService.getLotSummary(docNum);
+    }
+    async getSettings() {
+        return this.backofficeService.getSystemSettings();
+    }
+    async updateSettings(body) {
+        if (!body.key || !body.value) {
+            throw new common_1.BadRequestException('Key and Value are required');
+        }
+        await this.backofficeService.updateSystemSetting(body.key, body.value);
+        return { success: true };
+    }
+    async clearTestData(body) {
+        await this.backofficeService.clearTestData(body?.tables);
+        return { success: true, message: 'ล้างข้อมูลการทดสอบที่เลือกเรียบร้อยแล้ว' };
     }
 };
 exports.BackofficeController = BackofficeController;
@@ -98,6 +140,15 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], BackofficeController.prototype, "getLogs", null);
 __decorate([
+    (0, common_1.Get)('auth-logs'),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
+    (0, roles_guard_1.Roles)('SYSTEM_ADMIN'),
+    __param(0, (0, common_1.Query)('limit')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], BackofficeController.prototype, "getAuthLogs", null);
+__decorate([
     (0, common_1.Get)('next-sequence'),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
     __param(0, (0, common_1.Query)('docNum')),
@@ -117,8 +168,9 @@ __decorate([
 __decorate([
     (0, common_1.Get)('production-tracker'),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    __param(0, (0, common_1.Query)('mode')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", []),
+    __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
 ], BackofficeController.prototype, "getProductionTracker", null);
 __decorate([
@@ -131,6 +183,32 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], BackofficeController.prototype, "checkProduct", null);
 __decorate([
+    (0, common_1.Post)('upload-image'),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
+    (0, roles_guard_1.Roles)('SYSTEM_ADMIN', 'IMAGE_EDITOR'),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], BackofficeController.prototype, "uploadProductImage", null);
+__decorate([
+    (0, common_1.Get)('custom-images'),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
+    (0, roles_guard_1.Roles)('SYSTEM_ADMIN', 'IMAGE_EDITOR'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], BackofficeController.prototype, "getCustomImages", null);
+__decorate([
+    (0, common_1.Delete)('product-image/:itemCode'),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
+    (0, roles_guard_1.Roles)('SYSTEM_ADMIN', 'IMAGE_EDITOR'),
+    __param(0, (0, common_1.Param)('itemCode')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String]),
+    __metadata("design:returntype", Promise)
+], BackofficeController.prototype, "deleteProductImage", null);
+__decorate([
     (0, common_1.Get)('lot-summary/:docNum'),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
     __param(0, (0, common_1.Param)('docNum')),
@@ -138,6 +216,32 @@ __decorate([
     __metadata("design:paramtypes", [String]),
     __metadata("design:returntype", Promise)
 ], BackofficeController.prototype, "getLotSummary", null);
+__decorate([
+    (0, common_1.Get)('settings'),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
+    (0, roles_guard_1.Roles)('SYSTEM_ADMIN'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], BackofficeController.prototype, "getSettings", null);
+__decorate([
+    (0, common_1.Post)('settings'),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
+    (0, roles_guard_1.Roles)('SYSTEM_ADMIN'),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], BackofficeController.prototype, "updateSettings", null);
+__decorate([
+    (0, common_1.Post)('clear-test-data'),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
+    (0, roles_guard_1.Roles)('SYSTEM_ADMIN'),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], BackofficeController.prototype, "clearTestData", null);
 exports.BackofficeController = BackofficeController = __decorate([
     (0, common_1.Controller)('backoffice'),
     __metadata("design:paramtypes", [backoffice_service_1.BackofficeService])

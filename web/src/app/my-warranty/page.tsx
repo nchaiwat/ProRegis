@@ -452,7 +452,7 @@ export default function MyWarrantyPage() {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full h-14 bg-secondary text-white font-bold rounded-xl shadow hover:opacity-95 active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-base cursor-pointer disabled:opacity-50"
+                className="w-full h-12 bg-secondary text-white font-bold rounded-xl shadow hover:opacity-95 active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-base cursor-pointer disabled:opacity-50"
               >
                 {isLoading ? (
                   <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
@@ -546,7 +546,7 @@ export default function MyWarrantyPage() {
                 <button
                   type="button"
                   onClick={() => setStep(1)}
-                  className="w-1/3 h-14 border border-outline-variant text-on-surface-variant font-bold rounded-xl hover:bg-surface-container-low transition-all active:scale-[0.98] cursor-pointer text-sm"
+                  className="w-1/3 h-12 border border-outline-variant text-on-surface-variant font-bold rounded-xl hover:bg-surface-container-low transition-all active:scale-[0.98] cursor-pointer text-sm"
                 >
                   {localT[lang].backBtn}
                 </button>
@@ -554,7 +554,7 @@ export default function MyWarrantyPage() {
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="flex-1 h-14 bg-secondary text-white font-bold rounded-xl shadow hover:opacity-95 active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-base cursor-pointer disabled:opacity-50"
+                  className="flex-1 h-12 bg-secondary text-white font-bold rounded-xl shadow hover:opacity-95 active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-base cursor-pointer disabled:opacity-50"
                 >
                   {isLoading ? (
                     <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
@@ -652,7 +652,7 @@ export default function MyWarrantyPage() {
               <button
                 type="submit"
                 disabled={otpCode.length !== 6 || isLoading}
-                className={`w-full h-14 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-base ${
+                className={`w-full h-12 rounded-xl font-bold flex items-center justify-center gap-2 transition-all text-base ${
                   otpCode.length === 6 && !isLoading
                     ? "bg-secondary text-white hover:opacity-95 shadow-md active:scale-95 cursor-pointer"
                     : "bg-surface-container-high text-outline-variant cursor-not-allowed"
@@ -799,7 +799,7 @@ export default function MyWarrantyPage() {
             <div className="flex justify-center pt-4">
               <button
                 onClick={() => router.push("/")}
-                className="w-full max-w-sm h-14 border-2 border-outline-variant text-secondary font-bold rounded-xl hover:bg-surface-container-low transition-all active:scale-[0.98] flex items-center justify-center gap-2 text-base cursor-pointer"
+                className="w-full max-w-sm h-12 border-2 border-outline-variant text-secondary font-bold rounded-xl hover:bg-surface-container-low transition-all active:scale-[0.98] flex items-center justify-center gap-2 text-base cursor-pointer"
               >
                 <span className="material-symbols-outlined">arrow_back</span>
                 {localT[lang].goHome}

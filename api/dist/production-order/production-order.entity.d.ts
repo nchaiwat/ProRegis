@@ -3,5 +3,9 @@ export declare class ProductionOrder {
     itemCode: string;
     itemName: string | null;
     plannedQty: number;
+    orderDate: string | null;
+    startDate: string | null;
+    status: string | null;
+    completedQty: number;
     createdAt: Date;
 }

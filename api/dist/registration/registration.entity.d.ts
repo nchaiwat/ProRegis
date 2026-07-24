@@ -17,4 +17,5 @@ export declare class Registration {
     docNum: string | null;
     seqNum: string | null;
     lineUserId: string | null;
+    installationPosition: string | null;
 }

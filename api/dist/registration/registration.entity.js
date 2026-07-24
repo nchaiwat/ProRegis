@@ -30,6 +30,7 @@ let Registration = class Registration {
     docNum;
     seqNum;
     lineUserId;
+    installationPosition;
 };
 exports.Registration = Registration;
 __decorate([
@@ -104,6 +105,10 @@ __decorate([
     (0, typeorm_1.Column)({ type: 'varchar', name: 'line_user_id', nullable: true }),
     __metadata("design:type", Object)
 ], Registration.prototype, "lineUserId", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', name: 'installation_position', nullable: true }),
+    __metadata("design:type", Object)
+], Registration.prototype, "installationPosition", void 0);
 exports.Registration = Registration = __decorate([
     (0, typeorm_1.Entity)('registrations')
 ], Registration);

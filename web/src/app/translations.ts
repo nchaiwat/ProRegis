@@ -145,6 +145,13 @@ export interface Translation {
   email: string;
   submitReg: string;
   selectProvince: string;
+  selectVerificationMethod: string;
+  smsOtp: string;
+  emailOtp: string;
+  lineLogin: string;
+  lineLoginTitle: string;
+  lineLoginDesc: string;
+  lineLoginBtn: string;
   otpTitle: string;
   otpSubtitle: string;
   otpPlaceholder: string;
@@ -254,6 +261,13 @@ export const translations: Record<"th" | "en", Translation> = {
     email: "อีเมล",
     submitReg: "ส่งข้อมูลและรับรหัส OTP",
     selectProvince: "เลือกจังหวัด",
+    selectVerificationMethod: "เลือกวิธีการยืนยันตัวตน",
+    smsOtp: "SMS OTP",
+    emailOtp: "Email OTP",
+    lineLogin: "LINE Login",
+    lineLoginTitle: "เข้าสู่ระบบด้วย LINE เพื่อดำเนินการต่อ",
+    lineLoginDesc: "ระบบจะเชื่อมโยงการลงทะเบียนรับประกันเข้ากับบัญชี LINE ของคุณอย่างปลอดภัย",
+    lineLoginBtn: "เข้าสู่ระบบ LINE",
     otpTitle: "ยืนยันรหัส OTP",
     otpSubtitle: "ระบบได้ส่งรหัส OTP (6 หลัก) ไปยังเบอร์โทรศัพท์ {phone} แล้ว โปรดระบุรหัสเพื่อยืนยันการลงทะเบียน",
     otpPlaceholder: "กรอกรหัส 6 หลัก",
@@ -361,6 +375,13 @@ export const translations: Record<"th" | "en", Translation> = {
     email: "Email Address",
     submitReg: "Submit & Request OTP",
     selectProvince: "Select Province",
+    selectVerificationMethod: "Select Verification Method",
+    smsOtp: "SMS OTP",
+    emailOtp: "Email OTP",
+    lineLogin: "LINE Login",
+    lineLoginTitle: "Log in with LINE to continue",
+    lineLoginDesc: "The system will securely link your warranty registration to your LINE account.",
+    lineLoginBtn: "Log in with LINE",
     otpTitle: "Verify OTP",
     otpSubtitle: "A 6-digit OTP code has been sent to {phone}. Please enter the code below to confirm registration.",
     otpPlaceholder: "Enter 6-digit code",

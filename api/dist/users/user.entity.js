@@ -16,6 +16,7 @@ var UserRole;
     UserRole["SYSTEM_ADMIN"] = "SYSTEM_ADMIN";
     UserRole["QR_GENERATOR"] = "QR_GENERATOR";
     UserRole["CRM_MANAGER"] = "CRM_MANAGER";
+    UserRole["IMAGE_EDITOR"] = "IMAGE_EDITOR";
 })(UserRole || (exports.UserRole = UserRole = {}));
 var UserStatus;
 (function (UserStatus) {
@@ -25,12 +26,23 @@ var UserStatus;
 })(UserStatus || (exports.UserStatus = UserStatus = {}));
 let User = class User {
     id;
+    systemSeqId;
     username;
     passwordHash;
+    firstName;
+    lastName;
+    department;
+    email;
+    mobile;
+    telegramId;
+    pinCode;
+    lastLogin;
     role;
     status;
     failedAttempts;
     lockedUntil;
+    isAdAuth;
+    isPasswordCachedFromAd;
     createdAt;
     updatedAt;
 };
@@ -40,6 +52,10 @@ __decorate([
     __metadata("design:type", String)
 ], User.prototype, "id", void 0);
 __decorate([
+    (0, typeorm_1.Column)({ name: 'system_seq_id', type: 'integer', generated: 'increment', unique: true }),
+    __metadata("design:type", Number)
+], User.prototype, "systemSeqId", void 0);
+__decorate([
     (0, typeorm_1.Column)({ unique: true }),
     __metadata("design:type", String)
 ], User.prototype, "username", void 0);
@@ -47,6 +63,38 @@ __decorate([
     (0, typeorm_1.Column)({ name: 'password_hash' }),
     __metadata("design:type", String)
 ], User.prototype, "passwordHash", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'first_name', type: 'varchar', default: '' }),
+    __metadata("design:type", String)
+], User.prototype, "firstName", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'last_name', type: 'varchar', default: '' }),
+    __metadata("design:type", String)
+], User.prototype, "lastName", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'department', type: 'varchar', default: '' }),
+    __metadata("design:type", String)
+], User.prototype, "department", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'email', type: 'varchar', nullable: true }),
+    __metadata("design:type", Object)
+], User.prototype, "email", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'mobile', type: 'varchar', nullable: true }),
+    __metadata("design:type", Object)
+], User.prototype, "mobile", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'telegram_id', type: 'varchar', nullable: true }),
+    __metadata("design:type", Object)
+], User.prototype, "telegramId", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'pin_code', type: 'varchar', length: 6, nullable: true }),
+    __metadata("design:type", Object)
+], User.prototype, "pinCode", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'last_login', type: 'timestamp', nullable: true }),
+    __metadata("design:type", Object)
+], User.prototype, "lastLogin", void 0);
 __decorate([
     (0, typeorm_1.Column)({
         type: 'varchar',
@@ -69,6 +117,14 @@ __decorate([
     (0, typeorm_1.Column)({ name: 'locked_until', type: 'timestamp', nullable: true }),
     __metadata("design:type", Object)
 ], User.prototype, "lockedUntil", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'is_ad_auth', type: 'boolean', default: false }),
+    __metadata("design:type", Boolean)
+], User.prototype, "isAdAuth", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'is_password_cached_from_ad', type: 'boolean', default: false }),
+    __metadata("design:type", Boolean)
+], User.prototype, "isPasswordCachedFromAd", void 0);
 __decorate([
     (0, typeorm_1.CreateDateColumn)({ name: 'created_at' }),
     __metadata("design:type", Date)

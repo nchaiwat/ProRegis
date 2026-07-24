@@ -28,6 +28,9 @@ let CrmController = class CrmController {
     async listRegistrations(query) {
         return this.crmService.getRegistrations(query);
     }
+    async getActiveProvinces() {
+        return this.crmService.getActiveProvinces();
+    }
     async getDetails(id, req) {
         const actor = req.user?.username || 'unknown';
         const ipAddress = req.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
@@ -84,6 +87,23 @@ let CrmController = class CrmController {
         res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
         res.send(Buffer.from(csvContent, 'utf8'));
     }
+    async deleteCustomer(id, req) {
+        const actor = req.user?.username || 'unknown';
+        const ipAddress = req.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
+            req.socket?.remoteAddress ||
+            null;
+        const userAgent = req.headers['user-agent'] || null;
+        const registration = await this.crmService.getRegistrationDetails(id);
+        const phone = registration.phone;
+        const deleteCount = await this.crmService.deleteCustomerAndRegistrations(phone);
+        await this.auditService.logAction(actor, 'DELETE_CUSTOMER', 'Customer', id, ipAddress, userAgent, {
+            phone,
+            firstName: registration.firstName,
+            lastName: registration.lastName,
+            deletedRecordsCount: deleteCount,
+        });
+        return { success: true, deletedRecordsCount: deleteCount };
+    }
 };
 exports.CrmController = CrmController;
 __decorate([
@@ -93,6 +113,12 @@ __decorate([
     __metadata("design:paramtypes", [crm_service_1.CrmFilterDto]),
     __metadata("design:returntype", Promise)
 ], CrmController.prototype, "listRegistrations", null);
+__decorate([
+    (0, common_1.Get)('provinces'),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], CrmController.prototype, "getActiveProvinces", null);
 __decorate([
     (0, common_1.Get)('registrations/:id'),
     __param(0, (0, common_1.Param)('id')),
@@ -111,6 +137,14 @@ __decorate([
     __metadata("design:paramtypes", [Object, Object, Object]),
     __metadata("design:returntype", Promise)
 ], CrmController.prototype, "exportCsv", null);
+__decorate([
+    (0, common_1.Delete)('customer/:id'),
+    __param(0, (0, common_1.Param)('id')),
+    __param(1, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [String, Object]),
+    __metadata("design:returntype", Promise)
+], CrmController.prototype, "deleteCustomer", null);
 exports.CrmController = CrmController = __decorate([
     (0, common_1.Controller)('crm'),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),

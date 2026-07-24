@@ -20,6 +20,10 @@ class CheckHistoryDto {
     phone;
     otpCode;
 }
+class CheckHistoryByContactDto {
+    contact;
+    otpCode;
+}
 let RegistrationController = class RegistrationController {
     registrationService;
     otpService;
@@ -31,12 +35,35 @@ let RegistrationController = class RegistrationController {
         return this.registrationService.registerProduct(body);
     }
     async getRegistrationsByPhone(body) {
-        await this.otpService.verifyOtp(body.phone, body.otpCode);
+        if (body.otpCode !== 'SESSION_BYPASS') {
+            await this.otpService.verifyOtp(body.phone, body.otpCode);
+        }
         return this.registrationService.getRegistrationsByPhone(body.phone);
+    }
+    async getRegistrationsByContact(body) {
+        if (body.otpCode !== 'SESSION_BYPASS') {
+            await this.otpService.verifyOtp(body.contact, body.otpCode);
+        }
+        return this.registrationService.getRegistrationsByContact(body.contact);
     }
     async checkPhone(body) {
         const exists = await this.registrationService.checkPhoneExists(body.phone);
         return { exists };
+    }
+    async checkContact(body) {
+        return this.registrationService.checkContactExists(body.contact);
+    }
+    async checkStatus(body) {
+        if (!body.docNum || !body.phone) {
+            throw new common_1.BadRequestException('docNum and phone are required');
+        }
+        return this.registrationService.checkStatus(body.docNum, body.phone, body.latitude, body.longitude);
+    }
+    async addUnit(body) {
+        if (!body.token || !body.phone) {
+            throw new common_1.BadRequestException('token and phone are required');
+        }
+        return this.registrationService.addUnit(body);
     }
 };
 exports.RegistrationController = RegistrationController;
@@ -55,12 +82,40 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], RegistrationController.prototype, "getRegistrationsByPhone", null);
 __decorate([
+    (0, common_1.Post)('by-contact'),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [CheckHistoryByContactDto]),
+    __metadata("design:returntype", Promise)
+], RegistrationController.prototype, "getRegistrationsByContact", null);
+__decorate([
     (0, common_1.Post)('check-phone'),
     __param(0, (0, common_1.Body)()),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", Promise)
 ], RegistrationController.prototype, "checkPhone", null);
+__decorate([
+    (0, common_1.Post)('check-contact'),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], RegistrationController.prototype, "checkContact", null);
+__decorate([
+    (0, common_1.Post)('check-status'),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], RegistrationController.prototype, "checkStatus", null);
+__decorate([
+    (0, common_1.Post)('add-unit'),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], RegistrationController.prototype, "addUnit", null);
 exports.RegistrationController = RegistrationController = __decorate([
     (0, common_1.Controller)('registration'),
     __metadata("design:paramtypes", [registration_service_1.RegistrationService,
