@@ -116,7 +116,11 @@ export class AuthController {
         try {
           const response = await fetch(gatewayUrl, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Forwarded-For': ipAddress || '157.173.219.153',
+              'X-Real-IP': ipAddress || '157.173.219.153',
+            },
             body: JSON.stringify({
               app_id: appId,
               secret_key: secretKey,
