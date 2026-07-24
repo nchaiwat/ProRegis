@@ -340,6 +340,7 @@ export default function MyWarrantyPage() {
   const handleResendOtp = async () => {
     if (resendCooldown > 0) return;
     setError("");
+    setOtpCode("");
     setIsLoading(true);
     try {
       const res = await fetch(`${getApiBaseUrl()}/otp/request`, {
