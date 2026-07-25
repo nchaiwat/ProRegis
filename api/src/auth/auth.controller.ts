@@ -99,7 +99,7 @@ export class AuthController {
       let adError = 'AD authentication failed';
 
       // Always try AD Gateway directly, do not verify against local cache or PIN
-      const gatewayUrl = process.env.AD_GATEWAY_URL || 'http://172.17.0.1:3101/api/v2/login';
+      const gatewayUrl = process.env.AD_GATEWAY_URL || 'http://172.17.0.1:3100/api/v2/login';
       const appId = process.env.AD_APP_ID || 'ProRegis';
       const secretKey = process.env.AD_SECRET_KEY || 'd69f9e5a88e734c56e2978a63bf720c22635a9c0c32b5e2a2205510657e4e138';
 
@@ -137,8 +137,8 @@ export class AuthController {
           adError = `AD Gateway HTTP error ${response.status}: ${response.statusText}`;
         }
       } catch (err) {
-        adError = `AD Gateway connection failed: ${err.message}`;
-        console.error('[AD GATEWAY ERROR]', err);
+        adError = `AD Gateway connection failed to ${gatewayUrl}: ${err.message}`;
+        console.error(`[AD GATEWAY ERROR] URL: ${gatewayUrl}`, err);
       }
 
       if (!loginSuccess) {
