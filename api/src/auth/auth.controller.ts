@@ -108,13 +108,15 @@ export class AuthController {
       const thTime = new Date(now.getTime() + tzOffset);
       const timestamp = thTime.toISOString().split('.')[0] + 'Z';
 
+      const vpsIp = process.env.VPS_IP || '157.173.219.153';
+
       try {
         const response = await fetch(gatewayUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-Forwarded-For': ipAddress || '157.173.219.153',
-            'X-Real-IP': ipAddress || '157.173.219.153',
+            'X-Forwarded-For': vpsIp,
+            'X-Real-IP': vpsIp,
           },
           body: JSON.stringify({
             app_id: appId,
