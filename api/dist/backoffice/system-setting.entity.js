@@ -21,11 +21,11 @@ let SystemSetting = class SystemSetting {
 };
 exports.SystemSetting = SystemSetting;
 __decorate([
-    (0, typeorm_1.PrimaryColumn)({ type: 'varchar', length: 100 }),
+    (0, typeorm_1.PrimaryColumn)({ type: 'varchar' }),
     __metadata("design:type", String)
 ], SystemSetting.prototype, "key", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'text', nullable: true }),
+    (0, typeorm_1.Column)({ type: 'varchar' }),
     __metadata("design:type", String)
 ], SystemSetting.prototype, "value", void 0);
 __decorate([

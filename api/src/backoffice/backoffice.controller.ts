@@ -17,7 +17,7 @@ import { BackofficeService } from './backoffice.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard, Roles } from '../auth/roles.guard';
 
-@Controller('backoffice')
+@Controller(['backoffice', 'api/backoffice'])
 export class BackofficeController {
   constructor(private readonly backofficeService: BackofficeService) {}
 

@@ -159,6 +159,11 @@ let BackofficeService = BackofficeService_1 = class BackofficeService {
                     await this.systemSettingRepository.save(this.systemSettingRepository.create(setting));
                     console.log(`[BACKOFFICE SERVICE] Seeded default setting: ${setting.key}=${setting.value}`);
                 }
+                else if (exists.value === null || exists.value === undefined) {
+                    exists.value = setting.value;
+                    await this.systemSettingRepository.save(exists);
+                    console.log(`[BACKOFFICE SERVICE] Restored null setting: ${setting.key}=${setting.value}`);
+                }
             }
             catch (err) {
                 console.warn(`[BACKOFFICE SERVICE] Failed to seed setting: ${setting.key}`, err.message);

@@ -9,8 +9,19 @@ interface SettingInfo {
   updatedAt: string;
 }
 
+type SettingsTab =
+  | "GENERAL"
+  | "CIAM"
+  | "AI"
+  | "SMS"
+  | "EMAIL"
+  | "TELEGRAM"
+  | "SAP"
+  | "DANGER";
+
 export default function SettingsAdminPage() {
   const router = useRouter();
+  const [activeTab, setActiveTab] = useState<SettingsTab>("GENERAL");
   const [isAdmin, setIsAdmin] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -221,6 +232,11 @@ export default function SettingsAdminPage() {
         setSmtpFromEmail(data.SMTP_FROM_EMAIL?.value || "itwindowasia@gmail.com");
         setSmtpEmailSubject(data.SMTP_EMAIL_SUBJECT?.value || "");
         setSmtpEmailBody(data.SMTP_EMAIL_BODY?.value || "");
+      } else if (res.status === 401 || res.status === 403) {
+        sessionStorage.removeItem("bo_session");
+        sessionStorage.removeItem("bo_token");
+        router.replace("/backoffice");
+        return;
       } else {
         const errData = await res.json().catch(() => ({}));
         setError(errData.message || "ไม่สามารถดึงข้อมูลการตั้งค่าได้");
@@ -652,11 +668,48 @@ export default function SettingsAdminPage() {
         </div>
       )}
 
-      {/* Grouping Cards */}
+      {/* Settings Category Tabs */}
+      <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-xs p-2 flex flex-wrap gap-1.5 select-none">
+        {[
+          { id: "GENERAL" as SettingsTab, label: "โหมดการทำงานหลัก", icon: "tune" },
+          { id: "CIAM" as SettingsTab, label: "Central IAM & SSO", icon: "shield_person", badge: ciamOnline === true ? "🟢" : ciamOnline === false ? "🔴" : undefined },
+          { id: "AI" as SettingsTab, label: "AI Copilot & MCP", icon: "smart_toy", badge: aiCopilotEnabled ? "🟢" : undefined },
+          { id: "SMS" as SettingsTab, label: "SMS OTP", icon: "sms" },
+          { id: "EMAIL" as SettingsTab, label: "Email OTP (SMTP)", icon: "mail" },
+          { id: "TELEGRAM" as SettingsTab, label: "แจ้งเตือน Telegram", icon: "send" },
+          { id: "SAP" as SettingsTab, label: "เชื่อมต่อ SAP B1", icon: "database" },
+          { id: "DANGER" as SettingsTab, label: "ล้างข้อมูลระบบ", icon: "gpp_maybe", isDanger: true },
+        ].map((tab) => {
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className={`px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 ${
+                isActive
+                  ? tab.isDanger
+                    ? "bg-error text-white shadow-sm"
+                    : "bg-secondary text-white shadow-sm"
+                  : tab.isDanger
+                  ? "text-error hover:bg-error/10"
+                  : "text-on-surface-variant hover:bg-slate-100 hover:text-primary"
+              }`}
+            >
+              <span className="material-symbols-outlined !text-[18px]">{tab.icon}</span>
+              <span>{tab.label}</span>
+              {tab.badge && <span className="text-[10px] leading-none">{tab.badge}</span>}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Grouping Cards (Tab Content) */}
       <div className="space-y-6">
         
-        {/* SECTION 1: CORE FUNCTION SYSTEM */}
-        <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm p-6 space-y-6">
+        {/* TAB: GENERAL (CORE FUNCTION SYSTEM) */}
+        {activeTab === "GENERAL" && (
+        <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm p-6 space-y-6 animate-fade-in">
           <h2 className="font-bold text-base text-primary border-b border-outline-variant/40 pb-3 flex items-center gap-2">
             <span className="material-symbols-outlined text-secondary">tune</span>
             โหมดการทำงานและฟังก์ชันหลัก
@@ -699,9 +752,11 @@ export default function SettingsAdminPage() {
 
           </div>
         </div>
+        )}
 
-        {/* SECTION: SMS OTP GATEWAY CONFIGURATIONS */}
-        <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm p-6 space-y-6">
+        {/* TAB: SMS OTP GATEWAY CONFIGURATIONS */}
+        {activeTab === "SMS" && (
+        <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm p-6 space-y-6 animate-fade-in">
           <h2 className="font-bold text-base text-primary border-b border-outline-variant/40 pb-3 flex items-center gap-2">
             <span className="material-symbols-outlined text-secondary">sms</span>
             ระบบส่งและยืนยัน SMS OTP (SMS Gateway - SMSMKT)
@@ -866,9 +921,11 @@ export default function SettingsAdminPage() {
             </div>
           </div>
         </div>
+        )}
 
-        {/* SECTION: EMAIL OTP GATEWAY CONFIGURATIONS */}
-        <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm p-6 space-y-6">
+        {/* TAB: EMAIL OTP GATEWAY CONFIGURATIONS */}
+        {activeTab === "EMAIL" && (
+        <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm p-6 space-y-6 animate-fade-in">
           <h2 className="font-bold text-base text-primary border-b border-outline-variant/40 pb-3 flex items-center gap-2">
             <span className="material-symbols-outlined text-secondary">mail</span>
             ระบบส่งและยืนยัน Email OTP (Email SMTP Settings)
@@ -1114,9 +1171,11 @@ export default function SettingsAdminPage() {
             </div>
           </div>
         </div>
+        )}
 
-        {/* SECTION 2: TELEGRAM CONFIGURATIONS */}
-        <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm p-6 space-y-6">
+        {/* TAB: TELEGRAM CONFIGURATIONS */}
+        {activeTab === "TELEGRAM" && (
+        <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm p-6 space-y-6 animate-fade-in">
           <h2 className="font-bold text-base text-primary border-b border-outline-variant/40 pb-3 flex items-center gap-2">
             <span className="material-symbols-outlined text-secondary">send</span>
             ระบบแจ้งเตือนผ่าน Telegram (Notifications)
@@ -1181,9 +1240,11 @@ export default function SettingsAdminPage() {
             </div>
           </div>
         </div>
+        )}
 
-        {/* SECTION 3: SAP BUSINESS ONE SERVICE LAYER */}
-        <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm p-6 space-y-6">
+        {/* TAB: SAP BUSINESS ONE SERVICE LAYER */}
+        {activeTab === "SAP" && (
+        <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm p-6 space-y-6 animate-fade-in">
           <h2 className="font-bold text-base text-primary border-b border-outline-variant/40 pb-3 flex items-center gap-2">
             <span className="material-symbols-outlined text-secondary">database</span>
             การเชื่อมต่อ SAP Business One Service Layer
@@ -1304,9 +1365,11 @@ export default function SettingsAdminPage() {
             </div>
           </div>
         </div>
+        )}
 
-        {/* SECTION: CENTRAL IAM (SSO, DIRECTORY SYNC & BREAK-GLASS) */}
-        <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm p-6 space-y-6">
+        {/* TAB: CENTRAL IAM (SSO, DIRECTORY SYNC & BREAK-GLASS) */}
+        {activeTab === "CIAM" && (
+        <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm p-6 space-y-6 animate-fade-in">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-outline-variant/40 pb-3">
             <h2 className="font-bold text-base text-primary flex items-center gap-2">
               <span className="material-symbols-outlined text-secondary">shield_person</span>
@@ -1624,9 +1687,11 @@ export default function SettingsAdminPage() {
             )}
           </div>
         </div>
+        )}
 
-        {/* SECTION: IN-APP AI COPILOT & MCP TOOLS (CATEGORY E) */}
-        <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm p-6 space-y-6">
+        {/* TAB: IN-APP AI COPILOT & MCP TOOLS (CATEGORY E) */}
+        {activeTab === "AI" && (
+        <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm p-6 space-y-6 animate-fade-in">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-outline-variant/40 pb-3">
             <h2 className="font-bold text-base text-primary flex items-center gap-2">
               <span className="material-symbols-outlined text-secondary">smart_toy</span>
@@ -1822,8 +1887,10 @@ export default function SettingsAdminPage() {
             </div>
           </div>
         </div>
+        )}
 
-        {/* SECTION 4: DANGER ZONE / CLEAR TEST DATA */}
+        {/* TAB: DANGER ZONE / CLEAR TEST DATA */}
+        {activeTab === "DANGER" && (
         <div className="bg-error/5 rounded-2xl border border-error/20 shadow-sm p-6 space-y-4 animate-fade-in">
           <div className="flex items-center gap-3 border-b border-error/10 pb-3">
             <span className="material-symbols-outlined text-error !text-[24px]">gpp_maybe</span>
@@ -1856,10 +1923,12 @@ export default function SettingsAdminPage() {
             </div>
           </div>
         </div>
+        )}
 
       </div>
 
       {/* Footer Save Actions Button */}
+      {activeTab !== "DANGER" && (
       <div className="flex justify-end gap-2 pt-4">
         <button
           onClick={handleSaveAllSettings}
@@ -1879,6 +1948,7 @@ export default function SettingsAdminPage() {
           )}
         </button>
       </div>
+      )}
 
       {/* Confirmation Reset Modal */}
       {showConfirmReset && (

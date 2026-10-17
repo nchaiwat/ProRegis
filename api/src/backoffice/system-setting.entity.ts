@@ -2,10 +2,10 @@ import { Entity, Column, PrimaryColumn, UpdateDateColumn } from 'typeorm';
 
 @Entity('system_settings')
 export class SystemSetting {
-  @PrimaryColumn({ type: 'varchar', length: 100 })
+  @PrimaryColumn({ type: 'varchar' })
   key: string;
 
-  @Column({ type: 'text', nullable: true })
+  @Column({ type: 'varchar' })
   value: string;
 
   @Column({ type: 'varchar', length: 250, nullable: true })

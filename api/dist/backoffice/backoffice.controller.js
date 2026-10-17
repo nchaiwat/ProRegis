@@ -255,7 +255,7 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], BackofficeController.prototype, "clearTestData", null);
 exports.BackofficeController = BackofficeController = __decorate([
-    (0, common_1.Controller)('backoffice'),
+    (0, common_1.Controller)(['backoffice', 'api/backoffice']),
     __metadata("design:paramtypes", [backoffice_service_1.BackofficeService])
 ], BackofficeController);
 //# sourceMappingURL=backoffice.controller.js.map
