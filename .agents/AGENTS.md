@@ -255,5 +255,21 @@ SMS_API_SECRET=4bu6uRdNlUKq10ZI
 - **SAP Integration:** ดึง ItemCode/Product จาก SAP B1 เป็น fallback ถ้าไม่มีใน DB local
 - **GPS:** ต้องใช้ HTTPS สำหรับ `navigator.geolocation` (local ใช้ self-signed cert)
 - **Docker Ports:** API:3001 (internal), Web:3000 (internal), Nginx expose 80/443
-- **TypeORM:** ใช้ `synchronize: true` ใน local dev — ระวัง production
-- **Rebuild:** ต้อง `docker compose -f docker-compose.local.yml up -d --build` ทุกครั้งที่แก้ไฟล์
+- **TypeORM:** ใช้ `synchronize: true` — ห้ามเปลี่ยนชนิด Primary Key ของตารางเดิมที่มีข้อมูลบน VPS (เช่น `system_settings.key` ต้องเป็น `varchar`)
+- **Rebuild (Local):** `docker compose -f docker-compose.local.yml up -d --build`
+- **Rebuild (VPS):** `cd /var/www/Proregis && git pull origin main && docker compose up -d --build`
+
+---
+
+## 11. Central IAM Integration (v2.8.0) & Backoffice AI Copilot
+
+> **📄 อ่านรายละเอียดฉบับเต็มได้ที่ [`MEMORY.md`](file:///d:/Python/ProRegis/MEMORY.md) และ [`HANDOFF.md`](file:///d:/Python/ProRegis/HANDOFF.md)**
+
+1. **ขอบเขต:** ใช้เฉพาะฝั่ง **Backoffice (`/backoffice/*`, `/auth/*`)** เท่านั้น ห้ามกระทบหน้า Customer (`/p/[token]`, `/my-warranty`)
+2. **1-Click Seamless SSO Portal Launch:**
+   - เมื่อคลิกจากหน้า Central IAM Portal (`https://ciam.windowasia.com/portal`) มายัง `/backoffice` หรือ `/backoffice/auth/start` หรือ `/auth/start` ระบบจะทำ Auto-Initiate SSO ทันทีโดยไม่หยุดค้างที่หน้า Login
+   - เมื่อกด Logoff จาก SSO ระบบจะพากลับไปยัง `https://ciam.windowasia.com/portal`
+   - หากต้องการเข้าหน้า Login ด้วยรหัสผ่าน Local ตรงๆ ให้ใช้ `/backoffice?local=1`
+3. **Default Role เมื่อ Auto-Provision:** กำหนดสิทธิ์เริ่มต้นน้อยที่สุดคือ `IMAGE_EDITOR` (ปรับเปลี่ยนได้ใน `/backoffice/settings` แท็บ `Central IAM (SSO)`)
+4. **System Settings 8 Tabs (`/backoffice/settings`):** แยกเป็น `GENERAL`, `CIAM`, `AI`, `SMS`, `EMAIL`, `TELEGRAM`, `SAP`, และ `DANGER`
+
