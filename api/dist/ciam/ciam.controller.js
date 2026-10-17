@@ -75,6 +75,9 @@ let CiamSsoAuthController = class CiamSsoAuthController {
     constructor(ciamService) {
         this.ciamService = ciamService;
     }
+    async ssoLoginRedirect(res) {
+        return res.redirect('/auth/start');
+    }
     async getSsoConfig() {
         return this.ciamService.getSsoConfig();
     }
@@ -93,6 +96,13 @@ let CiamSsoAuthController = class CiamSsoAuthController {
     }
 };
 exports.CiamSsoAuthController = CiamSsoAuthController;
+__decorate([
+    (0, common_1.Get)(['login', 'start']),
+    __param(0, (0, common_1.Res)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], CiamSsoAuthController.prototype, "ssoLoginRedirect", null);
 __decorate([
     (0, common_1.Get)('config'),
     __metadata("design:type", Function),

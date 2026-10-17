@@ -53,7 +53,10 @@ export default function SsoStartPage() {
           <div className="text-error font-bold text-lg">ไม่สามารถเชื่อมต่อ SSO ได้</div>
           <p className="text-xs text-on-surface-variant">{error}</p>
           <button
-            onClick={() => router.replace("/backoffice")}
+            onClick={() => {
+              sessionStorage.setItem("bo_manual_login", "1");
+              router.replace("/backoffice?local=1");
+            }}
             className="w-full h-11 bg-secondary hover:opacity-95 text-white text-xs font-bold rounded-xl cursor-pointer transition"
           >
             ไปยังหน้าเข้าสู่ระบบหลังบ้าน

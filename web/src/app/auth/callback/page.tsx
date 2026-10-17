@@ -53,6 +53,7 @@ function SsoCallbackContent() {
 
         sessionStorage.removeItem("sso_code_verifier");
         sessionStorage.removeItem("sso_state");
+        sessionStorage.removeItem("bo_manual_login");
 
         setStatusText("ยืนยันตัวตนสำเร็จ! กำลังนำเข้าสู่ระบบหลังบ้าน ProRegis...");
 
@@ -100,7 +101,10 @@ function SsoCallbackContent() {
           <div className="text-error font-bold text-lg">เข้าสู่ระบบไม่สำเร็จ</div>
           <p className="text-xs text-on-surface-variant">{error}</p>
           <button
-            onClick={() => router.replace("/backoffice")}
+            onClick={() => {
+              sessionStorage.setItem("bo_manual_login", "1");
+              router.replace("/backoffice?local=1");
+            }}
             className="w-full h-11 bg-secondary hover:opacity-95 text-white text-xs font-bold rounded-xl cursor-pointer transition"
           >
             กลับสู่หน้าเข้าสู่ระบบหลังบ้าน

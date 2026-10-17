@@ -27,7 +27,11 @@ export default function BackofficeLayout({ children }: { children: React.ReactNo
   // Accordion for Production Tracker
   const [isTrackerExpanded, setIsTrackerExpanded] = useState(true);
 
-  const isLoginPage = pathname === "/backoffice" || pathname === "/backoffice/";
+  const isAuthSubPage = Boolean(pathname?.startsWith("/backoffice/auth/"));
+  const isLoginPage =
+    pathname === "/backoffice" ||
+    pathname === "/backoffice/" ||
+    isAuthSubPage;
 
   const redirectOnLogoutOrExpiry = () => {
     const authProvider =
@@ -44,7 +48,8 @@ export default function BackofficeLayout({ children }: { children: React.ReactNo
     if (authProvider === "sso") {
       window.location.href = ciamPortalUrl;
     } else {
-      router.replace("/backoffice");
+      sessionStorage.setItem("bo_manual_login", "1");
+      router.replace("/backoffice?local=1");
     }
   };
 
@@ -52,12 +57,23 @@ export default function BackofficeLayout({ children }: { children: React.ReactNo
     setMounted(true);
     if (!pathname) return;
 
+    if (isAuthSubPage) {
+      setIsLoading(false);
+      return;
+    }
+
     const token = sessionStorage.getItem("bo_token");
     const storedSession = sessionStorage.getItem("bo_session");
 
     if (!token || !storedSession) {
       if (!isLoginPage) {
-        router.replace("/backoffice");
+        const search = typeof window !== "undefined" ? window.location.search : "";
+        const params = new URLSearchParams(search);
+        if (params.get("code")) {
+          router.replace(`/auth/callback${search}`);
+        } else {
+          router.replace(`/backoffice${search}`);
+        }
       } else {
         setIsLoading(false);
       }

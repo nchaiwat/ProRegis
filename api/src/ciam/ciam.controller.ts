@@ -9,11 +9,12 @@ import {
   Query,
   Headers,
   Req,
+  Res,
   HttpCode,
   HttpStatus,
   UseGuards,
 } from '@nestjs/common';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { CiamService } from './ciam.service';
 import { AuditService } from '../audit/audit.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
@@ -62,6 +63,11 @@ export class CiamSettingsController {
 @Controller(['auth/sso', 'api/auth/sso'])
 export class CiamSsoAuthController {
   constructor(private readonly ciamService: CiamService) {}
+
+  @Get(['login', 'start'])
+  async ssoLoginRedirect(@Res() res: Response) {
+    return res.redirect('/auth/start');
+  }
 
   @Get('config')
   async getSsoConfig() {

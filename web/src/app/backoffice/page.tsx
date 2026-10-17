@@ -25,29 +25,10 @@ export default function BackofficePage() {
     break_glass_active: false,
   });
 
-  useEffect(() => {
-    fetch(`${getApiBaseUrl()}/auth/sso/config`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (data) {
-          setSsoConfig({
-            sso_enabled: Boolean(data.sso_enabled),
-            break_glass_active: Boolean(data.break_glass_active),
-            ciam_base_url: data.ciam_base_url,
-            login_button_label: data.login_button_label,
-          });
-          if (data.ciam_base_url) {
-            sessionStorage.setItem("bo_ciam_portal_url", `${String(data.ciam_base_url).replace(/\/+$/, "")}/portal`);
-            localStorage.setItem("app_ciam_portal_url", `${String(data.ciam_base_url).replace(/\/+$/, "")}/portal`);
-          }
-        }
-      })
-      .catch(() => {});
-  }, []);
-
   const handleCiamSso = async () => {
     setIsSsoLoading(true);
     setError("");
+    sessionStorage.removeItem("bo_manual_login");
     try {
       const redirectUri = `${window.location.origin}/auth/callback`;
       const res = await fetch(`${getApiBaseUrl()}/auth/sso/authorize-url`, {
@@ -58,6 +39,7 @@ export default function BackofficePage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.authorize_url) {
         setError(data?.message || "ไม่สามารถเริ่มต้นการเข้าสู่ระบบผ่าน Central IAM SSO ได้");
+        sessionStorage.setItem("bo_manual_login", "1");
         setIsSsoLoading(false);
         return;
       }
@@ -72,9 +54,80 @@ export default function BackofficePage() {
       window.location.href = data.authorize_url;
     } catch {
       setError("ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ Central IAM SSO ได้");
+      sessionStorage.setItem("bo_manual_login", "1");
       setIsSsoLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+
+      // 1. If OAuth2 code was sent directly to /backoffice, forward immediately to /auth/callback
+      if (params.get("code")) {
+        window.location.replace(`/auth/callback${window.location.search}`);
+        return;
+      }
+
+      // 2. Check explicit local login bypass vs explicit portal launch
+      if (
+        params.get("local") === "1" ||
+        params.get("manual") === "1" ||
+        params.get("nossoredirect") === "1"
+      ) {
+        sessionStorage.setItem("bo_manual_login", "1");
+      }
+
+      const referrer = document.referrer || "";
+      const isExplicitPortalLaunch =
+        params.get("sso") === "1" ||
+        params.get("sso") === "true" ||
+        params.get("launch") === "portal" ||
+        params.get("from") === "portal" ||
+        params.get("portal") === "1" ||
+        Boolean(params.get("iss")) ||
+        Boolean(params.get("login_hint")) ||
+        referrer.includes("ciam.windowasia.com");
+
+      if (isExplicitPortalLaunch) {
+        sessionStorage.removeItem("bo_manual_login");
+      }
+    }
+
+    fetch(`${getApiBaseUrl()}/auth/sso/config`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data) {
+          const ssoEnabled = Boolean(data.sso_enabled);
+          const breakGlassActive = Boolean(data.break_glass_active);
+          setSsoConfig({
+            sso_enabled: ssoEnabled,
+            break_glass_active: breakGlassActive,
+            ciam_base_url: data.ciam_base_url,
+            login_button_label: data.login_button_label,
+          });
+          if (data.ciam_base_url) {
+            const cleanBase = String(data.ciam_base_url).replace(/\/+$/, "");
+            sessionStorage.setItem("bo_ciam_portal_url", `${cleanBase}/portal`);
+            localStorage.setItem("app_ciam_portal_url", `${cleanBase}/portal`);
+
+            if (typeof document !== "undefined" && document.referrer && document.referrer.startsWith(cleanBase)) {
+              sessionStorage.removeItem("bo_manual_login");
+            }
+          }
+
+          // Auto-initiate 1-Click SSO bounce when SSO is enabled and Break-Glass is off
+          // unless the user explicitly chose manual local login (?local=1 or bo_manual_login)
+          if (ssoEnabled && !breakGlassActive && typeof window !== "undefined") {
+            const isManualLogin = sessionStorage.getItem("bo_manual_login") === "1";
+            if (!isManualLogin) {
+              handleCiamSso();
+            }
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();

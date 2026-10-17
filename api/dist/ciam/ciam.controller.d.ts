@@ -1,4 +1,4 @@
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { CiamService } from './ciam.service';
 import { AuditService } from '../audit/audit.service';
 export declare class CiamSettingsController {
@@ -69,6 +69,7 @@ export declare class CiamSettingsController {
 export declare class CiamSsoAuthController {
     private readonly ciamService;
     constructor(ciamService: CiamService);
+    ssoLoginRedirect(res: Response): Promise<void>;
     getSsoConfig(): Promise<{
         sso_enabled: boolean;
         break_glass_active: boolean;
