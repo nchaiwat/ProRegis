@@ -25,9 +25,26 @@
 - **Backoffice:** `http://localhost/backoffice`
 - **API:** `http://localhost/api`
 
-### Start/Rebuild Command
+### Start/Rebuild Command (Local Development)
 ```powershell
 docker compose -f docker-compose.local.yml up -d --build
+```
+
+### Production VPS Deployment Workflow (`proregis.windowasia.com`)
+> **⚠️ สำคัญมาก:** ทุกครั้งที่แก้ไขโค้ดเสร็จ ต้อง Push ขึ้น GitHub ก่อน แล้วจึงเข้าไปรันบน VPS โดยต้อง `cd /var/www/Proregis` ก่อนเสมอ และใช้ `docker-compose.yml` หลัก (ห้ามใช้ `docker-compose.local.yml` บน VPS เพราะจะชนกับ Traefik และ App อื่น)
+
+1. **บนเครื่องที่พัฒนา (Local Machine):**
+```powershell
+git add .
+git commit -m "คำอธิบายการแก้ไข"
+git push origin main
+```
+
+2. **บนเครื่อง VPS (Production Server):**
+```bash
+cd /var/www/Proregis
+git pull origin main
+docker compose up -d --build
 ```
 
 ---

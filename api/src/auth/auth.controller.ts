@@ -1,17 +1,28 @@
-import { Controller, Post, Body, Req, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Body, Req, UnauthorizedException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { UsersService } from '../users/users.service';
 import { AuditService } from '../audit/audit.service';
 import { UserStatus } from '../users/user.entity';
+import { SystemSetting } from '../backoffice/system-setting.entity';
+import { clearUserSessionRevocation } from './jwt-auth.guard';
 import * as bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
 import type { Request } from 'express';
 
-@Controller('auth')
+@Controller(['auth', 'api/auth'])
 export class AuthController {
   constructor(
     private readonly usersService: UsersService,
     private readonly auditService: AuditService,
+    @InjectRepository(SystemSetting)
+    private readonly systemSettingRepo: Repository<SystemSetting>,
   ) {}
+
+  private async getDynamicSetting(key: string, fallback: string): Promise<string> {
+    const row = await this.systemSettingRepo.findOne({ where: { key } });
+    return row && row.value ? row.value : fallback;
+  }
 
   @Post('login')
   async login(
@@ -27,6 +38,8 @@ export class AuthController {
     const usernameNormalized = (body.username || '').trim();
     const user = await this.usersService.findByUsername(usernameNormalized);
     const loginMethod = body.loginMethod || 'DB';
+    const breakGlassActive =
+      (await this.getDynamicSetting('ciam_break_glass_active', 'false')).toLowerCase() === 'true';
 
     if (!user) {
       // Log failure (without revealing username if non-existent, but standard audits check it)
@@ -81,6 +94,7 @@ export class AuthController {
     }
 
     let loginSuccess = false;
+    let resolvedGatewayBaseUrl = '';
 
     if (loginMethod === 'AD') {
       if (!user.isAdAuth) {
@@ -98,10 +112,19 @@ export class AuthController {
 
       let adError = 'AD authentication failed';
 
-      // Always try AD Gateway directly, do not verify against local cache or PIN
-      const gatewayUrl = process.env.AD_GATEWAY_URL || 'http://172.17.0.1:3100/api/v2/login';
+      // Dynamic AD Gateway URL from system_settings (Zero .env Dependency) with fallback
+      const rawGateway = await this.getDynamicSetting(
+        'ciam_ad_gateway_url',
+        process.env.AD_GATEWAY_URL || 'http://172.18.0.1:3100',
+      );
+      resolvedGatewayBaseUrl = rawGateway.trim().replace(/\/+$/, '');
+      const gatewayUrl = resolvedGatewayBaseUrl.endsWith('/api/v2/login')
+        ? resolvedGatewayBaseUrl
+        : `${resolvedGatewayBaseUrl}/api/v2/login`;
+
       const appId = process.env.AD_APP_ID || 'ProRegis';
-      const secretKey = process.env.AD_SECRET_KEY || 'd69f9e5a88e734c56e2978a63bf720c22635a9c0c32b5e2a2205510657e4e138';
+      const secretKey =
+        process.env.AD_SECRET_KEY || 'd69f9e5a88e734c56e2978a63bf720c22635a9c0c32b5e2a2205510657e4e138';
 
       const now = new Date();
       const tzOffset = 7 * 60 * 60 * 1000; // Thailand local timezone (UTC+7)
@@ -138,7 +161,7 @@ export class AuthController {
         } else {
           adError = `AD Gateway HTTP error ${response.status}: ${response.statusText}`;
         }
-      } catch (err) {
+      } catch (err: any) {
         adError = `AD Gateway connection failed to ${gatewayUrl}: ${err.message}`;
         console.error(`[AD GATEWAY ERROR] URL: ${gatewayUrl}`, err);
       }
@@ -196,6 +219,11 @@ export class AuthController {
 
     // Successful Login
     await this.usersService.recordSuccessfulLogin(user);
+    clearUserSessionRevocation(user.username);
+
+    // Dynamic session TTL from system_settings (default 480 minutes = 8 hours)
+    const ttlMinutes = parseInt(await this.getDynamicSetting('ciam_session_ttl_minutes', '480'), 10) || 480;
+    const expiresInSeconds = Math.max(60, ttlMinutes * 60);
 
     // Create JWT token
     const payload = {
@@ -204,8 +232,7 @@ export class AuthController {
       role: user.role,
     };
     const secret = process.env.JWT_SECRET || 'WindowAsiaJWTSecretKey2026';
-    // Expire token in 8 hours (OWASP recommendation for administrative sessions)
-    const token = jwt.sign(payload, secret, { expiresIn: '8h' });
+    const token = jwt.sign(payload, secret, { expiresIn: expiresInSeconds });
 
     // Write audit log
     await this.auditService.logAction(
@@ -215,8 +242,26 @@ export class AuthController {
       user.id,
       ipAddress,
       userAgent,
-      { loginMethod },
+      { loginMethod, breakGlassActive },
     );
+
+    // BG-02 Audit Log when logging in during Break-Glass emergency mode
+    if (breakGlassActive) {
+      await this.auditService.recordTransactionLog({
+        category: 'security_break_glass',
+        action: 'fallback_ad_login',
+        status: 'success',
+        message: `เข้าสู่ระบบผ่าน AD Gateway สำรองในช่วง Break-Glass: '${user.username}'`,
+        triggeredBy: `user:${user.username}`,
+        details: {
+          event_code: 'BG-02',
+          username: user.username,
+          gateway: resolvedGatewayBaseUrl || 'local_db',
+          login_method: loginMethod,
+          ip: ipAddress,
+        },
+      });
+    }
 
     // Fetch allowed menus for the user's role
     const allowedMenus = await this.usersService.findAllowedMenusByRole(user.role);

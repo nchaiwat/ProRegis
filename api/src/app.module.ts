@@ -12,11 +12,13 @@ import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { CrmModule } from './crm/crm.module';
 import { SapModule } from './sap/sap.module';
+import { CiamModule } from './ciam/ciam.module';
 import { Registration } from './registration/registration.entity';
 import { GenerationLog } from './backoffice/generation-log.entity';
 import { User } from './users/user.entity';
 import { RolePermission } from './users/role-permission.entity';
 import { AuditLog } from './audit/audit-log.entity';
+import { TransactionLog } from './audit/transaction-log.entity';
 import { ProductionOrder } from './production-order/production-order.entity';
 import { ProductMetadata } from './products/product-metadata.entity';
 import { SystemSetting } from './backoffice/system-setting.entity';
@@ -47,7 +49,7 @@ import { SystemSetting } from './backoffice/system-setting.entity';
           username,
           password,
           database,
-          entities: [Registration, GenerationLog, User, AuditLog, ProductionOrder, RolePermission, ProductMetadata, SystemSetting],
+          entities: [Registration, GenerationLog, User, AuditLog, TransactionLog, ProductionOrder, RolePermission, ProductMetadata, SystemSetting],
           synchronize: true, // Automatically updates tables to match entity schema (Dev mode only)
         };
       },
@@ -61,6 +63,7 @@ import { SystemSetting } from './backoffice/system-setting.entity';
     AuthModule,
     CrmModule,
     SapModule,
+    CiamModule,
   ],
   controllers: [AppController],
   providers: [AppService],

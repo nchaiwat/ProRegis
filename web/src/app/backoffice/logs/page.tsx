@@ -26,12 +26,24 @@ interface AuthLogEntry {
   loggedAt: string;
 }
 
+interface TransactionLogEntry {
+  id: number;
+  category: string;
+  action: string;
+  status: string;
+  message: string;
+  details: string | null;
+  triggeredBy: string;
+  createdAt: string;
+}
+
 export default function LogsPage() {
   const router = useRouter();
   const [session, setSession] = useState<{ username: string } | null>(null);
-  const [activeTab, setActiveTab] = useState<"QR" | "AUTH">("QR");
+  const [activeTab, setActiveTab] = useState<"QR" | "AUTH" | "CIAM">("QR");
   const [qrLogs, setQrLogs] = useState<LogEntry[]>([]);
   const [authLogs, setAuthLogs] = useState<AuthLogEntry[]>([]);
+  const [ciamLogs, setCiamLogs] = useState<TransactionLogEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -49,12 +61,17 @@ export default function LogsPage() {
     setIsLoading(true);
     setError("");
     const token = sessionStorage.getItem("bo_token") || "";
-    const endpoint = activeTab === "QR" ? "logs" : "auth-logs";
+    const endpoint =
+      activeTab === "QR"
+        ? "logs"
+        : activeTab === "AUTH"
+        ? "auth-logs"
+        : "transaction-logs";
 
     fetch(`${getApiBaseUrl()}/backoffice/${endpoint}?limit=100`, {
       headers: {
-        "Authorization": `Bearer ${token}`
-      }
+        Authorization: `Bearer ${token}`,
+      },
     })
       .then((r) => {
         if (r.status === 401 || r.status === 403) {
@@ -67,8 +84,10 @@ export default function LogsPage() {
       .then((data) => {
         if (activeTab === "QR") {
           setQrLogs(data.logs || []);
-        } else {
+        } else if (activeTab === "AUTH") {
           setAuthLogs(data.logs || []);
+        } else {
+          setCiamLogs(data.logs || []);
         }
       })
       .catch(() => setError("ไม่สามารถโหลดประวัติได้"))
@@ -86,6 +105,13 @@ export default function LogsPage() {
 
   if (!session) return null;
 
+  const activeCount =
+    activeTab === "QR"
+      ? qrLogs.length
+      : activeTab === "AUTH"
+      ? authLogs.length
+      : ciamLogs.length;
+
   return (
     <div className="max-w-4xl mx-auto space-y-6 animate-success">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -94,16 +120,16 @@ export default function LogsPage() {
           <p className="text-sm text-on-surface-variant">ตรวจสอบและติดตามการทำงานต่าง ๆ ของระบบ</p>
         </div>
         <div className="text-sm text-on-surface-variant font-bold">
-          {!isLoading && <span>{activeTab === "QR" ? qrLogs.length : authLogs.length} รายการ</span>}
+          {!isLoading && <span>{activeCount} รายการ</span>}
         </div>
       </div>
 
       {/* Tab Selector */}
-      <div className="flex gap-2 p-1 bg-slate-100 border border-outline-variant rounded-xl max-w-xs select-none">
+      <div className="flex gap-2 p-1 bg-slate-100 border border-outline-variant rounded-xl max-w-md select-none">
         <button
           type="button"
           onClick={() => setActiveTab("QR")}
-          className={`flex-grow py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+          className={`flex-grow py-2 px-3 text-xs font-bold rounded-lg transition-all cursor-pointer ${
             activeTab === "QR"
               ? "bg-secondary text-white shadow-sm"
               : "text-slate-600 hover:text-primary"
@@ -114,13 +140,24 @@ export default function LogsPage() {
         <button
           type="button"
           onClick={() => setActiveTab("AUTH")}
-          className={`flex-grow py-2 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+          className={`flex-grow py-2 px-3 text-xs font-bold rounded-lg transition-all cursor-pointer ${
             activeTab === "AUTH"
               ? "bg-secondary text-white shadow-sm"
               : "text-slate-600 hover:text-primary"
           }`}
         >
           ประวัติการล็อกอิน (Auth)
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("CIAM")}
+          className={`flex-grow py-2 px-3 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+            activeTab === "CIAM"
+              ? "bg-secondary text-white shadow-sm"
+              : "text-slate-600 hover:text-primary"
+          }`}
+        >
+          ธุรกรรม Central IAM
         </button>
       </div>
 
@@ -186,7 +223,7 @@ export default function LogsPage() {
             </div>
           </div>
         )
-      ) : (
+      ) : activeTab === "AUTH" ? (
         authLogs.length === 0 ? (
           <div className="text-center py-20 text-on-surface-variant bg-white border border-outline-variant rounded-2xl">
             <span className="material-symbols-outlined !text-5xl text-outline mb-3 block">lock_open</span>
@@ -229,7 +266,7 @@ export default function LogsPage() {
                         </td>
                         <td className="px-4 py-3 text-xs">
                           <span className={`inline-block px-2.5 py-0.5 rounded font-extrabold text-[10px] uppercase border ${
-                            loginMethod === "AD"
+                            loginMethod === "AD" || loginMethod === "CIAM_SSO"
                               ? "bg-sky-50 text-sky-700 border-sky-200"
                               : "bg-purple-50 text-purple-700 border-purple-200"
                           }`}>
@@ -260,6 +297,64 @@ export default function LogsPage() {
             </div>
           </div>
         )
+      ) : ciamLogs.length === 0 ? (
+        <div className="text-center py-20 text-on-surface-variant bg-white border border-outline-variant rounded-2xl">
+          <span className="material-symbols-outlined !text-5xl text-outline mb-3 block">shield_person</span>
+          <p className="text-sm">ยังไม่มีประวัติธุรกรรม Central IAM (transaction_logs)</p>
+        </div>
+      ) : (
+        <div className="bg-white border border-outline-variant rounded-2xl overflow-hidden shadow-sm">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-surface-container-low border-b border-outline-variant">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-bold text-on-surface-variant uppercase tracking-wider">วันเวลา</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold text-on-surface-variant uppercase tracking-wider">หมวดหมู่</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold text-on-surface-variant uppercase tracking-wider">Action</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold text-on-surface-variant uppercase tracking-wider">สถานะ</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold text-on-surface-variant uppercase tracking-wider">ข้อความสรุป</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold text-on-surface-variant uppercase tracking-wider">Triggered By</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-outline-variant/50">
+                {ciamLogs.map((log) => (
+                  <tr key={log.id} className="hover:bg-surface-container-low/50 transition-colors">
+                    <td className="px-4 py-3 text-xs text-on-surface-variant whitespace-nowrap">
+                      {formatDate(log.createdAt)}
+                    </td>
+                    <td className="px-4 py-3 text-xs font-mono font-bold text-primary">
+                      {log.category}
+                    </td>
+                    <td className="px-4 py-3 text-xs font-mono text-on-surface-variant">
+                      {log.action}
+                    </td>
+                    <td className="px-4 py-3 text-xs">
+                      <span
+                        className={`inline-block px-2 py-0.5 rounded font-bold text-[10px] uppercase ${
+                          log.status === "success"
+                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                            : log.status === "warning"
+                            ? "bg-amber-50 text-amber-700 border border-amber-200"
+                            : log.status === "failed"
+                            ? "bg-rose-50 text-rose-700 border border-rose-200"
+                            : "bg-sky-50 text-sky-700 border border-sky-200"
+                        }`}
+                      >
+                        {log.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-primary max-w-sm truncate" title={log.message}>
+                      {log.message}
+                    </td>
+                    <td className="px-4 py-3 text-xs font-mono text-outline">
+                      {log.triggeredBy}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
     </div>
   );

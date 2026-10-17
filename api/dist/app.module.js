@@ -21,11 +21,13 @@ const audit_module_1 = require("./audit/audit.module");
 const auth_module_1 = require("./auth/auth.module");
 const crm_module_1 = require("./crm/crm.module");
 const sap_module_1 = require("./sap/sap.module");
+const ciam_module_1 = require("./ciam/ciam.module");
 const registration_entity_1 = require("./registration/registration.entity");
 const generation_log_entity_1 = require("./backoffice/generation-log.entity");
 const user_entity_1 = require("./users/user.entity");
 const role_permission_entity_1 = require("./users/role-permission.entity");
 const audit_log_entity_1 = require("./audit/audit-log.entity");
+const transaction_log_entity_1 = require("./audit/transaction-log.entity");
 const production_order_entity_1 = require("./production-order/production-order.entity");
 const product_metadata_entity_1 = require("./products/product-metadata.entity");
 const system_setting_entity_1 = require("./backoffice/system-setting.entity");
@@ -55,7 +57,7 @@ exports.AppModule = AppModule = __decorate([
                         username,
                         password,
                         database,
-                        entities: [registration_entity_1.Registration, generation_log_entity_1.GenerationLog, user_entity_1.User, audit_log_entity_1.AuditLog, production_order_entity_1.ProductionOrder, role_permission_entity_1.RolePermission, product_metadata_entity_1.ProductMetadata, system_setting_entity_1.SystemSetting],
+                        entities: [registration_entity_1.Registration, generation_log_entity_1.GenerationLog, user_entity_1.User, audit_log_entity_1.AuditLog, transaction_log_entity_1.TransactionLog, production_order_entity_1.ProductionOrder, role_permission_entity_1.RolePermission, product_metadata_entity_1.ProductMetadata, system_setting_entity_1.SystemSetting],
                         synchronize: true,
                     };
                 },
@@ -69,6 +71,7 @@ exports.AppModule = AppModule = __decorate([
             auth_module_1.AuthModule,
             crm_module_1.CrmModule,
             sap_module_1.SapModule,
+            ciam_module_1.CiamModule,
         ],
         controllers: [app_controller_1.AppController],
         providers: [app_service_1.AppService],

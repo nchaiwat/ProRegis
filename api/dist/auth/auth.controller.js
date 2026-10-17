@@ -47,17 +47,27 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AuthController = void 0;
 const common_1 = require("@nestjs/common");
+const typeorm_1 = require("@nestjs/typeorm");
+const typeorm_2 = require("typeorm");
 const users_service_1 = require("../users/users.service");
 const audit_service_1 = require("../audit/audit.service");
 const user_entity_1 = require("../users/user.entity");
+const system_setting_entity_1 = require("../backoffice/system-setting.entity");
+const jwt_auth_guard_1 = require("./jwt-auth.guard");
 const bcrypt = __importStar(require("bcryptjs"));
 const jwt = __importStar(require("jsonwebtoken"));
 let AuthController = class AuthController {
     usersService;
     auditService;
-    constructor(usersService, auditService) {
+    systemSettingRepo;
+    constructor(usersService, auditService, systemSettingRepo) {
         this.usersService = usersService;
         this.auditService = auditService;
+        this.systemSettingRepo = systemSettingRepo;
+    }
+    async getDynamicSetting(key, fallback) {
+        const row = await this.systemSettingRepo.findOne({ where: { key } });
+        return row && row.value ? row.value : fallback;
     }
     async login(body, req) {
         const ipAddress = req.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
@@ -67,6 +77,7 @@ let AuthController = class AuthController {
         const usernameNormalized = (body.username || '').trim();
         const user = await this.usersService.findByUsername(usernameNormalized);
         const loginMethod = body.loginMethod || 'DB';
+        const breakGlassActive = (await this.getDynamicSetting('ciam_break_glass_active', 'false')).toLowerCase() === 'true';
         if (!user) {
             await this.auditService.logAction(usernameNormalized, 'LOGIN_FAILED', 'Auth', null, ipAddress, userAgent, { reason: 'Username not found in database', loginMethod });
             throw new common_1.UnauthorizedException('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
@@ -89,51 +100,57 @@ let AuthController = class AuthController {
             }
         }
         let loginSuccess = false;
+        let resolvedGatewayBaseUrl = '';
         if (loginMethod === 'AD') {
             if (!user.isAdAuth) {
                 await this.auditService.logAction(user.username, 'LOGIN_FAILED', 'Auth', user.id, ipAddress, userAgent, { reason: 'AD login is not enabled for this user account', loginMethod: 'AD' });
                 throw new common_1.UnauthorizedException('บัญชีผู้ใช้นี้ไม่ได้เปิดใช้งาน Active Directory');
             }
-            const isPinCorrect = !!(user.pinCode && body.passwordPlain === user.pinCode);
-            loginSuccess = isPinCorrect;
             let adError = 'AD authentication failed';
-            if (!loginSuccess) {
-                const gatewayUrl = process.env.AD_GATEWAY_URL || 'http://192.168.12.8:3100/api/v2/login';
-                const appId = process.env.AD_APP_ID || 'ProRegis';
-                const secretKey = process.env.AD_SECRET_KEY || 'd69f9e5a88e734c56e2978a63bf720c22635a9c0c32b5e2a2205510657e4e138';
-                const now = new Date();
-                const tzOffset = 7 * 60 * 60 * 1000;
-                const thTime = new Date(now.getTime() + tzOffset);
-                const timestamp = thTime.toISOString().split('.')[0] + 'Z';
-                try {
-                    const response = await fetch(gatewayUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            app_id: appId,
-                            secret_key: secretKey,
-                            username: user.username,
-                            password: body.passwordPlain,
-                            timestamp,
-                        }),
-                    });
-                    if (response.ok) {
-                        const data = await response.json();
-                        if (data && data.status === 'success') {
-                            loginSuccess = true;
-                        }
-                        else {
-                            adError = data?.message || `AD Gateway returned status: ${data?.status || 'failed'}`;
-                        }
+            const rawGateway = await this.getDynamicSetting('ciam_ad_gateway_url', process.env.AD_GATEWAY_URL || 'http://172.18.0.1:3100');
+            resolvedGatewayBaseUrl = rawGateway.trim().replace(/\/+$/, '');
+            const gatewayUrl = resolvedGatewayBaseUrl.endsWith('/api/v2/login')
+                ? resolvedGatewayBaseUrl
+                : `${resolvedGatewayBaseUrl}/api/v2/login`;
+            const appId = process.env.AD_APP_ID || 'ProRegis';
+            const secretKey = process.env.AD_SECRET_KEY || 'd69f9e5a88e734c56e2978a63bf720c22635a9c0c32b5e2a2205510657e4e138';
+            const now = new Date();
+            const tzOffset = 7 * 60 * 60 * 1000;
+            const thTime = new Date(now.getTime() + tzOffset);
+            const timestamp = thTime.toISOString().split('.')[0] + 'Z';
+            const vpsIp = process.env.VPS_IP || '157.173.219.153';
+            try {
+                const response = await fetch(gatewayUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Forwarded-For': vpsIp,
+                        'X-Real-IP': vpsIp,
+                    },
+                    body: JSON.stringify({
+                        app_id: appId,
+                        secret_key: secretKey,
+                        username: user.username,
+                        password: body.passwordPlain,
+                        timestamp,
+                    }),
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data && data.status === 'success') {
+                        loginSuccess = true;
                     }
                     else {
-                        adError = `AD Gateway HTTP error ${response.status}: ${response.statusText}`;
+                        adError = data?.message || `AD Gateway returned status: ${data?.status || 'failed'}`;
                     }
                 }
-                catch (err) {
-                    adError = `AD Gateway connection failed: ${err.message}`;
-                    console.error('[AD GATEWAY ERROR]', err);
+                else {
+                    adError = `AD Gateway HTTP error ${response.status}: ${response.statusText}`;
                 }
+            }
+            catch (err) {
+                adError = `AD Gateway connection failed to ${gatewayUrl}: ${err.message}`;
+                console.error(`[AD GATEWAY ERROR] URL: ${gatewayUrl}`, err);
             }
             if (!loginSuccess) {
                 await this.usersService.recordFailedAttempt(user);
@@ -142,6 +159,10 @@ let AuthController = class AuthController {
             }
         }
         else {
+            if (user.isAdAuth) {
+                await this.auditService.logAction(user.username, 'LOGIN_FAILED', 'Auth', user.id, ipAddress, userAgent, { reason: 'User is configured for AD login but attempted DB login', loginMethod: 'DB' });
+                throw new common_1.UnauthorizedException('บัญชีผู้ใช้นี้เข้าสู่ระบบผ่าน Active Directory เท่านั้น กรุณาเลือกวิธีเข้าสู่ระบบเป็น Active Directory');
+            }
             const isPasswordCorrect = await bcrypt.compare(body.passwordPlain || '', user.passwordHash);
             const isPinCorrect = !!(user.pinCode && body.passwordPlain === user.pinCode);
             loginSuccess = isPasswordCorrect || isPinCorrect;
@@ -152,14 +173,33 @@ let AuthController = class AuthController {
             }
         }
         await this.usersService.recordSuccessfulLogin(user);
+        (0, jwt_auth_guard_1.clearUserSessionRevocation)(user.username);
+        const ttlMinutes = parseInt(await this.getDynamicSetting('ciam_session_ttl_minutes', '480'), 10) || 480;
+        const expiresInSeconds = Math.max(60, ttlMinutes * 60);
         const payload = {
             id: user.id,
             username: user.username,
             role: user.role,
         };
         const secret = process.env.JWT_SECRET || 'WindowAsiaJWTSecretKey2026';
-        const token = jwt.sign(payload, secret, { expiresIn: '8h' });
-        await this.auditService.logAction(user.username, 'LOGIN_SUCCESS', 'Auth', user.id, ipAddress, userAgent, { loginMethod });
+        const token = jwt.sign(payload, secret, { expiresIn: expiresInSeconds });
+        await this.auditService.logAction(user.username, 'LOGIN_SUCCESS', 'Auth', user.id, ipAddress, userAgent, { loginMethod, breakGlassActive });
+        if (breakGlassActive) {
+            await this.auditService.recordTransactionLog({
+                category: 'security_break_glass',
+                action: 'fallback_ad_login',
+                status: 'success',
+                message: `เข้าสู่ระบบผ่าน AD Gateway สำรองในช่วง Break-Glass: '${user.username}'`,
+                triggeredBy: `user:${user.username}`,
+                details: {
+                    event_code: 'BG-02',
+                    username: user.username,
+                    gateway: resolvedGatewayBaseUrl || 'local_db',
+                    login_method: loginMethod,
+                    ip: ipAddress,
+                },
+            });
+        }
         const allowedMenus = await this.usersService.findAllowedMenusByRole(user.role);
         return {
             success: true,
@@ -182,8 +222,10 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], AuthController.prototype, "login", null);
 exports.AuthController = AuthController = __decorate([
-    (0, common_1.Controller)('auth'),
+    (0, common_1.Controller)(['auth', 'api/auth']),
+    __param(2, (0, typeorm_1.InjectRepository)(system_setting_entity_1.SystemSetting)),
     __metadata("design:paramtypes", [users_service_1.UsersService,
-        audit_service_1.AuditService])
+        audit_service_1.AuditService,
+        typeorm_2.Repository])
 ], AuthController);
 //# sourceMappingURL=auth.controller.js.map

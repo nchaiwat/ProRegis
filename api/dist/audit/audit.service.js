@@ -17,10 +17,13 @@ const common_1 = require("@nestjs/common");
 const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
 const audit_log_entity_1 = require("./audit-log.entity");
+const transaction_log_entity_1 = require("./transaction-log.entity");
 let AuditService = class AuditService {
     auditRepository;
-    constructor(auditRepository) {
+    transactionLogRepository;
+    constructor(auditRepository, transactionLogRepository) {
         this.auditRepository = auditRepository;
+        this.transactionLogRepository = transactionLogRepository;
     }
     async logAction(actorUsername, action, resource, resourceId = null, ipAddress = null, userAgent = null, details = null) {
         const detailsStr = details ? JSON.stringify(details) : null;
@@ -35,11 +38,37 @@ let AuditService = class AuditService {
         });
         return this.auditRepository.save(log);
     }
+    async recordTransactionLog(params) {
+        const detailsStr = params.details !== undefined && params.details !== null
+            ? typeof params.details === 'string'
+                ? params.details
+                : JSON.stringify(params.details)
+            : null;
+        const entry = this.transactionLogRepository.create({
+            category: params.category,
+            action: params.action,
+            status: params.status || 'success',
+            message: params.message,
+            details: detailsStr,
+            recordsCount: params.recordsCount ?? 0,
+            durationMs: params.durationMs ?? 0,
+            triggeredBy: params.triggeredBy,
+        });
+        return this.transactionLogRepository.save(entry);
+    }
+    async getTransactionLogs(limit = 100) {
+        return this.transactionLogRepository.find({
+            order: { createdAt: 'DESC' },
+            take: limit,
+        });
+    }
 };
 exports.AuditService = AuditService;
 exports.AuditService = AuditService = __decorate([
     (0, common_1.Injectable)(),
     __param(0, (0, typeorm_1.InjectRepository)(audit_log_entity_1.AuditLog)),
-    __metadata("design:paramtypes", [typeorm_2.Repository])
+    __param(1, (0, typeorm_1.InjectRepository)(transaction_log_entity_1.TransactionLog)),
+    __metadata("design:paramtypes", [typeorm_2.Repository,
+        typeorm_2.Repository])
 ], AuditService);
 //# sourceMappingURL=audit.service.js.map

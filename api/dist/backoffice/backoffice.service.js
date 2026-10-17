@@ -60,6 +60,7 @@ const telegram_service_1 = require("../telegram/telegram.service");
 const sap_service_1 = require("../sap/sap.service");
 const products_service_1 = require("../products/products.service");
 const crypto = __importStar(require("crypto"));
+const nodemailer = __importStar(require("nodemailer"));
 const SECRET_KEY = crypto
     .createHash('sha256')
     .update(process.env.AES_SECRET_KEY || 'WindowAsiaSecretKey2026')
@@ -136,6 +137,20 @@ let BackofficeService = BackofficeService_1 = class BackofficeService {
             { key: 'SMTP_PASS', value: '' },
             { key: 'SMTP_FROM_NAME', value: 'Window Asia Warranty' },
             { key: 'SMTP_FROM_EMAIL', value: 'itwindowasia@gmail.com' },
+            { key: 'SMTP_EMAIL_SUBJECT', value: 'รหัสยืนยันตัวตนสำหรับการลงทะเบียนรับประกันสินค้า (Warranty Verification OTP)' },
+            { key: 'SMTP_EMAIL_BODY', value: `<div style="font-family: sans-serif; padding: 20px; max-width: 600px; border: 1px solid #e2e8f0; border-radius: 12px;">
+  <h2 style="color: #0f172a; margin-bottom: 16px;">ยืนยันตัวตนการรับประกันสินค้า Window Asia</h2>
+  <p style="color: #475569; font-size: 14px; line-height: 1.5;">เรียน ลูกค้าผู้มีอุปการคุณ</p>
+  <p style="color: #475569; font-size: 14px; line-height: 1.5;">รหัสยืนยันตัวตน (OTP) ของคุณคือ:</p>
+  <div style="background-color: #f1f5f9; padding: 15px; text-align: center; border-radius: 8px; margin: 20px 0;">
+    <span style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #2563eb;">{code}</span>
+  </div>
+  <p style="color: #ef4444; font-size: 12px; font-weight: 600;">*รหัส OTP นี้จะมีอายุการใช้งาน 5 นาที</p>
+  <p style="color: #64748b; font-size: 12px; border-top: 1px solid #e2e8f0; padding-top: 15px; margin-top: 25px;">
+    หากคุณไม่ได้ส่งคำขอนี้ โปรดเพิกเฉยต่ออีเมลฉบับนี้<br>
+    บริษัท วินโดว์ เอเชีย จำกัด (มหาชน)
+  </p>
+</div>` },
         ];
         for (const setting of defaultSettings) {
             try {
@@ -177,6 +192,10 @@ let BackofficeService = BackofficeService_1 = class BackofficeService {
             result['SMTP_FROM_NAME'] = { value: 'Window Asia Warranty', updatedAt: now };
         if (!result['SMTP_FROM_EMAIL'])
             result['SMTP_FROM_EMAIL'] = { value: 'itwindowasia@gmail.com', updatedAt: now };
+        if (!result['SMTP_EMAIL_SUBJECT'])
+            result['SMTP_EMAIL_SUBJECT'] = { value: 'รหัสยืนยันตัวตนสำหรับการลงทะเบียนรับประกันสินค้า (Warranty Verification OTP)', updatedAt: now };
+        if (!result['SMTP_EMAIL_BODY'])
+            result['SMTP_EMAIL_BODY'] = { value: `<div style="font-family: sans-serif; padding: 20px; max-width: 600px; border: 1px solid #e2e8f0; border-radius: 12px;">\n  <h2 style="color: #0f172a; margin-bottom: 16px;">ยืนยันตัวตนการรับประกันสินค้า Window Asia</h2>\n  <p style="color: #475569; font-size: 14px; line-height: 1.5;">เรียน ลูกค้าผู้มีอุปการคุณ</p>\n  <p style="color: #475569; font-size: 14px; line-height: 1.5;">รหัสยืนยันตัวตน (OTP) ของคุณคือ:</p>\n  <div style="background-color: #f1f5f9; padding: 15px; text-align: center; border-radius: 8px; margin: 20px 0;">\n    <span style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #2563eb;">{code}</span>\n  </div>\n  <p style="color: #ef4444; font-size: 12px; font-weight: 600;">*รหัส OTP นี้จะมีอายุการใช้งาน 5 นาที</p>\n  <p style="color: #64748b; font-size: 12px; border-top: 1px solid #e2e8f0; padding-top: 15px; margin-top: 25px;">\n    หากคุณไม่ได้ส่งคำขอนี้ โปรดเพิกเฉยต่ออีเมลฉบับนี้<br>\n    บริษัท วินโดว์ เอเชีย จำกัด (มหาชน)\n  </p>\n</div>`, updatedAt: now };
         return result;
     }
     async updateSystemSetting(key, value) {
@@ -192,6 +211,74 @@ let BackofficeService = BackofficeService_1 = class BackofficeService {
     async getSettingValue(key, defaultValue) {
         const setting = await this.systemSettingRepository.findOne({ where: { key } });
         return setting ? setting.value : defaultValue;
+    }
+    async testSmtpSetting(config) {
+        const smtpHost = config.smtpHost || 'smtp.gmail.com';
+        const smtpPort = parseInt(config.smtpPort || '587', 10);
+        const smtpSecure = config.smtpSecure === 'true';
+        const smtpUser = config.smtpUser || 'itwindowasia@gmail.com';
+        const smtpPass = config.smtpPass || '';
+        const smtpFromName = config.smtpFromName || 'Window Asia Warranty';
+        const smtpFromEmail = config.smtpFromEmail || smtpUser;
+        const testEmail = config.testEmail;
+        if (!testEmail) {
+            throw new common_1.BadRequestException('โปรดระบุอีเมลปลายทางสำหรับการทดสอบ');
+        }
+        try {
+            const transporter = nodemailer.createTransport({
+                host: smtpHost,
+                port: smtpPort,
+                secure: smtpSecure,
+                auth: {
+                    user: smtpUser,
+                    pass: smtpPass,
+                },
+                tls: {
+                    rejectUnauthorized: false,
+                },
+            });
+            const sampleCode = Math.floor(100000 + Math.random() * 900000).toString();
+            let subject = config.subject || 'รหัสยืนยันตัวตนสำหรับการทดสอบ (Test Verification OTP)';
+            let body = config.bodyTemplate || `
+        <div style="font-family: sans-serif; padding: 20px; max-width: 600px; border: 1px solid #e2e8f0; border-radius: 12px;">
+          <h2 style="color: #0f172a; margin-bottom: 16px;">ทดสอบการส่งอีเมลรับประกันสินค้า Window Asia</h2>
+          <p style="color: #475569; font-size: 14px; line-height: 1.5;">เรียน ผู้ทดสอบระบบ</p>
+          <p style="color: #475569; font-size: 14px; line-height: 1.5;">นี่คืออีเมลทดสอบสำหรับยืนยันการตั้งค่า SMTP Server รหัส OTP จำลองของคุณคือ:</p>
+          <div style="background-color: #f1f5f9; padding: 15px; text-align: center; border-radius: 8px; margin: 20px 0;">
+            <span style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #2563eb;">{code}</span>
+          </div>
+          <p style="color: #64748b; font-size: 12px; border-top: 1px solid #e2e8f0; padding-top: 15px; margin-top: 25px;">
+            หากคุณได้รับอีเมลฉบับนี้ แสดงว่าการตั้งค่าระบบส่งอีเมล SMTP ถูกต้องและใช้งานได้จริง
+          </p>
+        </div>
+      `;
+            body = body.replace(/{code}/g, sampleCode);
+            await transporter.sendMail({
+                from: `"${smtpFromName}" <${smtpFromEmail}>`,
+                to: testEmail,
+                subject,
+                html: body,
+            });
+            await this.auditLogRepository.save(this.auditLogRepository.create({
+                actorUsername: 'ADMIN',
+                action: 'SMTP_TEST_SUCCESS',
+                resource: 'EMAIL',
+                resourceId: testEmail,
+                details: JSON.stringify({ host: smtpHost, user: smtpUser, success: true }),
+            })).catch(() => { });
+            return { success: true, message: 'ส่งอีเมลทดสอบสำเร็จ โปรดตรวจสอบกล่องข้อความของอีเมลปลายทาง' };
+        }
+        catch (err) {
+            console.error('[SMTP TEST ERROR] SMTP test failed:', err);
+            await this.auditLogRepository.save(this.auditLogRepository.create({
+                actorUsername: 'ADMIN',
+                action: 'SMTP_TEST_FAIL',
+                resource: 'EMAIL',
+                resourceId: testEmail,
+                details: JSON.stringify({ host: smtpHost, user: smtpUser, success: false, error: err.message }),
+            })).catch(() => { });
+            throw new common_1.BadRequestException(`ไม่สามารถเชื่อมต่อ SMTP หรือส่งอีเมลทดสอบได้: ${err.message}`);
+        }
     }
     encryptToToken(docNum, seqStr) {
         const rawData = `${docNum}:${seqStr}`;

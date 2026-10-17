@@ -33,6 +33,21 @@ export declare class BackofficeService implements OnModuleInit {
     }>>;
     updateSystemSetting(key: string, value: string): Promise<void>;
     getSettingValue(key: string, defaultValue: string): Promise<string>;
+    testSmtpSetting(config: {
+        smtpHost: string;
+        smtpPort: string;
+        smtpSecure: string;
+        smtpUser: string;
+        smtpPass: string;
+        smtpFromName: string;
+        smtpFromEmail: string;
+        testEmail: string;
+        subject?: string;
+        bodyTemplate?: string;
+    }): Promise<{
+        success: boolean;
+        message: string;
+    }>;
     encryptToToken(docNum: string, seqStr: string): string;
     decryptToken(token: string): {
         docNum: string;

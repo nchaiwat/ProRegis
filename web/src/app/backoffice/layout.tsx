@@ -4,6 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { getApiBaseUrl } from "@/lib/api";
+import SpokeCopilotWidget from "./SpokeCopilotWidget";
 
 interface SessionInfo {
   username: string;
@@ -28,6 +29,25 @@ export default function BackofficeLayout({ children }: { children: React.ReactNo
 
   const isLoginPage = pathname === "/backoffice" || pathname === "/backoffice/";
 
+  const redirectOnLogoutOrExpiry = () => {
+    const authProvider =
+      sessionStorage.getItem("bo_auth_provider") ||
+      localStorage.getItem("app_auth_provider");
+    const ciamPortalUrl =
+      sessionStorage.getItem("bo_ciam_portal_url") ||
+      localStorage.getItem("app_ciam_portal_url") ||
+      "https://ciam.windowasia.com/portal";
+
+    sessionStorage.clear();
+    localStorage.removeItem("app_auth_provider");
+
+    if (authProvider === "sso") {
+      window.location.href = ciamPortalUrl;
+    } else {
+      router.replace("/backoffice");
+    }
+  };
+
   useEffect(() => {
     setMounted(true);
     if (!pathname) return;
@@ -48,10 +68,10 @@ export default function BackofficeLayout({ children }: { children: React.ReactNo
       const s = JSON.parse(storedSession);
       // Verify session expiry (8 hours matching JWT)
       if (Date.now() - s.at > 8 * 60 * 60 * 1000) {
-        sessionStorage.clear();
         if (!isLoginPage) {
-          router.replace("/backoffice");
+          redirectOnLogoutOrExpiry();
         } else {
+          sessionStorage.clear();
           setIsLoading(false);
         }
         return;
@@ -69,6 +89,8 @@ export default function BackofficeLayout({ children }: { children: React.ReactNo
           router.replace("/backoffice/generate");
         } else if (s.role === "CRM_MANAGER") {
           router.replace("/backoffice/crm");
+        } else if (s.role === "IMAGE_EDITOR") {
+          router.replace("/backoffice/product-images");
         } else {
           router.replace("/backoffice/generate");
         }
@@ -100,6 +122,10 @@ export default function BackofficeLayout({ children }: { children: React.ReactNo
           Authorization: `Bearer ${token}`,
         },
       });
+      if (res.status === 401) {
+        redirectOnLogoutOrExpiry();
+        return;
+      }
       if (res.ok) {
         const data = await res.json();
         const mode = data.QR_CODE_MODE?.value || "STATIC";
@@ -130,8 +156,7 @@ export default function BackofficeLayout({ children }: { children: React.ReactNo
   }, [pathname]);
 
   const handleLogout = () => {
-    sessionStorage.clear();
-    router.replace("/backoffice");
+    redirectOnLogoutOrExpiry();
   };
 
   // Render children directly during server side render to avoid hydration mismatch
@@ -447,6 +472,9 @@ export default function BackofficeLayout({ children }: { children: React.ReactNo
       <main className="flex-1 min-w-0 p-5 md:p-8 overflow-y-auto">
         {children}
       </main>
+
+      {/* In-App AI Copilot Floating Widget (Backoffice Only, renders only when enabled) */}
+      <SpokeCopilotWidget />
     </div>
   );
 }

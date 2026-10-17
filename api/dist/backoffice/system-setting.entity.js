@@ -14,17 +14,32 @@ const typeorm_1 = require("typeorm");
 let SystemSetting = class SystemSetting {
     key;
     value;
+    description;
+    category;
+    dataType;
     updatedAt;
 };
 exports.SystemSetting = SystemSetting;
 __decorate([
-    (0, typeorm_1.PrimaryColumn)({ type: 'varchar' }),
+    (0, typeorm_1.PrimaryColumn)({ type: 'varchar', length: 100 }),
     __metadata("design:type", String)
 ], SystemSetting.prototype, "key", void 0);
 __decorate([
-    (0, typeorm_1.Column)({ type: 'varchar' }),
+    (0, typeorm_1.Column)({ type: 'text', nullable: true }),
     __metadata("design:type", String)
 ], SystemSetting.prototype, "value", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', length: 250, nullable: true }),
+    __metadata("design:type", Object)
+], SystemSetting.prototype, "description", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ type: 'varchar', length: 50, default: 'general', nullable: true }),
+    __metadata("design:type", String)
+], SystemSetting.prototype, "category", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'data_type', type: 'varchar', length: 20, default: 'string', nullable: true }),
+    __metadata("design:type", String)
+], SystemSetting.prototype, "dataType", void 0);
 __decorate([
     (0, typeorm_1.UpdateDateColumn)(),
     __metadata("design:type", Date)

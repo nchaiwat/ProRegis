@@ -105,6 +105,9 @@ let BackofficeController = class BackofficeController {
         await this.backofficeService.updateSystemSetting(body.key, body.value);
         return { success: true };
     }
+    async testEmailSettings(body) {
+        return this.backofficeService.testSmtpSetting(body);
+    }
     async clearTestData(body) {
         await this.backofficeService.clearTestData(body?.tables);
         return { success: true, message: 'ล้างข้อมูลการทดสอบที่เลือกเรียบร้อยแล้ว' };
@@ -233,6 +236,15 @@ __decorate([
     __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", Promise)
 ], BackofficeController.prototype, "updateSettings", null);
+__decorate([
+    (0, common_1.Post)('settings/test-email'),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),
+    (0, roles_guard_1.Roles)('SYSTEM_ADMIN'),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], BackofficeController.prototype, "testEmailSettings", null);
 __decorate([
     (0, common_1.Post)('clear-test-data'),
     (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard, roles_guard_1.RolesGuard),

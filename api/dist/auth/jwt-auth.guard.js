@@ -40,8 +40,21 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.JwtAuthGuard = void 0;
+exports.revokeUserActiveSessions = revokeUserActiveSessions;
+exports.clearUserSessionRevocation = clearUserSessionRevocation;
 const common_1 = require("@nestjs/common");
 const jwt = __importStar(require("jsonwebtoken"));
+const revokedUserTimestamps = new Map();
+function revokeUserActiveSessions(username) {
+    if (!username)
+        return;
+    revokedUserTimestamps.set(username.trim().toLowerCase(), Date.now());
+}
+function clearUserSessionRevocation(username) {
+    if (!username)
+        return;
+    revokedUserTimestamps.delete(username.trim().toLowerCase());
+}
 let JwtAuthGuard = class JwtAuthGuard {
     canActivate(context) {
         const request = context.switchToHttp().getRequest();
@@ -53,10 +66,20 @@ let JwtAuthGuard = class JwtAuthGuard {
         try {
             const secret = process.env.JWT_SECRET || 'WindowAsiaJWTSecretKey2026';
             const decoded = jwt.verify(token, secret);
+            if (decoded?.username) {
+                const revokedAt = revokedUserTimestamps.get(String(decoded.username).trim().toLowerCase());
+                const issuedAtMs = decoded.iat ? decoded.iat * 1000 : 0;
+                if (revokedAt && (!issuedAtMs || issuedAtMs <= revokedAt)) {
+                    throw new common_1.UnauthorizedException('บัญชีผู้ใช้นี้ถูกระงับสิทธิ์การใช้งาน (Session Revoked)');
+                }
+            }
             request.user = decoded;
             return true;
         }
         catch (err) {
+            if (err instanceof common_1.UnauthorizedException) {
+                throw err;
+            }
             throw new common_1.UnauthorizedException('เซสชันหมดอายุหรือสิทธิ์ไม่ถูกต้อง กรุณาเข้าสู่ระบบใหม่');
         }
     }

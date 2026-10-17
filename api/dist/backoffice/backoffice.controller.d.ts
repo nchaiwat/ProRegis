@@ -153,6 +153,21 @@ export declare class BackofficeController {
     }): Promise<{
         success: boolean;
     }>;
+    testEmailSettings(body: {
+        smtpHost: string;
+        smtpPort: string;
+        smtpSecure: string;
+        smtpUser: string;
+        smtpPass: string;
+        smtpFromName: string;
+        smtpFromEmail: string;
+        testEmail: string;
+        subject?: string;
+        bodyTemplate?: string;
+    }): Promise<{
+        success: boolean;
+        message: string;
+    }>;
     clearTestData(body?: {
         tables?: string[];
     }): Promise<{

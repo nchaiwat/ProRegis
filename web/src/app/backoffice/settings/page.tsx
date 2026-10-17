@@ -68,6 +68,56 @@ export default function SettingsAdminPage() {
   const [passwordTimer, setPasswordTimer] = useState(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Central IAM SSO & Governance States
+  const [ciamBaseUrl, setCiamBaseUrl] = useState("https://ciam.windowasia.com");
+  const [ciamClientId, setCiamClientId] = useState("proregis-spoke-client");
+  const [ciamClientSecret, setCiamClientSecret] = useState("");
+  const [ciamClientSecretMasked, setCiamClientSecretMasked] = useState("sec_****_2026");
+  const [ciamM2mKey, setCiamM2mKey] = useState("");
+  const [ciamM2mKeyMasked, setCiamM2mKeyMasked] = useState("sec_****_2026");
+  const [ciamSsoEnabled, setCiamSsoEnabled] = useState(true);
+  const [ciamBreakGlassActive, setCiamBreakGlassActive] = useState(false);
+  const [ciamAdGatewayUrl, setCiamAdGatewayUrl] = useState("http://172.18.0.1:3100");
+  const [ciamAutoProvisionGroup, setCiamAutoProvisionGroup] = useState("IMAGE_EDITOR");
+  const [ciamSessionTtlMinutes, setCiamSessionTtlMinutes] = useState(480);
+  const [showCiamSecret, setShowCiamSecret] = useState(false);
+
+  // CIAM Connection Test & Sync States
+  const [ciamOnline, setCiamOnline] = useState<boolean | null>(null);
+  const [ciamTestInfo, setCiamTestInfo] = useState<{
+    latency_ms?: number;
+    ciam_issuer?: string;
+    jwks_uri?: string;
+    key_id?: string;
+    message?: string;
+  } | null>(null);
+  const [isTestingCiam, setIsTestingCiam] = useState(false);
+  const [isSyncingAccounts, setIsSyncingAccounts] = useState(false);
+  const [syncResultMsg, setSyncResultMsg] = useState("");
+  const [syncResultErr, setSyncResultErr] = useState("");
+
+  // Break-Glass Emergency Modal / Confirmation
+  const [breakGlassReason, setBreakGlassReason] = useState("");
+  const [isTogglingBreakGlass, setIsTogglingBreakGlass] = useState(false);
+  const [breakGlassMsg, setBreakGlassMsg] = useState("");
+
+  // In-App AI Copilot & MCP Tools States (Category E)
+  const [aiCopilotEnabled, setAiCopilotEnabled] = useState(false);
+  const [aiProvider, setAiProvider] = useState("google");
+  const [aiModel, setAiModel] = useState("gemini-1.5-flash");
+  const [aiApiKey, setAiApiKey] = useState("");
+  const [aiApiKeyMasked, setAiApiKeyMasked] = useState<string | null>(null);
+  const [aiBaseUrl, setAiBaseUrl] = useState("");
+  const [aiSystemPrompt, setAiSystemPrompt] = useState("");
+  const [aiAllowMcpTools, setAiAllowMcpTools] = useState(true);
+  const [showAiKey, setShowAiKey] = useState(false);
+  const [isTestingAi, setIsTestingAi] = useState(false);
+  const [aiTestResult, setAiTestResult] = useState<{
+    status: string;
+    latency_ms?: number;
+    message: string;
+  } | null>(null);
+
   useEffect(() => {
     const stored = sessionStorage.getItem("bo_session");
     if (!stored) {
@@ -124,11 +174,17 @@ export default function SettingsAdminPage() {
     const token = sessionStorage.getItem("bo_token");
 
     try {
-      const res = await fetch(`${getApiBaseUrl()}/backoffice/settings`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      const [res, ciamRes, aiRes] = await Promise.all([
+        fetch(`${getApiBaseUrl()}/backoffice/settings`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }),
+        fetch(`${getApiBaseUrl()}/settings/ciam-sso`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }).catch(() => null),
+        fetch(`${getApiBaseUrl()}/settings/ai`, {
+          headers: { Authorization: `Bearer ${token}` },
+        }).catch(() => null),
+      ]);
 
       if (res.ok) {
         const data = await res.json();
@@ -169,10 +225,162 @@ export default function SettingsAdminPage() {
         const errData = await res.json().catch(() => ({}));
         setError(errData.message || "ไม่สามารถดึงข้อมูลการตั้งค่าได้");
       }
+
+      if (ciamRes && ciamRes.ok) {
+        const ciamData = await ciamRes.json();
+        const s = ciamData.settings || {};
+        setCiamBaseUrl(s.ciam_base_url || "https://ciam.windowasia.com");
+        setCiamClientId(s.ciam_client_id || "proregis-spoke-client");
+        setCiamClientSecret("");
+        setCiamClientSecretMasked(s.ciam_client_secret_masked || "sec_****_2026");
+        setCiamM2mKey("");
+        setCiamM2mKeyMasked(s.ciam_m2m_key_masked || "sec_****_2026");
+        setCiamSsoEnabled(Boolean(s.ciam_sso_enabled));
+        setCiamBreakGlassActive(Boolean(s.ciam_break_glass_active));
+        setCiamAdGatewayUrl(s.ciam_ad_gateway_url || "http://172.18.0.1:3100");
+        setCiamAutoProvisionGroup(s.ciam_auto_provision_group || "IMAGE_EDITOR");
+        setCiamSessionTtlMinutes(Number(s.ciam_session_ttl_minutes) || 480);
+        if (s.agent_status && typeof s.agent_status.online === "boolean") {
+          setCiamOnline(s.agent_status.online);
+        }
+      }
+
+      if (aiRes && aiRes.ok) {
+        const aiData = await aiRes.json();
+        setAiCopilotEnabled(Boolean(aiData.enabled));
+        setAiProvider(aiData.provider || "google");
+        setAiModel(aiData.model || "gemini-1.5-flash");
+        setAiApiKey("");
+        setAiApiKeyMasked(aiData.api_key_masked || null);
+        setAiBaseUrl(aiData.base_url || "");
+        setAiSystemPrompt(aiData.system_prompt || "");
+        setAiAllowMcpTools(aiData.allow_mcp_tools !== undefined ? Boolean(aiData.allow_mcp_tools) : true);
+      }
     } catch {
       setError("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleTestCiamConnection = async () => {
+    setIsTestingCiam(true);
+    setCiamTestInfo(null);
+    const token = sessionStorage.getItem("bo_token");
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/settings/ciam-sso/test-connection`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ ciam_base_url: ciamBaseUrl }),
+      });
+      const data = await res.json();
+      setCiamOnline(data.status === "connected");
+      setCiamTestInfo(data);
+    } catch {
+      setCiamOnline(false);
+      setCiamTestInfo({ message: "ไม่สามารถเชื่อมต่อไปยังเซิร์ฟเวอร์ API ได้" });
+    } finally {
+      setIsTestingCiam(false);
+    }
+  };
+
+  const handleImmediateAccountSync = async () => {
+    setIsSyncingAccounts(true);
+    setSyncResultMsg("");
+    setSyncResultErr("");
+    const token = sessionStorage.getItem("bo_token");
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/settings/ciam-agent/sync-now`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const data = await res.json();
+      if (data.online) {
+        setCiamOnline(true);
+        setSyncResultMsg(
+          data.message ||
+            `ซิงก์ข้อมูลกับ Central IAM สำเร็จ: ปรับปรุงสถานะตรงกัน 100% (สร้างใหม่ ${data.createdCount || 0} บัญชี, ปรับสถานะ ${data.updatedCount || 0} บัญชี)`
+        );
+      } else {
+        setCiamOnline(false);
+        setSyncResultErr(data.message || "ไม่สามารถซิงก์กับ Central IAM ได้ในขณะนี้");
+      }
+    } catch {
+      setSyncResultErr("เกิดข้อผิดพลาดในการเรียกคำสั่งซิงก์บัญชีทันที");
+    } finally {
+      setIsSyncingAccounts(false);
+    }
+  };
+
+  const handleToggleBreakGlass = async (nextState: boolean) => {
+    if (!breakGlassReason.trim()) {
+      setError("กรุณาระบุเหตุผลก่อนสลับโหมดฉุกเฉิน Break-Glass");
+      return;
+    }
+    setIsTogglingBreakGlass(true);
+    setBreakGlassMsg("");
+    setError("");
+    const token = sessionStorage.getItem("bo_token");
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/auth/sso/break-glass-toggle`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          break_glass_active: nextState,
+          reason: breakGlassReason.trim(),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setCiamBreakGlassActive(nextState);
+        setBreakGlassReason("");
+        setBreakGlassMsg(data.message || "อัปเดตสถานะโหมดฉุกเฉิน Break-Glass เรียบร้อยแล้ว");
+      } else {
+        setError(data.message || "ไม่สามารถเปลี่ยนสถานะ Break-Glass ได้");
+      }
+    } catch {
+      setError("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์");
+    } finally {
+      setIsTogglingBreakGlass(false);
+    }
+  };
+
+  const handleTestAiConnection = async () => {
+    setIsTestingAi(true);
+    setAiTestResult(null);
+    const token = sessionStorage.getItem("bo_token");
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/settings/ai/test`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          provider: aiProvider,
+          model: aiModel,
+          api_key: aiApiKey || undefined,
+          base_url: aiBaseUrl || undefined,
+        }),
+      });
+      const data = await res.json();
+      setAiTestResult(data);
+    } catch {
+      setAiTestResult({
+        status: "error",
+        message: "ไม่สามารถทดสอบการเชื่อมต่อ AI API ได้",
+      });
+    } finally {
+      setIsTestingAi(false);
     }
   };
 
@@ -229,6 +437,45 @@ export default function SettingsAdminPage() {
           }
         }
       }
+
+      // Save Central IAM SSO settings (Group A)
+      const ciamRes = await fetch(`${getApiBaseUrl()}/settings/ciam-sso`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          ciam_base_url: ciamBaseUrl,
+          ciam_client_id: ciamClientId,
+          ciam_client_secret: ciamClientSecret || undefined,
+          ciam_m2m_key: ciamM2mKey || undefined,
+          ciam_sso_enabled: ciamSsoEnabled,
+          ciam_ad_gateway_url: ciamAdGatewayUrl,
+          ciam_auto_provision_group: ciamAutoProvisionGroup,
+          ciam_session_ttl_minutes: ciamSessionTtlMinutes,
+        }),
+      });
+      if (!ciamRes.ok) allOk = false;
+
+      // Save In-App AI Copilot settings (Group E)
+      const aiRes = await fetch(`${getApiBaseUrl()}/settings/ai`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          ai_copilot_enabled: aiCopilotEnabled,
+          ai_provider: aiProvider,
+          ai_model: aiModel,
+          ai_api_key: aiApiKey || undefined,
+          ai_base_url: aiBaseUrl,
+          ai_system_prompt: aiSystemPrompt,
+          ai_allow_mcp_tools: aiAllowMcpTools,
+        }),
+      });
+      if (!aiRes.ok) allOk = false;
 
       if (allOk) {
         setSuccessMsg("บันทึกการเปลี่ยนแปลงการตั้งค่าระบบเรียบร้อยแล้ว!");
@@ -1053,6 +1300,524 @@ export default function SettingsAdminPage() {
                     {passwordTimer}s
                   </span>
                 )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* SECTION: CENTRAL IAM (SSO, DIRECTORY SYNC & BREAK-GLASS) */}
+        <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm p-6 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-outline-variant/40 pb-3">
+            <h2 className="font-bold text-base text-primary flex items-center gap-2">
+              <span className="material-symbols-outlined text-secondary">shield_person</span>
+              การเชื่อมต่อ Central IAM (Single Sign-On & Directory Governance)
+            </h2>
+            <div className="flex items-center gap-2">
+              {ciamOnline === true ? (
+                <span className="px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold">
+                  🟢 เชื่อมต่อปกติ (Online)
+                </span>
+              ) : ciamOnline === false ? (
+                <span className="px-3 py-1 rounded-full bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold">
+                  🔴 ไม่สามารถเชื่อมต่อได้ (Offline)
+                </span>
+              ) : (
+                <span className="px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-slate-600 text-xs font-bold">
+                  ⚪ ยังไม่ได้ตรวจสอบสถานะ
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* 1. Health & Immediate Sync Action Bar */}
+          <div className="p-4 bg-surface-container-low rounded-xl border border-outline-variant/40 flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold text-primary">
+                ตรวจสอบสถานะการเชื่อมต่อ & ซิงก์บัญชีผู้ใช้กับ Central IAM
+              </p>
+              <p className="text-[11px] text-outline mt-0.5">
+                ทดสอบการดึง JWKS Public Keys (RS256) หรือสั่งแลกเปลี่ยนและปรับยอดบัญชีผู้ใช้แบบ Two-Way Reconciliation ทันทีโดยไม่ต้องรอรอบ 120 วินาที
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={handleTestCiamConnection}
+                disabled={isTestingCiam}
+                className="h-10 px-4 bg-white hover:bg-slate-50 border border-outline-variant text-primary text-xs font-bold rounded-xl shadow-xs transition cursor-pointer flex items-center gap-1.5 disabled:opacity-60"
+              >
+                {isTestingCiam ? (
+                  <div className="w-4 h-4 border-2 border-secondary border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <span>⚡ ทดสอบการเชื่อมต่อไปยัง Central IAM</span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleImmediateAccountSync}
+                disabled={isSyncingAccounts}
+                className="h-10 px-4 bg-secondary hover:opacity-95 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer flex items-center gap-1.5 disabled:opacity-60"
+              >
+                {isSyncingAccounts ? (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <span>⚡ ซิงก์บัญชีผู้ใช้กับ CIAM ทันที</span>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {ciamTestInfo && (
+            <div
+              className={`p-3.5 rounded-xl border text-xs font-semibold space-y-1 ${
+                ciamOnline
+                  ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                  : "bg-rose-50 border-rose-200 text-rose-800"
+              }`}
+            >
+              <p>{ciamTestInfo.message}</p>
+              {ciamTestInfo.latency_ms !== undefined && (
+                <p className="text-[11px] opacity-85">
+                  Latency: {ciamTestInfo.latency_ms} ms | Issuer: {ciamTestInfo.ciam_issuer || "-"} | Key ID:{" "}
+                  {ciamTestInfo.key_id || "-"}
+                </p>
+              )}
+            </div>
+          )}
+
+          {syncResultMsg && (
+            <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-bold text-emerald-800">
+              ✅ {syncResultMsg}
+            </div>
+          )}
+          {syncResultErr && (
+            <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs font-bold text-rose-800">
+              ⚠️ {syncResultErr}
+            </div>
+          )}
+
+          {/* 2. Central IAM Configuration Form */}
+          <div className="space-y-4">
+            {/* Enforce SSO Toggle */}
+            <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6">
+              <div className="md:w-1/4">
+                <label className="text-xs font-bold text-primary">สวิตช์เปิด/ปิด SSO (Enforce SSO)</label>
+                <p className="text-[10px] text-outline mt-0.5">
+                  หากปิด ปุ่ม SSO บนหน้า Login หลังบ้านจะถูกซ่อนอัตโนมัติ
+                </p>
+              </div>
+              <div className="flex-1 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCiamSsoEnabled(true)}
+                  className={`py-2.5 px-4 rounded-xl border text-xs font-bold transition cursor-pointer ${
+                    ciamSsoEnabled
+                      ? "border-secondary bg-secondary/5 text-secondary ring-1 ring-secondary"
+                      : "border-outline-variant/60 text-outline"
+                  }`}
+                >
+                  เปิดใช้งาน Central IAM SSO
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCiamSsoEnabled(false)}
+                  className={`py-2.5 px-4 rounded-xl border text-xs font-bold transition cursor-pointer ${
+                    !ciamSsoEnabled
+                      ? "border-secondary bg-secondary/5 text-secondary ring-1 ring-secondary"
+                      : "border-outline-variant/60 text-outline"
+                  }`}
+                >
+                  ปิดใช้งาน SSO (ใช้เฉพาะฟอร์มปกติ)
+                </button>
+              </div>
+            </div>
+
+            {/* Central IAM Base URL */}
+            <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6">
+              <div className="md:w-1/4">
+                <label className="text-xs font-bold text-primary">Central IAM Base URL</label>
+              </div>
+              <div className="flex-1">
+                <input
+                  type="text"
+                  value={ciamBaseUrl}
+                  onChange={(e) => setCiamBaseUrl(e.target.value)}
+                  placeholder="https://ciam.windowasia.com"
+                  className="w-full h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary"
+                />
+              </div>
+            </div>
+
+            {/* OIDC Client ID */}
+            <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6">
+              <div className="md:w-1/4">
+                <label className="text-xs font-bold text-primary">OIDC Client ID</label>
+              </div>
+              <div className="flex-1">
+                <input
+                  type="text"
+                  value={ciamClientId}
+                  onChange={(e) => setCiamClientId(e.target.value)}
+                  placeholder="proregis-spoke-client"
+                  className="w-full h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary"
+                />
+              </div>
+            </div>
+
+            {/* OIDC Client Secret */}
+            <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6">
+              <div className="md:w-1/4">
+                <label className="text-xs font-bold text-primary">OIDC Client Secret</label>
+                <p className="text-[10px] text-outline mt-0.5">
+                  ค่าปัจจุบัน: <code className="font-mono">{ciamClientSecretMasked}</code>
+                </p>
+              </div>
+              <div className="flex-1 relative">
+                <input
+                  type={showCiamSecret ? "text" : "password"}
+                  value={ciamClientSecret}
+                  onChange={(e) => setCiamClientSecret(e.target.value)}
+                  placeholder={`เว้นว่างไว้หากไม่ต้องการเปลี่ยน (${ciamClientSecretMasked})`}
+                  className="w-full h-11 pl-4 pr-12 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowCiamSecret(!showCiamSecret)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-outline hover:text-primary material-symbols-outlined !text-[18px] cursor-pointer"
+                >
+                  {showCiamSecret ? "visibility_off" : "visibility"}
+                </button>
+              </div>
+            </div>
+
+            {/* M2M Management Key */}
+            <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6">
+              <div className="md:w-1/4">
+                <label className="text-xs font-bold text-primary">M2M Management API Key</label>
+                <p className="text-[10px] text-outline mt-0.5">
+                  ค่าปัจจุบัน: <code className="font-mono">{ciamM2mKeyMasked}</code>
+                </p>
+              </div>
+              <div className="flex-1">
+                <input
+                  type={showCiamSecret ? "text" : "password"}
+                  value={ciamM2mKey}
+                  onChange={(e) => setCiamM2mKey(e.target.value)}
+                  placeholder={`เว้นว่างไว้หากไม่ต้องการเปลี่ยน (${ciamM2mKeyMasked})`}
+                  className="w-full h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary"
+                />
+              </div>
+            </div>
+
+            {/* Active Directory Gateway URL */}
+            <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6">
+              <div className="md:w-1/4">
+                <label className="text-xs font-bold text-primary">Active Directory Gateway URL</label>
+              </div>
+              <div className="flex-1">
+                <input
+                  type="text"
+                  value={ciamAdGatewayUrl}
+                  onChange={(e) => setCiamAdGatewayUrl(e.target.value)}
+                  placeholder="http://172.18.0.1:3100"
+                  className="w-full h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary"
+                />
+              </div>
+            </div>
+
+            {/* Default Auto-Provision Group & Session TTL */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
+                <div className="md:w-1/2">
+                  <label className="text-xs font-bold text-primary">กลุ่มสิทธิ์เริ่มต้น (Default Group)</label>
+                  <p className="text-[10px] text-outline mt-0.5">สำหรับผู้ใช้ใหม่จาก SSO / Auto-Provision</p>
+                </div>
+                <div className="flex-1">
+                  <select
+                    value={ciamAutoProvisionGroup}
+                    onChange={(e) => setCiamAutoProvisionGroup(e.target.value)}
+                    className="w-full h-11 px-3 border border-outline-variant/60 rounded-xl outline-none text-xs font-semibold bg-surface-container-low focus:border-secondary"
+                  >
+                    <option value="IMAGE_EDITOR">IMAGE_EDITOR (สิทธิ์น้อยที่สุด - แนะนำ)</option>
+                    <option value="QR_GENERATOR">QR_GENERATOR (ฝ่ายผลิต/คลังสินค้า)</option>
+                    <option value="CRM_MANAGER">CRM_MANAGER (ฝ่ายดูแลลูกค้า)</option>
+                    <option value="SYSTEM_ADMIN">SYSTEM_ADMIN (ผู้ดูแลระบบสูงสุด)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
+                <div className="md:w-1/2">
+                  <label className="text-xs font-bold text-primary">อายุเซสชัน (Session TTL นาที)</label>
+                  <p className="text-[10px] text-outline mt-0.5">ค่าแนะนำ: 480 นาที (8 ชั่วโมง)</p>
+                </div>
+                <div className="flex-1">
+                  <input
+                    type="number"
+                    min={15}
+                    max={1440}
+                    value={ciamSessionTtlMinutes}
+                    onChange={(e) => setCiamSessionTtlMinutes(Number(e.target.value) || 480)}
+                    className="w-full h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 3. Break-Glass Emergency Panel */}
+          <div className="p-5 rounded-xl border border-amber-300 bg-amber-50/70 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-amber-600 !text-[22px]">emergency_home</span>
+                <div>
+                  <h3 className="text-xs font-bold text-amber-900">
+                    สวิตช์ฉุกเฉิน Break-Glass Emergency Mode (ISO 27001)
+                  </h3>
+                  <p className="text-[11px] text-amber-800">
+                    สลับไปล็อกอินตรงกับ AD Gateway / Local DB ทันทีเมื่อเครือข่ายคลาวด์ Central IAM ขัดข้อง (พร้อมส่งแจ้งเตือน Telegram)
+                  </p>
+                </div>
+              </div>
+              <span
+                className={`px-3 py-1 rounded-full text-xs font-bold ${
+                  ciamBreakGlassActive
+                    ? "bg-red-600 text-white"
+                    : "bg-emerald-100 text-emerald-800 border border-emerald-300"
+                }`}
+              >
+                {ciamBreakGlassActive ? "🚨 BREAK-GLASS ACTIVE" : "โหมดปกติ (Inactive)"}
+              </span>
+            </div>
+
+            <div className="flex flex-col md:flex-row gap-3 pt-1">
+              <input
+                type="text"
+                value={breakGlassReason}
+                onChange={(e) => setBreakGlassReason(e.target.value)}
+                placeholder="ระบุเหตุผลในการสลับโหมด Break-Glass (เช่น Central IAM Cloud Maintenance)..."
+                className="flex-1 h-10 px-3.5 bg-white border border-amber-300 rounded-xl text-xs font-medium text-primary outline-none focus:border-amber-600"
+              />
+              <button
+                type="button"
+                disabled={isTogglingBreakGlass || !breakGlassReason.trim()}
+                onClick={() => handleToggleBreakGlass(!ciamBreakGlassActive)}
+                className={`h-10 px-5 rounded-xl text-xs font-bold text-white shadow-xs transition cursor-pointer disabled:opacity-50 ${
+                  ciamBreakGlassActive
+                    ? "bg-emerald-600 hover:bg-emerald-700"
+                    : "bg-amber-600 hover:bg-amber-700"
+                }`}
+              >
+                {isTogglingBreakGlass
+                  ? "กำลังดำเนินการ..."
+                  : ciamBreakGlassActive
+                  ? "ปิดโหมดฉุกเฉิน (กลับสู่ SSO ปกติ)"
+                  : "⚠️ เปิดโหมดฉุกเฉิน Break-Glass"}
+              </button>
+            </div>
+
+            {breakGlassMsg && (
+              <p className="text-xs font-bold text-amber-900 bg-white/80 p-2.5 rounded-lg border border-amber-200">
+                {breakGlassMsg}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* SECTION: IN-APP AI COPILOT & MCP TOOLS (CATEGORY E) */}
+        <div className="bg-white rounded-2xl border border-outline-variant/30 shadow-sm p-6 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-outline-variant/40 pb-3">
+            <h2 className="font-bold text-base text-primary flex items-center gap-2">
+              <span className="material-symbols-outlined text-secondary">smart_toy</span>
+              ผู้ช่วยอัจฉริยะประจำระบบหลังบ้าน (In-App AI Copilot & MCP Tools)
+            </h2>
+            <span
+              className={`px-3 py-1 rounded-full text-xs font-bold ${
+                aiCopilotEnabled
+                  ? "bg-emerald-50 border border-emerald-200 text-emerald-700"
+                  : "bg-slate-100 border border-slate-200 text-slate-600"
+              }`}
+            >
+              {aiCopilotEnabled ? "🟢 เปิดแสดงผล Chat Widget" : "⚫ ปิดซ่อน Chat Widget"}
+            </span>
+          </div>
+
+          <div className="space-y-4">
+            {/* Enable AI Copilot Toggle */}
+            <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6">
+              <div className="md:w-1/4">
+                <label className="text-xs font-bold text-primary">สถานะ AI Copilot (หลังบ้าน)</label>
+                <p className="text-[10px] text-outline mt-0.5">
+                  หากปิด ปุ่ม Floating Chat ในระบบหลังบ้านจะถูกซ่อน 100%
+                </p>
+              </div>
+              <div className="flex-1 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setAiCopilotEnabled(true)}
+                  className={`py-2.5 px-4 rounded-xl border text-xs font-bold transition cursor-pointer ${
+                    aiCopilotEnabled
+                      ? "border-secondary bg-secondary/5 text-secondary ring-1 ring-secondary"
+                      : "border-outline-variant/60 text-outline"
+                  }`}
+                >
+                  เปิดใช้งาน AI Copilot Widget
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAiCopilotEnabled(false)}
+                  className={`py-2.5 px-4 rounded-xl border text-xs font-bold transition cursor-pointer ${
+                    !aiCopilotEnabled
+                      ? "border-secondary bg-secondary/5 text-secondary ring-1 ring-secondary"
+                      : "border-outline-variant/60 text-outline"
+                  }`}
+                >
+                  ปิดใช้งาน (ซ่อน Widget อัตโนมัติ)
+                </button>
+              </div>
+            </div>
+
+            {/* Provider & Model */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
+                <div className="md:w-1/2">
+                  <label className="text-xs font-bold text-primary">ผู้ให้บริการ AI (Provider)</label>
+                </div>
+                <div className="flex-1">
+                  <select
+                    value={aiProvider}
+                    onChange={(e) => setAiProvider(e.target.value)}
+                    className="w-full h-11 px-3 border border-outline-variant/60 rounded-xl outline-none text-xs font-semibold bg-surface-container-low focus:border-secondary"
+                  >
+                    <option value="google">Google Gemini (google)</option>
+                    <option value="openai">OpenAI (openai)</option>
+                    <option value="anthropic">Anthropic Claude (anthropic)</option>
+                    <option value="ollama">Ollama Local LLM (ollama)</option>
+                    <option value="custom">Custom OpenAI-Compatible (custom)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
+                <div className="md:w-1/2">
+                  <label className="text-xs font-bold text-primary">รหัสโมเดล (AI Model)</label>
+                </div>
+                <div className="flex-1">
+                  <input
+                    type="text"
+                    value={aiModel}
+                    onChange={(e) => setAiModel(e.target.value)}
+                    placeholder="เช่น gemini-1.5-flash, gpt-4o-mini"
+                    className="w-full h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* AI API Key + Test Connection Button */}
+            <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6">
+              <div className="md:w-1/4">
+                <label className="text-xs font-bold text-primary">AI API Key</label>
+                <p className="text-[10px] text-outline mt-0.5">
+                  ค่าปัจจุบัน: <code className="font-mono">{aiApiKeyMasked || "ยังไม่ได้ตั้งค่า (ใช้ Local Fallback)"}</code>
+                </p>
+              </div>
+              <div className="flex-1 flex flex-col sm:flex-row gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type={showAiKey ? "text" : "password"}
+                    value={aiApiKey}
+                    onChange={(e) => setAiApiKey(e.target.value)}
+                    placeholder={
+                      aiApiKeyMasked
+                        ? `เว้นว่างไว้หากใช้คีย์เดิม (${aiApiKeyMasked})`
+                        : "ระบุ API Key (เช่น AIzaSy... หรือ sk-...)"
+                    }
+                    className="w-full h-11 pl-4 pr-10 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowAiKey(!showAiKey)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-outline hover:text-primary material-symbols-outlined !text-[18px] cursor-pointer"
+                  >
+                    {showAiKey ? "visibility_off" : "visibility"}
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleTestAiConnection}
+                  disabled={isTestingAi}
+                  className="h-11 px-4 bg-secondary hover:opacity-95 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-60 whitespace-nowrap"
+                >
+                  {isTestingAi ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <span>⚡ ทดสอบเชื่อมต่อ API Key</span>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {aiTestResult && (
+              <div
+                className={`p-3 rounded-xl border text-xs font-semibold ${
+                  aiTestResult.status === "connected"
+                    ? "bg-emerald-50 border-emerald-200 text-emerald-800"
+                    : "bg-rose-50 border-rose-200 text-rose-800"
+                }`}
+              >
+                {aiTestResult.message}
+              </div>
+            )}
+
+            {/* Custom Endpoint URL */}
+            <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6">
+              <div className="md:w-1/4">
+                <label className="text-xs font-bold text-primary">Custom Base URL (Optional)</label>
+                <p className="text-[10px] text-outline mt-0.5">เฉพาะกรณีใช้ Ollama หรือ Private LLM Proxy</p>
+              </div>
+              <div className="flex-1">
+                <input
+                  type="text"
+                  value={aiBaseUrl}
+                  onChange={(e) => setAiBaseUrl(e.target.value)}
+                  placeholder="เช่น http://localhost:11434/v1"
+                  className="w-full h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary"
+                />
+              </div>
+            </div>
+
+            {/* Allow MCP Tools */}
+            <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-6">
+              <div className="md:w-1/4">
+                <label className="text-xs font-bold text-primary">อนุญาต MCP Tools</label>
+              </div>
+              <div className="flex-1">
+                <label className="inline-flex items-center gap-2 cursor-pointer text-xs font-bold text-primary">
+                  <input
+                    type="checkbox"
+                    checked={aiAllowMcpTools}
+                    onChange={(e) => setAiAllowMcpTools(e.target.checked)}
+                    className="w-4 h-4 rounded border-outline-variant text-secondary focus:ring-secondary cursor-pointer"
+                  />
+                  <span>อนุญาตให้ AI อ่านสถิติฐานข้อมูลหลังบ้านและเชื่อมต่อ Central IAM MCP Tools</span>
+                </label>
+              </div>
+            </div>
+
+            {/* AI System Prompt */}
+            <div className="flex flex-col md:flex-row md:items-start gap-2 md:gap-6">
+              <div className="md:w-1/4">
+                <label className="text-xs font-bold text-primary">System Prompt ประจำระบบ</label>
+              </div>
+              <div className="flex-1">
+                <textarea
+                  rows={3}
+                  value={aiSystemPrompt}
+                  onChange={(e) => setAiSystemPrompt(e.target.value)}
+                  className="w-full p-3 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary resize-y"
+                />
               </div>
             </div>
           </div>

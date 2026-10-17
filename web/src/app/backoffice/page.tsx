@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { getApiBaseUrl } from '@/lib/api';
 
@@ -12,6 +12,69 @@ export default function BackofficePage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isSsoLoading, setIsSsoLoading] = useState(false);
+
+  // Central IAM SSO dynamic state
+  const [ssoConfig, setSsoConfig] = useState<{
+    sso_enabled: boolean;
+    break_glass_active: boolean;
+    ciam_base_url?: string;
+    login_button_label?: string;
+  }>({
+    sso_enabled: false,
+    break_glass_active: false,
+  });
+
+  useEffect(() => {
+    fetch(`${getApiBaseUrl()}/auth/sso/config`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data) {
+          setSsoConfig({
+            sso_enabled: Boolean(data.sso_enabled),
+            break_glass_active: Boolean(data.break_glass_active),
+            ciam_base_url: data.ciam_base_url,
+            login_button_label: data.login_button_label,
+          });
+          if (data.ciam_base_url) {
+            sessionStorage.setItem("bo_ciam_portal_url", `${String(data.ciam_base_url).replace(/\/+$/, "")}/portal`);
+            localStorage.setItem("app_ciam_portal_url", `${String(data.ciam_base_url).replace(/\/+$/, "")}/portal`);
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleCiamSso = async () => {
+    setIsSsoLoading(true);
+    setError("");
+    try {
+      const redirectUri = `${window.location.origin}/auth/callback`;
+      const res = await fetch(`${getApiBaseUrl()}/auth/sso/authorize-url`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ redirect_uri: redirectUri }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.authorize_url) {
+        setError(data?.message || "ไม่สามารถเริ่มต้นการเข้าสู่ระบบผ่าน Central IAM SSO ได้");
+        setIsSsoLoading(false);
+        return;
+      }
+
+      if (data.code_verifier) {
+        sessionStorage.setItem("sso_code_verifier", data.code_verifier);
+      }
+      if (data.state) {
+        sessionStorage.setItem("sso_state", data.state);
+      }
+
+      window.location.href = data.authorize_url;
+    } catch {
+      setError("ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ Central IAM SSO ได้");
+      setIsSsoLoading(false);
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,6 +101,8 @@ export default function BackofficePage() {
       if (res.ok && data.success) {
         // Store JWT token and session metadata
         sessionStorage.setItem("bo_token", data.token);
+        sessionStorage.setItem("bo_auth_provider", "local");
+        localStorage.setItem("app_auth_provider", "local");
         sessionStorage.setItem(
           "bo_session",
           JSON.stringify({
@@ -51,6 +116,8 @@ export default function BackofficePage() {
         // Redirect based on user role limits
         if (data.user.role === "CRM_MANAGER") {
           router.push("/backoffice/crm");
+        } else if (data.user.role === "IMAGE_EDITOR") {
+          router.push("/backoffice/product-images");
         } else {
           router.push("/backoffice/generate");
         }
@@ -63,6 +130,8 @@ export default function BackofficePage() {
       setIsLoading(false);
     }
   };
+
+  const showSsoButtons = ssoConfig.sso_enabled && !ssoConfig.break_glass_active;
 
   return (
     <div className="min-h-screen bg-primary-container flex items-center justify-center p-4">
@@ -79,9 +148,48 @@ export default function BackofficePage() {
         {/* Login Card */}
         <div className="bg-white rounded-2xl shadow-xl p-7 border border-outline-variant">
           <h2 className="font-bold text-lg text-primary mb-1">เข้าสู่ระบบ</h2>
-          <p className="text-xs text-on-surface-variant mb-6">
+          <p className="text-xs text-on-surface-variant mb-5">
             สำหรับเจ้าหน้าที่โรงงานและ Admin เท่านั้น
           </p>
+
+          {/* Break-Glass Emergency Banner (Scenario 3) */}
+          {ssoConfig.break_glass_active && (
+            <div className="mb-4 p-3 bg-amber-50 border border-amber-300 rounded-xl flex items-start gap-2">
+              <span className="material-symbols-outlined text-amber-600 !text-[18px] mt-0.5">warning</span>
+              <p className="text-[11px] font-bold text-amber-800 leading-relaxed">
+                ⚠️ ระบบอยู่ในโหมดฉุกเฉิน (Break-Glass Active) - กรุณาเข้าใช้งานด้วยรหัสผ่านตรง
+              </p>
+            </div>
+          )}
+
+          {/* Desktop SSO Button: Compact on top of standard form (Scenario 1 Desktop) */}
+          {showSsoButtons && (
+            <div className="hidden md:block mb-4">
+              <button
+                type="button"
+                onClick={handleCiamSso}
+                disabled={isSsoLoading || isLoading}
+                className="w-full py-2.5 px-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs rounded-xl shadow-md flex items-center justify-center gap-2 transition cursor-pointer disabled:opacity-60"
+              >
+                {isSsoLoading ? (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <span>🛡️ เข้าสู่ระบบด้วย Window Asia SSO ✨</span>
+                )}
+              </button>
+
+              <div className="relative my-4">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-outline-variant/60" />
+                </div>
+                <div className="relative flex justify-center text-[11px]">
+                  <span className="bg-white px-3 text-outline font-semibold">
+                    หรือเข้าสู่ระบบด้วยชื่อผู้ใช้งาน
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
 
           <form onSubmit={handleLogin} className="space-y-4">
             {/* Login Method Selector */}
@@ -166,7 +274,7 @@ export default function BackofficePage() {
 
             <button
               type="submit"
-              disabled={isLoading}
+              disabled={isLoading || isSsoLoading}
               className="w-full h-12 bg-secondary text-white font-bold rounded-xl shadow-md hover:opacity-95 active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-60 cursor-pointer"
             >
               {isLoading ? (
@@ -179,6 +287,34 @@ export default function BackofficePage() {
               )}
             </button>
           </form>
+
+          {/* Mobile Secondary SSO Button: Below primary form on mobile screens (Scenario 1 Mobile) */}
+          {showSsoButtons && (
+            <div className="block md:hidden pt-4 mt-1">
+              <div className="relative mb-3">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-outline-variant/60" />
+                </div>
+                <div className="relative flex justify-center text-[10px]">
+                  <span className="bg-white px-2.5 text-outline font-semibold">
+                    หรือเข้าสู่ระบบด้วย
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleCiamSso}
+                disabled={isSsoLoading || isLoading}
+                className="w-full py-2.5 px-3 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-semibold text-xs rounded-xl flex items-center justify-center gap-2 transition cursor-pointer disabled:opacity-60"
+              >
+                {isSsoLoading ? (
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <span>🛡️ Window Asia SSO ✨</span>
+                )}
+              </button>
+            </div>
+          )}
         </div>
 
         <p className="text-center text-xs text-on-primary-container/60 mt-6">
