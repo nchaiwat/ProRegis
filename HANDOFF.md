@@ -2,19 +2,43 @@
 
 **อัปเดตล่าสุด:** 19 พฤศจิกายน 2026  
 **สถานะระบบ:** Production Ready (Full Compliance with Central IAM Standard Specification v2.13.0)  
-**ขอบเขตงาน:** ระบบหลังบ้าน (Backoffice) — Enterprise Central IAM Integration (v2.13.0 - One-Way AD, Local Account Password Provisioning, Real DB Persistence, Framework Version Handshake 2.13.0), In-App Bot Defense 3 ชั้น, บังคับเปลี่ยนรหัสผ่านทุก 90 วัน (Local Password Policy), True 2-Way Sync & ISO 27001 Audit Logs
+**สถาปัตยกรรมหลัก (Architecture Mode):** **Mode A: Cloud Two-Way (Full Two-Way Integration)** พร้อมกลไกเสริม **Mode C (Outbound Reverse Heartbeat 120s & Instant Sync)**  
+**ขอบเขตงาน:** ระบบหลังบ้าน (Backoffice) — Enterprise Central IAM Integration (v2.13.0), In-App Bot Defense 3 ชั้น, บังคับเปลี่ยนรหัสผ่านทุก 90 วัน (Local Password Policy), True 2-Way Sync & ISO 27001 Audit Logs  
 
 ---
 
-## 1. สรุปภาพรวมสิ่งที่พัฒนาและส่งมอบแล้ว (Completed Deliverables)
+## 1. กฎเหล็กในการพัฒนาและ Deploy (Critical Golden Rules)
 
-### 1.1 มาตรฐาน Central IAM Integration (v2.13.0) ครบทั้ง 7 หมวด (Groups A–G)
+> **⚠️ กฎสำคัญที่สุด:**
+> 1. **Local Automated Testing & Autonomous Git Push:**
+>    - ผู้พัฒนา/AI ต้องทำการทดสอบบนเครื่อง Local ให้ผ่าน 100% ทุกครั้งก่อน Push:
+>      - Unit Tests: `npm --prefix api run test`
+>      - Backend Build: `npm --prefix api run build`
+>      - Frontend Build: `npm --prefix web run build`
+>    - เมื่อผ่านทั้งหมดแล้ว AI สามารถดำเนินการ `git add .`, `git commit` และ `git push origin main` ได้ทันที
+> 2. **VPS Execution โดย USER เท่านั้น:**
+>    - USER จะเป็นผู้สั่งการรันคำสั่งบนเซิร์ฟเวอร์ VPS Production เท่านั้น:
+>      ```bash
+>      cd /var/www/Proregis
+>      git pull origin main
+>      docker compose up -d --build
+>      ```
+>    - **ห้ามรัน `docker-compose.local.yml` บน VPS เด็ดขาด** (VPS ใช้ Traefik Reverse Proxy บน `root_default` network)
+> 3. **ขอบเขตการทำงาน (Customer vs Backoffice Boundary):**
+>    - **Customer Flow (`/`, `/p/[token]`, `/my-warranty`):** สำหรับลูกค้าลงทะเบียนรับประกันสินค้าผ่านมือถือ (OTP SMS / LINE / Session Storage) **ห้ามแตะต้องหรือนำระบบ Central IAM SSO ไปปะปนโดยเด็ดขาด**
+>    - **Backoffice Flow (`/backoffice/*`, `/auth/*`):** สำหรับผู้ดูแลระบบและพนักงาน Window Asia เท่านั้น ใช้ระบบ Central IAM SSO (v2.13.0) ควบคู่กับ Local DB และ Active Directory (AD)
+
+---
+
+## 2. สรุปภาพรวมสิ่งที่พัฒนาและส่งมอบแล้ว (Completed Deliverables)
+
+### 2.1 มาตรฐาน Central IAM Integration (v2.13.0) ครบทั้ง 7 หมวด (Groups A–G)
 
 | หมวด | รายละเอียดและกลไกการทำงาน | Endpoints & ไฟล์หลักที่รับผิดชอบ |
 |---|---|---|
 | **Group A: Settings Channel** | • ดึงและแก้ไขคอนฟิก Central IAM แบบ Real-time จาก DB (Zero `.env` Dependency)<br>• Masking รหัสลับ `ciam_client_secret` และ `ciam_m2m_key` ไม่ส่งคืนค่าเต็มผ่าน GET API<br>• ทดสอบการเชื่อมต่อ OIDC Discovery & Asymmetric JWKS Keys จากเซิร์ฟเวอร์ | `GET /api/settings/ciam-sso`<br>`PUT /api/settings/ciam-sso`<br>`POST /api/settings/ciam-sso/test-connection` |
-| **Group B: SSO Execution Flow** | • OIDC Authorization Code Flow with PKCE (`S256`) และ Asymmetric RS256 Signature Verification ผ่าน JWKS<br>• **Framework Version Handshake (`framework_version: '2.13.0'`):** ส่งเวอร์ชันกำกับใน `GET /api/auth/sso/config`<br>• Just-In-Time (JIT) Auto-Provisioning สิทธิ์เริ่มต้น `IMAGE_EDITOR` (Least Privilege)<br>• **SSO Inactive Guard (`SSO-04`):** ปฏิเสธการล็อกอินทันทีหากบัญชีในระบบลูกถูกระงับสิทธิ์ (`is_active: false`) แม้จะถือ Token ที่ถูกต้องจาก CIAM<br>• สวิตช์ฉุกเฉิน Break-Glass พร้อมแจ้งเตือน Telegram ผู้บริหารไอที | `GET /api/auth/sso/config`<br>`GET /api/auth/sso/login` & `/start`<br>`POST /api/auth/sso/authorize-url`<br>`POST /api/auth/sso/callback`<br>`POST /api/auth/sso/break-glass-toggle` |
-| **Group C: Inbound Directory (Mode A)** | • M2M Directory Governance ตรวจสอบ `X-Management-API-Key`, IP Whitelist (`157.173.219.153` ฯลฯ) และ Replay Timestamp<br>• ลำดับการอ่าน IP Headers: `x-ciam-origin-ip` &rarr; `x-origin-ip` &rarr; `x-forwarded-for`<br>• **Framework Version Handshake:** ส่ง `"framework_version": "2.13.0"` ใน Root JSON และ Header `X-CIAM-Framework-Version`<br>• **Local Account Password Provisioning (v2.13.0):** รับ `password` และ `must_change_password` สำหรับ Local Account (`use_ad_auth: false`) แล้ว Hash ด้วย `bcrypt` ลง DB ทันที เพื่อรองรับการ Login ตรงคู่กับ SSO<br>• รองรับ Fallback Path `/api/directory/accounts`<br>• Health Check & Daily Auto-Reconciliation ประจำวันเวลา 04:00 น.<br>• 1-Click Offboard/Reactivate ยกเลิก Session ทันที พร้อม Protected Local Admin Guard | `GET /api/v1/directory/accounts`<br>`POST /api/v1/directory/accounts`<br>`PATCH /api/v1/directory/accounts/:username/status` |
+| **Group B: SSO Execution Flow** | • OIDC Authorization Code Flow with PKCE (`S256`) และ Asymmetric RS256 Signature Verification ผ่าน JWKS<br>• **Framework Version Handshake:** ส่ง `"framework_version": "2.13.0"` ใน `GET /api/auth/sso/config`<br>• Just-In-Time (JIT) Auto-Provisioning สิทธิ์เริ่มต้น `IMAGE_EDITOR` (Least Privilege)<br>• **SSO Inactive Guard (`SSO-04`):** ปฏิเสธการล็อกอินทันทีหากบัญชีในระบบลูกถูกระงับสิทธิ์ (`is_active: false`) แม้จะถือ Token ที่ถูกต้องจาก CIAM<br>• สวิตช์ฉุกเฉิน Break-Glass พร้อมแจ้งเตือน Telegram ผู้บริหารไอที | `GET /api/auth/sso/config`<br>`GET /api/auth/sso/login` & `/start`<br>`POST /api/auth/sso/authorize-url`<br>`POST /api/auth/sso/callback`<br>`POST /api/auth/sso/break-glass-toggle` |
+| **Group C: Inbound Directory (Mode A)** | • M2M Directory Governance ตรวจสอบ `X-Management-API-Key`, IP Whitelist (`157.173.219.153` ฯลฯ) และ Replay Timestamp (5 นาที)<br>• ลำดับการอ่าน IP Headers: `x-ciam-origin-ip` &rarr; `x-origin-ip` &rarr; `x-forwarded-for`<br>• **Framework Version Handshake:** ส่ง `"framework_version": "2.13.0"` ใน Root JSON และ Header `X-CIAM-Framework-Version: 2.13.0`<br>• **Local Account Password Provisioning (v2.13.0):** รับ `password` และ `must_change_password` สำหรับ Local Account (`use_ad_auth: false`) แล้ว Hash ด้วย `bcrypt` ลง DB ทันที เพื่อรองรับการ Login ตรงคู่กับ SSO<br>• รองรับ Fallback Path `/api/directory/accounts`<br>• Health Check & Daily Auto-Reconciliation ประจำวันเวลา 04:00 น.<br>• 1-Click Offboard/Reactivate ยกเลิก Session ทันที พร้อม Protected Local Admin Guard (`admin`, `superadmin`, `emergency_admin`, `local_admin`) | `GET /api/v1/directory/accounts`<br>`POST /api/v1/directory/accounts`<br>`PATCH /api/v1/directory/accounts/:username/status` |
 | **Group D: Outbound Agent & True 2-Way Sync (Mode C)** | • Reverse Heartbeat Background Worker ยิง Outbound HTTPS 443 ไปยัง CIAM ทุก 120 วินาที พร้อม `"framework_version": "2.13.0"`<br>• **True 2-Way Status Sync:** ส่ง Payload `accounts` ระบุ `status_origin: 'SPOKE_APP'`, `status_updated_at`<br>• **Timestamp Reconciliation & Authority Lock:** เปรียบเทียบเวลาแก้ไขล่าสุด และเคารพการล็อคสิทธิ์ (`is_status_locked`) จาก CIAM<br>• รองรับคำสั่ง `PROVISION_USER`, `DISABLE_USER`, `ENABLE_USER`, `REQUEST_FULL_SYNC`<br>• ปุ่ม `[ ⚡ ซิงก์บัญชีผู้ใช้กับ CIAM ทันที ]` บนหน้า Settings | `POST /api/settings/ciam-agent/sync-now`<br>[`api/src/ciam/ciam.service.ts`](file:///d:/Python/ProRegis/api/src/ciam/ciam.service.ts)<br>`ciam_agent.py` |
 | **Group E: In-App AI Copilot & MCP Tools** | • ผู้ช่วย AI ประจำระบบหลังบ้าน รองรับ Google Gemini, OpenAI, Anthropic, Ollama<br>• Zero-Training DLP Headers (`X-No-Model-Training: true`, `X-Data-Retention: none`, `store: false`) พร้อม Scrubbing รหัสผ่านและความลับก่อนส่งเข้า LLM<br>• ซ่อน Chat Widget อัตโนมัติเมื่อปิดใช้งาน พร้อม Read-Only MCP Tools ประจำระบบ | `GET /api/settings/ai`<br>`PUT /api/settings/ai`<br>`POST /api/settings/ai/test`<br>`POST /api/ai/chat`<br>[`web/src/app/backoffice/SpokeCopilotWidget.tsx`](file:///d:/Python/ProRegis/web/src/app/backoffice/SpokeCopilotWidget.tsx) |
 | **Group F: In-App Bot Defense 3 ชั้น (v2.10.0)** | • **Layer 1 (IP Rate Limiting):** Sliding-Window 10 requests / 60 วินาที ต่อ IP พร้อม Header `Retry-After` และ Corporate IP Whitelist (`157.173.219.153`, `49.231.185.245`, `58.8.190.63`, Docker host, localhost)<br>• **Layer 2 (Decoy Honeypot Trap):** ฟิลด์หลอก `corporate_fax` และ `security_honey` ซ่อนจากมนุษย์ด้วย CSS `left: -9999px` และ `tabIndex={-1}` หากมีบอทกรอกเข้ามาจะ Reject ทันทีด้วย HTTP 401<br>• **Layer 3 (Submission Velocity Guard):** ตรวจจับเวลาส่งฟอร์มด้วย `form_render_ts` หากเร็วกว่า 400ms (< 0.4 วินาที) จะถือเป็น Bot Script และ Reject ทันทีด้วย HTTP 400 | [`api/src/auth/bot-defense.ts`](file:///d:/Python/ProRegis/api/src/auth/bot-defense.ts)<br>`POST /auth/login`<br>[`web/src/app/backoffice/page.tsx`](file:///d:/Python/ProRegis/web/src/app/backoffice/page.tsx) |
@@ -22,7 +46,7 @@
 
 ---
 
-### 1.2 การทำงานของ 1-Click Seamless SSO จากหน้า Central IAM Portal
+### 2.2 การทำงานของ 1-Click Seamless SSO จากหน้า Central IAM Portal
 1. **เข้าสู่ระบบจาก CIAM Portal (`https://ciam.windowasia.com/portal`):**
    - เมื่อผู้ใช้คลิกการ์ด ProRegis บน Portal ของ CIAM (ลิงก์ชี้มาที่ `/backoffice`, `/backoffice/dashboard`, `/auth/start`, `/backoffice/auth/start` หรือ `/api/auth/sso/login`)
    - หน้า [`web/src/app/backoffice/page.tsx`](file:///d:/Python/ProRegis/web/src/app/backoffice/page.tsx) ตรวจพบว่า `sso_enabled == true` และไม่ได้อยู่ในโหมด Break-Glass จะสั่ง **`handleCiamSso()` อัตโนมัติทันทีโดยไม่หยุดรอที่หน้า Login**
@@ -34,29 +58,32 @@
 
 ---
 
-### 1.3 หน้าจอและการจัดการระบบหลังบ้าน (Backoffice Enhancements)
-1. **หน้าตั้งค่าระบบแยก 8 แท็บ ([`web/src/app/backoffice/settings/page.tsx`](file:///d:/Python/ProRegis/web/src/app/backoffice/settings/page.tsx)):**
-   - `ทั่วไป & QR Code`, `Central IAM (SSO)`, `AI Copilot`, `SMS Gateway`, `Email SMTP`, `Telegram Alert`, `SAP B1 ERP`, และ `Danger Zone`
-2. **หน้าประวัติการใช้งานและ Audit Trail ([`web/src/app/backoffice/logs/page.tsx`](file:///d:/Python/ProRegis/web/src/app/backoffice/logs/page.tsx)):**
-   - ตาราง `CIAM & ISO 27001 Transaction Logs` (`SSO-01`–`SSO-04`, `BG-01`, `BG-02`, `CFG-01`) และ `System Audit Logs` เดิมของระบบ
-3. **Responsive Login & Bot Protection ([`web/src/app/backoffice/page.tsx`](file:///d:/Python/ProRegis/web/src/app/backoffice/page.tsx)):**
-   - รองรับ Responsive แบบ Desktop Compact SSO / Mobile Familiar Form พร้อมฟิลด์ดักบอท Decoy Honeypot และ Form Render Timestamp
+### 2.3 การจัดการ One-Way AD และ Local Account (Matrix 4 กรณี)
+
+| กรณี | แหล่งสร้างบัญชี | ค่า `isAdAuth` / `use_ad_auth` | รหัสผ่านที่ใช้ Login | พฤติกรรมการยืนยันตัวตน |
+|---|---|:---:|---|---|
+| **กรณีที่ 1** | มอบสิทธิ์จาก CIAM (พนักงาน AD) | `true` | รหัสผ่าน Windows/AD (`wa.net`) | เข้าผ่านปุ่ม SSO หรือ Portal Launch 100% |
+| **กรณีที่ 2** | สร้าง Local Account จาก CIAM | `false` | รหัสผ่านเริ่มต้นที่ CIAM ส่งมา | เข้าผ่าน SSO ได้ และเข้าตรงผ่านฟอร์ม Local หน้าเว็บ ProRegis ได้ทันที (Hash ลง DB แล้ว) |
+| **กรณีที่ 3** | สร้างบน ProRegis ติ๊ก AD | `true` | รหัสผ่าน Windows/AD (`wa.net`) | ซิงก์ขึ้น CIAM และจับคู่ตัวตน AD ให้อัตโนมัติ |
+| **กรณีที่ 4** | สร้างบน ProRegis เป็น Local | `false` | รหัสผ่านที่ตั้งใน ProRegis | Login ตรงบน ProRegis หรือกดอนุมัติเป็น Portal Account บน CIAM |
 
 ---
 
-## 2. รายการไฟล์สำคัญในระบบ (Key Files Reference)
+## 3. รายการไฟล์สำคัญในระบบ (Key Files Reference)
 
 ### Backend (`api/`)
-- [`api/src/auth/bot-defense.ts`](file:///d:/Python/ProRegis/api/src/auth/bot-defense.ts) — โมดูลป้องกันบอท 3 ชั้น (IP Rate Limiting, Honeypot Trap, Timing Guard)
+- [`api/src/auth/bot-defense.ts`](file:///d:/Python/ProRegis/api/src/auth/bot-defense.ts) — ระบบป้องกันบอท 3 ชั้น (IP Rate Limiting 10 req/60s, Decoy Honeypot, Timing Velocity Guard)
+- [`api/src/auth/ciam-v213.spec.ts`](file:///d:/Python/ProRegis/api/src/auth/ciam-v213.spec.ts) — Automated Unit Test Suite สำหรับ CIAM v2.13.0, Bot Defense, Password Complexity, Expiry
 - [`api/src/auth/auth.controller.ts`](file:///d:/Python/ProRegis/api/src/auth/auth.controller.ts) — Login Controller รองรับ Bot Defense, คำนวณอายุรหัสผ่าน 90 วัน และ Endpoint `POST /auth/local/change-password`
 - [`api/src/auth/jwt-auth.guard.ts`](file:///d:/Python/ProRegis/api/src/auth/jwt-auth.guard.ts) — Session Revocation Interceptor สำหรับเตะผู้ใช้ที่ถูก 1-Click Offboard ออกจากระบบทันที
-- [`api/src/users/user.entity.ts`](file:///d:/Python/ProRegis/api/src/users/user.entity.ts) — ตาราง `users` เพิ่มคอลัมน์ `password_changed_at` และ `must_change_password`
-- [`api/src/users/users.service.ts`](file:///d:/Python/ProRegis/api/src/users/users.service.ts) — ฟังก์ชัน `validatePasswordComplexity()` และ `isPasswordExpired()` ตามมาตรฐานองค์กร
+- [`api/src/users/user.entity.ts`](file:///d:/Python/ProRegis/api/src/users/user.entity.ts) — ตาราง `users` มีคอลัมน์ `password_changed_at` และ `must_change_password`
+- [`api/src/users/users.service.ts`](file:///d:/Python/ProRegis/api/src/users/users.service.ts) — ฟังก์ชัน `validatePasswordComplexity()` (6 กฎ) และ `isPasswordExpired()` (90 วัน)
 - [`api/src/ciam/ciam.module.ts`](file:///d:/Python/ProRegis/api/src/ciam/ciam.module.ts) — NestJS Module สำหรับ Central IAM และ AI Copilot
-- [`api/src/ciam/ciam.controller.ts`](file:///d:/Python/ProRegis/api/src/ciam/ciam.controller.ts) — Controllers 5 หมวดหลักของ CIAM
-- [`api/src/ciam/ciam.service.ts`](file:///d:/Python/ProRegis/api/src/ciam/ciam.service.ts) — Core Service ดูแล OIDC PKCE, JWKS, JIT Provisioning, Reverse Heartbeat 120s และ True 2-Way Sync
+- [`api/src/ciam/ciam.controller.ts`](file:///d:/Python/ProRegis/api/src/ciam/ciam.controller.ts) — Controllers รองรับเส้นทาง Directory Fallback `/api/directory/accounts`, IP Header Extraction และ Header `X-CIAM-Framework-Version`
+- [`api/src/ciam/ciam.service.ts`](file:///d:/Python/ProRegis/api/src/ciam/ciam.service.ts) — Core Service ดูแล OIDC PKCE, JWKS RS256, JIT Provisioning, Reverse Heartbeat 120s, True 2-Way Sync และ Local Account Password Hashing
 - [`api/src/audit/transaction-log.entity.ts`](file:///d:/Python/ProRegis/api/src/audit/transaction-log.entity.ts) — Entity ตาราง `transaction_logs` ตาม ISO 27001
 - [`api/src/backoffice/system-setting.entity.ts`](file:///d:/Python/ProRegis/api/src/backoffice/system-setting.entity.ts) — ตาราง `system_settings` สำหรับคอนฟิกแบบ Zero `.env`
+- [`ciam_agent.py`](file:///d:/Python/ProRegis/ciam_agent.py) — Outbound Python Agent สอดคล้องกับ Framework v2.13.0
 
 ### Frontend (`web/`)
 - [`web/src/app/backoffice/ForcedPasswordChangeModal.tsx`](file:///d:/Python/ProRegis/web/src/app/backoffice/ForcedPasswordChangeModal.tsx) — Fullscreen Modal บังคับเปลี่ยนรหัสผ่านเมื่อครบ 90 วัน พร้อม Real-time Checklist 6 ข้อ
@@ -70,37 +97,47 @@
 
 ---
 
-## 3. คู่มือการดูแลระบบและการ Deploy ขึ้น Production (Operations Runbook)
+## 4. คู่มือการทดสอบและการ Deploy (Operations Runbook)
 
-### 3.1 การอัปเดตโค้ดขึ้น Production VPS (`proregis.windowasia.com`)
-> **⚠️ สำคัญมาก:** ทุกครั้งที่แก้ไขโค้ดเสร็จ ต้องทดสอบ build ผ่านทั้ง `api` และ `web` บนเครื่อง Local ก่อน Push ขึ้น GitHub จากนั้นจึงเข้าไปรันบน VPS โดยต้อง `cd /var/www/Proregis` ก่อนเสมอ และใช้ `docker-compose.yml` หลัก (ห้ามใช้ `docker-compose.local.yml` บน VPS)
+### 4.1 การทดสอบบนเครื่อง Local ก่อน Push
+ทุกครั้งที่มีการแก้ไขโค้ด ให้รันคำสั่งเหล่านี้ตามลำดับ:
+```powershell
+# 1. รัน Unit Tests (Backend)
+npm --prefix api run test
 
-1. **บนเครื่อง Local (Local Machine):**
-   ```powershell
-   git add .
-   git commit -m "feat(ciam): upgrade to Central IAM v2.12.0 (Bot Defense, 90-day Password Policy, True 2-Way Sync)"
-   git push origin main
-   ```
+# 2. รัน Compile Build (Backend)
+npm --prefix api run build
 
-2. **บนเครื่อง VPS (Production Server):**
-   ```bash
-   cd /var/www/Proregis
-   git pull origin main
-   docker compose up -d --build
-   ```
-   *(หากติด Conflict ที่ไฟล์ `api/.env` บน VPS ให้สั่ง `git checkout -- api/.env` ก่อน `git pull origin main`)*
+# 3. รัน Production Build (Frontend)
+npm --prefix web run build
+```
 
-### 3.2 การตั้งค่าและตรวจสอบการเชื่อมต่อ Central IAM ครั้งแรก
-1. เข้าสู่หน้า `/backoffice/settings` -> เลือกแท็บ **`Central IAM (SSO)`**
-2. ตรวจสอบค่า `Central IAM Base URL` (`https://ciam.windowasia.com`), `OIDC Client ID`, และกรอก `OIDC Client Secret` / `M2M Key`
-3. เลือก `กลุ่มสิทธิ์เริ่มต้น (Default Auto-Provision Group)` (ค่าเริ่มต้นคือ `IMAGE_EDITOR`)
-4. กดปุ่ม **`บันทึกการตั้งค่า Central IAM`**
-5. กดปุ่ม **`⚡ ทดสอบการเชื่อมต่อ`** เพื่อตรวจสอบสถานะ Online และ Key ID ของ JWKS
-6. กดปุ่ม **`⚡ ซิงก์บัญชีผู้ใช้กับ CIAM ทันที`** เพื่อแลกเปลี่ยนรายชื่อผู้ใช้และสถานะ Active/Inactive ให้ตรงกัน 100%
+### 4.2 การ Push โค้ดขึ้น GitHub
+เมื่อ Build ผ่าน 100% แล้ว:
+```powershell
+git add .
+git commit -m "คำอธิบายการแก้ไข"
+git push origin main
+```
 
-### 3.3 กรณีฉุกเฉินเมื่อระบบ Central IAM ล่ม (Break-Glass Procedure)
-- หาก Central IAM ขัดข้อง และต้องการล็อกอินด้วยรหัสผ่าน Local DB หรือ AD Direct Gateway ทันที:
-  1. เปิด URL: **`https://proregis.windowasia.com/backoffice?local=1`**
-  2. ล็อกอินด้วยบัญชี `SYSTEM_ADMIN` (โหมด `Database (DB)`)
-  3. ไปที่ `/backoffice/settings` -> แท็บ **`Central IAM (SSO)`**
-  4. สับสวิตช์เปิด **Break-Glass Emergency Mode** พร้อมระบุเหตุผลยืนยัน
+### 4.3 การ Deploy บนเซิร์ฟเวอร์ VPS Production (`proregis.windowasia.com`)
+ให้ USER เป็นผู้รันบนเครื่อง VPS:
+```bash
+cd /var/www/Proregis
+git pull origin main
+docker compose up -d --build
+```
+*(หากติด Conflict ที่ไฟล์ `api/.env` บน VPS ให้สั่ง `git checkout -- api/.env` ก่อน `git pull origin main`)*
+
+---
+
+## 5. แผนงานที่สามารถพัฒนาต่อยอดในอนาคต (Future Enhancements Roadmap)
+
+1. **ขยายความสามารถ In-App AI Copilot (Group E):**
+   - เพิ่ม Read-Only Analytics Tools เพิ่มเติม เช่น สถิติการลงทะเบียนสินค้าแยกตามรุ่น/สาขา, การวิเคราะห์ยอดสแกน QR Code ประจำเดือน
+   - เชื่อมต่อกับ Central IAM Core MCP Server ผ่าน SSE over HTTPS เพื่อตรวจสอบประวัติและสิทธิ์ของผู้ใช้งานข้ามระบบ
+2. **ปรับปรุงประสิทธิภาพ CRM & Analytics หลังบ้าน (`/backoffice/crm`, `/backoffice/dashboard`):**
+   - พัฒนา Export รายงานประวัติรับประกันในรูปแบบ Excel / PDF รายเดือน
+   - เพิ่มระบบแจ้งเตือนลูกค้าล่วงหน้าก่อนการรับประกันสินค้าหมดอายุผ่าน SMS / LINE OA
+3. **การเชื่อมโยง SAP B1 Service Layer:**
+   - ขยาย Endpoint Fallback Cache สำหรับข้อมูลคำสั่งผลิตและ Barcode ในกรณีที่ SAP B1 Service Layer ภายในโรงงานปิดปรับปรุง
