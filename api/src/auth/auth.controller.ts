@@ -1,11 +1,12 @@
-import { Controller, Post, Body, Req, UnauthorizedException } from '@nestjs/common';
+import { Controller, Post, Body, Req, UnauthorizedException, BadRequestException, UseGuards } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { UsersService } from '../users/users.service';
+import { UsersService, isPasswordExpired, validatePasswordComplexity } from '../users/users.service';
 import { AuditService } from '../audit/audit.service';
 import { UserStatus } from '../users/user.entity';
 import { SystemSetting } from '../backoffice/system-setting.entity';
-import { clearUserSessionRevocation } from './jwt-auth.guard';
+import { JwtAuthGuard, clearUserSessionRevocation } from './jwt-auth.guard';
+import { evaluateBotDefense } from './bot-defense';
 import * as bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
 import type { Request } from 'express';
@@ -26,13 +27,20 @@ export class AuthController {
 
   @Post('login')
   async login(
-    @Body() body: { username: string; passwordPlain: string; loginMethod?: 'DB' | 'AD' },
+    @Body()
+    body: {
+      username: string;
+      passwordPlain: string;
+      loginMethod?: 'DB' | 'AD';
+      corporate_fax?: string;
+      security_honey?: string;
+      form_render_ts?: number;
+    },
     @Req() req: Request,
   ) {
-    const ipAddress =
-      (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
-      req.socket?.remoteAddress ||
-      null;
+    // 🛡️ Enterprise In-App Bot Defense (Rate Limiter, Honeypot, Timing Guard)
+    const { clientIp, durationMs } = evaluateBotDefense(req, body);
+    const ipAddress = clientIp;
     const userAgent = req.headers['user-agent'] || null;
 
     const usernameNormalized = (body.username || '').trim();
@@ -263,6 +271,15 @@ export class AuthController {
       });
     }
 
+    // Calculate 90-day password expiration for Local DB users
+    let mustChangePassword = false;
+    let daysLeft = 90;
+    if (!user.isAdAuth) {
+      const expCheck = isPasswordExpired(user.passwordChangedAt, user.createdAt);
+      daysLeft = expCheck.daysLeft;
+      mustChangePassword = Boolean(user.mustChangePassword || expCheck.isExpired);
+    }
+
     // Fetch allowed menus for the user's role
     const allowedMenus = await this.usersService.findAllowedMenusByRole(user.role);
 
@@ -273,7 +290,68 @@ export class AuthController {
         username: user.username,
         role: user.role,
         allowedMenus,
+        mustChangePassword,
+        daysLeft,
+        isAdAuth: user.isAdAuth,
       },
+    };
+  }
+
+  @Post(['local/change-password', 'change-password'])
+  @UseGuards(JwtAuthGuard)
+  async changeLocalPassword(
+    @Body() body: { oldPassword?: string; newPassword?: string },
+    @Req() req: any,
+  ) {
+    const username = req.user?.username;
+    if (!username) {
+      throw new UnauthorizedException('ไม่พบข้อมูลผู้ใช้จาก Token');
+    }
+
+    const user = await this.usersService.findByUsername(username);
+    if (!user) {
+      throw new UnauthorizedException('ไม่พบบัญชีผู้ใช้ในระบบ');
+    }
+
+    if (user.isAdAuth) {
+      throw new BadRequestException('บัญชี Active Directory ต้องเปลี่ยนรหัสผ่านผ่านระบบส่วนกลางหรือ AD Domain');
+    }
+
+    const oldPassword = body.oldPassword || '';
+    const newPassword = body.newPassword || '';
+
+    if (!oldPassword) {
+      throw new BadRequestException('กรุณาระบุรหัสผ่านเดิม');
+    }
+
+    const isMatch = await bcrypt.compare(oldPassword, user.passwordHash);
+    if (!isMatch) {
+      throw new BadRequestException('รหัสผ่านเดิมไม่ถูกต้อง');
+    }
+
+    const complexityError = validatePasswordComplexity(newPassword, user.username);
+    if (complexityError) {
+      throw new BadRequestException(complexityError);
+    }
+
+    await this.usersService.updateUserPasswordAndPin(user.id, newPassword);
+
+    await this.auditService.recordTransactionLog({
+      category: 'ciam_sso',
+      action: 'local_password_rotated',
+      status: 'success',
+      message: `เปลี่ยนรหัสผ่านบัญชีท้องถิ่นสำเร็จ: ผู้ใช้ '${user.username}' (อายุ 90 วัน)`,
+      triggeredBy: `user:${user.username}`,
+      details: {
+        username: user.username,
+        rotation_cycle_days: 90,
+      },
+    });
+
+    return {
+      success: true,
+      status: 'SUCCESS',
+      message: 'เปลี่ยนรหัสผ่านเรียบร้อยแล้ว (มีอายุ 90 วัน)',
     };
   }
 }

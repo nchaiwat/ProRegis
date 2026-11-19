@@ -75,6 +75,12 @@ export class User {
   @Column({ name: 'is_password_cached_from_ad', type: 'boolean', default: false })
   isPasswordCachedFromAd: boolean;
 
+  @Column({ name: 'password_changed_at', type: 'timestamp', nullable: true })
+  passwordChangedAt: Date | null;
+
+  @Column({ name: 'must_change_password', type: 'boolean', default: false })
+  mustChangePassword: boolean;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

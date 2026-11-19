@@ -19,10 +19,16 @@ const audit_service_1 = require("../audit/audit.service");
 const jwt_auth_guard_1 = require("../auth/jwt-auth.guard");
 const roles_guard_1 = require("../auth/roles.guard");
 function extractClientIp(req) {
-    return (req.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
+    const raw = req.headers['x-ciam-origin-ip'] ||
+        req.headers['x-origin-ip'] ||
+        req.headers['x-forwarded-for'] ||
         req.headers['x-real-ip'] ||
         req.socket?.remoteAddress ||
-        null);
+        null;
+    if (!raw)
+        return null;
+    const first = raw.split(',')[0].trim().replace(/^::ffff:/, '');
+    return first || null;
 }
 let CiamSettingsController = class CiamSettingsController {
     ciamService;
@@ -146,8 +152,9 @@ let CiamDirectoryController = class CiamDirectoryController {
     constructor(ciamService) {
         this.ciamService = ciamService;
     }
-    async listAccounts(apiKey, timestamp, req, status, department, search) {
+    async listAccounts(apiKey, timestamp, req, res, status, department, search) {
         await this.ciamService.verifyCiamM2MRequest(apiKey, timestamp, extractClientIp(req) || undefined);
+        res.setHeader('X-CIAM-Framework-Version', '2.13.0');
         return this.ciamService.listAccountsForCiam({ status, department, search });
     }
     async provisionAccount(apiKey, timestamp, req, body) {
@@ -165,11 +172,12 @@ __decorate([
     __param(0, (0, common_1.Headers)('x-management-api-key')),
     __param(1, (0, common_1.Headers)('x-request-timestamp')),
     __param(2, (0, common_1.Req)()),
-    __param(3, (0, common_1.Query)('status')),
-    __param(4, (0, common_1.Query)('department')),
-    __param(5, (0, common_1.Query)('search')),
+    __param(3, (0, common_1.Res)({ passthrough: true })),
+    __param(4, (0, common_1.Query)('status')),
+    __param(5, (0, common_1.Query)('department')),
+    __param(6, (0, common_1.Query)('search')),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [String, String, Object, String, String, String]),
+    __metadata("design:paramtypes", [String, String, Object, Object, String, String, String]),
     __metadata("design:returntype", Promise)
 ], CiamDirectoryController.prototype, "listAccounts", null);
 __decorate([
@@ -195,7 +203,7 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], CiamDirectoryController.prototype, "updateAccountStatus", null);
 exports.CiamDirectoryController = CiamDirectoryController = __decorate([
-    (0, common_1.Controller)(['v1/directory', 'api/v1/directory']),
+    (0, common_1.Controller)(['v1/directory', 'api/v1/directory', 'directory', 'api/directory']),
     __metadata("design:paramtypes", [ciam_service_1.CiamService])
 ], CiamDirectoryController);
 let CiamAgentController = class CiamAgentController {

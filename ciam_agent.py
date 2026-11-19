@@ -20,10 +20,11 @@ APP_CODE = "proregis"
 SPOKE_CLIENT_ID = os.getenv("CIAM_CLIENT_ID", "proregis-spoke-client")
 SPOKE_API_KEY = os.getenv("CIAM_M2M_KEY", "sec_proregis_mgmt_2026")
 PROREGIS_API_URL = os.getenv("PROREGIS_API_URL", "http://localhost:3001")
+CIAM_FRAMEWORK_VERSION = "2.13.0"
 HEARTBEAT_INTERVAL = 120  # 2 minutes
 
 
-def execute_local_command(action: str, username: str) -> tuple[bool, str]:
+def execute_local_command(action: str, username: str, account_meta: dict | None = None) -> tuple[bool, str]:
     """Execute command against ProRegis local directory governance endpoint."""
     try:
         logger.info(f"⚡ กำลังดำเนินการคำสั่ง '{action}' สำหรับผู้ใช้ '{username}' ในระบบ ProRegis...")
@@ -54,9 +55,23 @@ def execute_local_command(action: str, username: str) -> tuple[bool, str]:
             return False, f"HTTP {res.status_code}: {res.text[:120]}"
 
         elif action == "PROVISION_USER":
+            meta = account_meta or {}
+            full_name = meta.get("full_name") or username
+            use_ad_auth = bool(meta.get("use_ad_auth", True))
+            prov_payload = {
+                "username": username,
+                "full_name": full_name,
+                "use_ad_auth": use_ad_auth,
+                "department": meta.get("department"),
+                "group_name": meta.get("role"),
+            }
+            if not use_ad_auth and meta.get("password"):
+                prov_payload["password"] = meta.get("password")
+                prov_payload["must_change_password"] = meta.get("must_change_password", True)
+
             res = requests.post(
                 f"{PROREGIS_API_URL}/api/v1/directory/accounts",
-                json={"username": username, "full_name": username, "use_ad_auth": True},
+                json=prov_payload,
                 headers={"X-Management-API-Key": SPOKE_API_KEY},
                 timeout=10,
             )
@@ -107,7 +122,8 @@ def run_agent_cycle(is_full_sync: bool = False, previous_results: list | None = 
     payload = {
         "app_code": APP_CODE,
         "status": "HEALTHY",
-        "app_version": "2.8.0",
+        "app_version": "2.13.0",
+        "framework_version": CIAM_FRAMEWORK_VERSION,
         "sync_type": "FULL_SYNC" if is_full_sync else "HEARTBEAT",
         "command_results": previous_results or [],
     }
@@ -120,6 +136,12 @@ def run_agent_cycle(is_full_sync: bool = False, previous_results: list | None = 
         if res.status_code == 200:
             data = res.json()
             logger.info(f"✅ Heartbeat สำเร็จ: ตอบรับจาก CIAM ({data.get('server_time')})")
+
+            assigned_map = {
+                (a.get("username") or "").strip().lower(): a
+                for a in (data.get("assigned_accounts") or [])
+                if a.get("username")
+            }
 
             pending_commands = data.get("pending_commands", [])
             new_results = []
@@ -140,7 +162,8 @@ def run_agent_cycle(is_full_sync: bool = False, previous_results: list | None = 
                         "message": "Full sync command acknowledged. Directory inventory will be pushed.",
                     })
                 else:
-                    success, msg = execute_local_command(action, target_user)
+                    meta = assigned_map.get(target_user.strip().lower())
+                    success, msg = execute_local_command(action, target_user, account_meta=meta)
                     new_results.append({
                         "command_id": cmd_id,
                         "action": action,

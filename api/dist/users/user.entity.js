@@ -43,6 +43,8 @@ let User = class User {
     lockedUntil;
     isAdAuth;
     isPasswordCachedFromAd;
+    passwordChangedAt;
+    mustChangePassword;
     createdAt;
     updatedAt;
 };
@@ -125,6 +127,14 @@ __decorate([
     (0, typeorm_1.Column)({ name: 'is_password_cached_from_ad', type: 'boolean', default: false }),
     __metadata("design:type", Boolean)
 ], User.prototype, "isPasswordCachedFromAd", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'password_changed_at', type: 'timestamp', nullable: true }),
+    __metadata("design:type", Object)
+], User.prototype, "passwordChangedAt", void 0);
+__decorate([
+    (0, typeorm_1.Column)({ name: 'must_change_password', type: 'boolean', default: false }),
+    __metadata("design:type", Boolean)
+], User.prototype, "mustChangePassword", void 0);
 __decorate([
     (0, typeorm_1.CreateDateColumn)({ name: 'created_at' }),
     __metadata("design:type", Date)

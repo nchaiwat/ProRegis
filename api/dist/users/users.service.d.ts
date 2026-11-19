@@ -3,6 +3,12 @@ import { Repository } from 'typeorm';
 import { User, UserRole, UserStatus } from './user.entity';
 import { RolePermission } from './role-permission.entity';
 import { TelegramService } from '../telegram/telegram.service';
+export declare const LOCAL_PASSWORD_EXPIRY_DAYS = 90;
+export declare function validatePasswordComplexity(password: string, username?: string): string | null;
+export declare function isPasswordExpired(passwordChangedAt: Date | null, createdAt?: Date): {
+    isExpired: boolean;
+    daysLeft: number;
+};
 export declare class UsersService implements OnApplicationBootstrap {
     private readonly userRepository;
     private readonly rolePermissionRepository;

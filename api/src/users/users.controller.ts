@@ -31,6 +31,8 @@ export class UsersController {
       failedAttempts: u.failedAttempts,
       lockedUntil: u.lockedUntil,
       isAdAuth: u.isAdAuth,
+      passwordChangedAt: u.passwordChangedAt,
+      mustChangePassword: u.mustChangePassword,
       createdAt: u.createdAt,
     }));
   }

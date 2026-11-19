@@ -6,6 +6,52 @@ import { RolePermission } from './role-permission.entity';
 import { TelegramService, formatThaiDateTime } from '../telegram/telegram.service';
 import * as bcrypt from 'bcryptjs';
 
+export const LOCAL_PASSWORD_EXPIRY_DAYS = 90;
+
+export function validatePasswordComplexity(password: string, username?: string): string | null {
+  if (!password) {
+    return 'กรุณาระบุรหัสผ่าน';
+  }
+  const pwd = password.trim();
+  if (pwd.length < 8 || pwd.length > 16) {
+    return `รหัสผ่านต้องมีความยาวระหว่าง 8 ถึง 16 ตัวอักษร (ปัจจุบัน ${pwd.length} ตัวอักษร)`;
+  }
+  if (!/[A-Z]/.test(pwd)) {
+    return 'รหัสผ่านต้องมีตัวอักษรพิมพ์ใหญ่ (A-Z) อย่างน้อย 1 ตัว';
+  }
+  if (!/[a-z]/.test(pwd)) {
+    return 'รหัสผ่านต้องมีตัวอักษรพิมพ์เล็ก (a-z) อย่างน้อย 1 ตัว';
+  }
+  if (!/[0-9]/.test(pwd)) {
+    return 'รหัสผ่านต้องมีตัวเลข (0-9) อย่างน้อย 1 ตัว';
+  }
+  if (!/[!@#$%^&*()_+\-=\[\]{}|;:,.<>?/~`]/.test(pwd)) {
+    return 'รหัสผ่านต้องมีอักขระพิเศษ (!@#$%^&*...) อย่างน้อย 1 ตัว';
+  }
+  if (username && username.trim().length >= 3 && pwd.toLowerCase().includes(username.trim().toLowerCase())) {
+    return 'รหัสผ่านต้องไม่มีชื่อผู้ใช้ (Username) ปะปนอยู่';
+  }
+  return null;
+}
+
+export function isPasswordExpired(
+  passwordChangedAt: Date | null,
+  createdAt?: Date,
+): { isExpired: boolean; daysLeft: number } {
+  const now = Date.now();
+  const baseTime = passwordChangedAt
+    ? new Date(passwordChangedAt).getTime()
+    : createdAt
+      ? new Date(createdAt).getTime()
+      : now;
+  const elapsedDays = Math.floor((now - baseTime) / (1000 * 60 * 60 * 24));
+  const daysLeft = Math.max(0, LOCAL_PASSWORD_EXPIRY_DAYS - elapsedDays);
+  return {
+    isExpired: elapsedDays >= LOCAL_PASSWORD_EXPIRY_DAYS,
+    daysLeft,
+  };
+}
+
 @Injectable()
 export class UsersService implements OnApplicationBootstrap {
   constructor(
@@ -172,8 +218,13 @@ export class UsersService implements OnApplicationBootstrap {
       throw new BadRequestException('ชื่อผู้ใช้นี้มีอยู่ในระบบแล้ว');
     }
 
-    // Validate password complexity
-    if (!passwordPlain || passwordPlain.length < 8) {
+    // Validate password complexity according to Enterprise Standard (v2.12.0)
+    if (!isAdAuth && passwordPlain) {
+      const complexityError = validatePasswordComplexity(passwordPlain, username);
+      if (complexityError) {
+        throw new BadRequestException(complexityError);
+      }
+    } else if (!passwordPlain || passwordPlain.length < 8) {
       throw new BadRequestException('รหัสผ่านต้องมีความยาวไม่น้อยกว่า 8 ตัวอักษร');
     }
     
@@ -183,6 +234,7 @@ export class UsersService implements OnApplicationBootstrap {
     }
     
     const passwordHash = await bcrypt.hash(passwordPlain, 10);
+    const now = new Date();
     const newUser = this.userRepository.create({
       username: username.trim(),
       passwordHash,
@@ -196,6 +248,8 @@ export class UsersService implements OnApplicationBootstrap {
       telegramId: telegramId || null,
       pinCode: pinCode || null,
       isAdAuth: isAdAuth || false,
+      passwordChangedAt: now,
+      mustChangePassword: false,
     });
 
     return this.userRepository.save(newUser);
@@ -257,11 +311,18 @@ export class UsersService implements OnApplicationBootstrap {
     }
 
     if (passwordPlain) {
-      if (passwordPlain.length < 8) {
+      if (!user.isAdAuth) {
+        const complexityError = validatePasswordComplexity(passwordPlain, user.username);
+        if (complexityError) {
+          throw new BadRequestException(complexityError);
+        }
+      } else if (passwordPlain.length < 8) {
         throw new BadRequestException('รหัสผ่านต้องมีความยาวไม่น้อยกว่า 8 ตัวอักษร');
       }
       user.passwordHash = await bcrypt.hash(passwordPlain, 10);
       user.isPasswordCachedFromAd = isPasswordCachedFromAd;
+      user.passwordChangedAt = new Date();
+      user.mustChangePassword = false;
     }
 
     if (pinCode !== undefined) {

@@ -31,6 +31,18 @@ const PROTECTED_ADMIN_ACCOUNTS = new Set([
   'local_admin',
 ]);
 
+export const CIAM_FRAMEWORK_VERSION = '2.13.0';
+
+export const ALLOWED_CIAM_IPS = new Set([
+  '157.173.219.153',
+  '127.0.0.1',
+  'localhost',
+  '::1',
+  '172.18.0.1',
+  '49.231.185.245',
+  '58.8.190.63',
+]);
+
 interface PkceEntry {
   verifier: string;
   createdAt: number;
@@ -570,6 +582,7 @@ export class CiamService implements OnModuleInit, OnModuleDestroy {
       break_glass_active: breakGlassActive,
       ciam_base_url: baseUrl,
       client_id: clientId,
+      framework_version: CIAM_FRAMEWORK_VERSION,
       login_button_label: 'เข้าสู่ระบบด้วย Central IAM (SSO)',
       fallback_ad_available: true,
     };
@@ -1048,6 +1061,14 @@ export class CiamService implements OnModuleInit, OnModuleDestroy {
       throw new UnauthorizedException('Invalid or missing X-Management-API-Key header.');
     }
 
+    if (clientIp) {
+      const cleanIp = clientIp.split(',')[0].trim().replace(/^::ffff:/, '');
+      if (!ALLOWED_CIAM_IPS.has(cleanIp)) {
+        this.logger.warn(`[CIAM M2M] Rejected unauthorized IP: ${cleanIp}`);
+        throw new ForbiddenException(`IP ${cleanIp} not allowed by Central IAM Governance policy.`);
+      }
+    }
+
     if (timestampHeader) {
       const tsNum = Number(timestampHeader);
       if (!isNaN(tsNum)) {
@@ -1106,6 +1127,7 @@ export class CiamService implements OnModuleInit, OnModuleDestroy {
 
     return {
       application_name: 'ProRegis (Product Warranty Registration)',
+      framework_version: CIAM_FRAMEWORK_VERSION,
       total_accounts: totalAccounts,
       active_accounts: activeAccounts,
       inactive_accounts: inactiveAccounts,
@@ -1120,6 +1142,8 @@ export class CiamService implements OnModuleInit, OnModuleDestroy {
     department?: string | null;
     group_name?: string | null;
     use_ad_auth?: boolean;
+    password?: string | null;
+    must_change_password?: boolean | null;
     created_by?: string;
   }) {
     if (!payload.username || !payload.username.trim()) {
@@ -1138,18 +1162,35 @@ export class CiamService implements OnModuleInit, OnModuleDestroy {
     const firstName = parts[0] || payload.username;
     const lastName = parts.slice(1).join(' ') || '';
 
-    const randomPassHash = await bcrypt.hash(crypto.randomBytes(24).toString('hex'), 10);
+    const useAdAuth = payload.use_ad_auth !== undefined ? Boolean(payload.use_ad_auth) : true;
+
+    // Local Account Password Provisioning (Framework v2.13.0)
+    let passwordHash: string;
+    if (!useAdAuth && payload.password && payload.password.trim()) {
+      passwordHash = await bcrypt.hash(payload.password.trim(), 10);
+    } else {
+      passwordHash = await bcrypt.hash(crypto.randomBytes(24).toString('hex'), 10);
+    }
+
+    const mustChangePassword = !useAdAuth
+      ? payload.must_change_password !== undefined && payload.must_change_password !== null
+        ? Boolean(payload.must_change_password)
+        : true
+      : false;
+
     const created = await this.userRepo.save(
       this.userRepo.create({
         username: payload.username.trim(),
-        passwordHash: randomPassHash,
+        passwordHash,
         role: assignedRole,
         status: UserStatus.ACTIVE,
         firstName,
         lastName,
         department: payload.department || '',
         email: payload.email || null,
-        isAdAuth: payload.use_ad_auth !== undefined ? payload.use_ad_auth : true,
+        isAdAuth: useAdAuth,
+        mustChangePassword,
+        passwordChangedAt: new Date(),
       }),
     );
 
@@ -1157,7 +1198,7 @@ export class CiamService implements OnModuleInit, OnModuleDestroy {
       category: 'ciam_sso',
       action: 'auto_provision_user',
       status: 'info',
-      message: `สร้างบัญชีผู้ใช้ใหม่อัตโนมัติจาก Central IAM: '${created.username}'`,
+      message: `สร้างบัญชีผู้ใช้ใหม่อัตโนมัติจาก Central IAM: '${created.username}' (${useAdAuth ? 'AD' : 'Local'})`,
       triggeredBy: payload.created_by || 'system:ciam',
       recordsCount: 1,
       details: {
@@ -1165,6 +1206,8 @@ export class CiamService implements OnModuleInit, OnModuleDestroy {
         username: created.username,
         email: created.email,
         group_assigned: created.role,
+        use_ad_auth: useAdAuth,
+        must_change_password: mustChangePassword,
       },
     });
 
@@ -1174,6 +1217,7 @@ export class CiamService implements OnModuleInit, OnModuleDestroy {
       username: created.username,
       message: `Account '${created.username}' created successfully.`,
       group_name: created.role,
+      use_ad_auth: created.isAdAuth,
       is_active: true,
       created_at: created.createdAt.toISOString(),
     };
@@ -1272,12 +1316,17 @@ export class CiamService implements OnModuleInit, OnModuleDestroy {
       role: u.role,
       use_ad_auth: !!u.isAdAuth,
       is_active: u.status === UserStatus.ACTIVE,
+      status_origin: 'SPOKE_APP',
+      status_updated_at: u.updatedAt ? u.updatedAt.toISOString() : new Date().toISOString(),
+      spoke_status_updated_at: u.updatedAt ? u.updatedAt.toISOString() : new Date().toISOString(),
+      updated_at: u.updatedAt ? u.updatedAt.toISOString() : new Date().toISOString(),
     }));
 
     const payload: Record<string, any> = {
       app_code: 'proregis',
       status: 'HEALTHY',
-      app_version: '2.8.0',
+      app_version: '2.13.0',
+      framework_version: CIAM_FRAMEWORK_VERSION,
       sync_type: isFullSync ? 'FULL_SYNC' : 'HEARTBEAT',
       command_results: this.pendingCommandResults,
     };
@@ -1366,7 +1415,20 @@ export class CiamService implements OnModuleInit, OnModuleDestroy {
             const role = this.resolveUserRole(assigned.role || defaultGroup);
             const fullName = String(assigned.full_name || assigned.username).trim();
             const parts = fullName.split(/\s+/);
-            const passHash = await bcrypt.hash(crypto.randomBytes(24).toString('hex'), 10);
+            const isAdAuth = assigned.use_ad_auth !== undefined ? Boolean(assigned.use_ad_auth) : true;
+
+            let passHash: string;
+            if (!isAdAuth && assigned.password && String(assigned.password).trim()) {
+              passHash = await bcrypt.hash(String(assigned.password).trim(), 10);
+            } else {
+              passHash = await bcrypt.hash(crypto.randomBytes(24).toString('hex'), 10);
+            }
+
+            const mustChangePassword = !isAdAuth
+              ? assigned.must_change_password !== undefined && assigned.must_change_password !== null
+                ? Boolean(assigned.must_change_password)
+                : true
+              : false;
 
             await this.userRepo.save(
               this.userRepo.create({
@@ -1378,7 +1440,9 @@ export class CiamService implements OnModuleInit, OnModuleDestroy {
                 lastName: parts.slice(1).join(' ') || '',
                 department: assigned.department || '',
                 email: assigned.email || null,
-                isAdAuth: true,
+                isAdAuth,
+                mustChangePassword,
+                passwordChangedAt: new Date(),
               }),
             );
             createdCount += 1;
@@ -1386,8 +1450,16 @@ export class CiamService implements OnModuleInit, OnModuleDestroy {
             typeof assigned.is_active === 'boolean' &&
             !PROTECTED_ADMIN_ACCOUNTS.has(existing.username.toLowerCase())
           ) {
+            // Check CIAM Authority Lock & Timestamp Reconciliation (v2.11.0 / v2.9.0)
+            const isLocked = Boolean(assigned.is_status_locked);
+            const ciamUpdatedAt = assigned.status_updated_at ? new Date(assigned.status_updated_at).getTime() : 0;
+            const spokeUpdatedAt = existing.updatedAt ? new Date(existing.updatedAt).getTime() : 0;
+
+            // If CIAM authority is locked OR CIAM updated timestamp is newer than Spoke
+            const shouldApplyCiam = isLocked || ciamUpdatedAt >= spokeUpdatedAt || assigned.status_origin === 'CIAM_ADMIN';
+
             const currentlyActive = existing.status === UserStatus.ACTIVE;
-            if (assigned.is_active !== currentlyActive) {
+            if (shouldApplyCiam && assigned.is_active !== currentlyActive) {
               existing.status = assigned.is_active ? UserStatus.ACTIVE : UserStatus.SUSPENDED;
               if (!assigned.is_active) {
                 revokeUserActiveSessions(existing.username);
@@ -1454,7 +1526,20 @@ export class CiamService implements OnModuleInit, OnModuleDestroy {
         const role = this.resolveUserRole(matchedProfile?.role || defaultGroup);
         const fullName = String(matchedProfile?.full_name || username).trim();
         const parts = fullName.split(/\s+/);
-        const passHash = await bcrypt.hash(crypto.randomBytes(24).toString('hex'), 10);
+        const isAdAuth = matchedProfile?.use_ad_auth !== undefined ? Boolean(matchedProfile.use_ad_auth) : true;
+
+        let passHash: string;
+        if (!isAdAuth && matchedProfile?.password && String(matchedProfile.password).trim()) {
+          passHash = await bcrypt.hash(String(matchedProfile.password).trim(), 10);
+        } else {
+          passHash = await bcrypt.hash(crypto.randomBytes(24).toString('hex'), 10);
+        }
+
+        const mustChangePassword = !isAdAuth
+          ? matchedProfile?.must_change_password !== undefined && matchedProfile?.must_change_password !== null
+            ? Boolean(matchedProfile.must_change_password)
+            : true
+          : false;
 
         await this.userRepo.save(
           this.userRepo.create({
@@ -1466,7 +1551,9 @@ export class CiamService implements OnModuleInit, OnModuleDestroy {
             lastName: parts.slice(1).join(' ') || '',
             department: matchedProfile?.department || '',
             email: matchedProfile?.email || null,
-            isAdAuth: true,
+            isAdAuth,
+            mustChangePassword,
+            passwordChangedAt: new Date(),
           }),
         );
 

@@ -45,7 +45,9 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
     return function (target, key) { decorator(target, key, paramIndex); }
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.UsersService = void 0;
+exports.UsersService = exports.LOCAL_PASSWORD_EXPIRY_DAYS = void 0;
+exports.validatePasswordComplexity = validatePasswordComplexity;
+exports.isPasswordExpired = isPasswordExpired;
 const common_1 = require("@nestjs/common");
 const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
@@ -53,6 +55,46 @@ const user_entity_1 = require("./user.entity");
 const role_permission_entity_1 = require("./role-permission.entity");
 const telegram_service_1 = require("../telegram/telegram.service");
 const bcrypt = __importStar(require("bcryptjs"));
+exports.LOCAL_PASSWORD_EXPIRY_DAYS = 90;
+function validatePasswordComplexity(password, username) {
+    if (!password) {
+        return 'กรุณาระบุรหัสผ่าน';
+    }
+    const pwd = password.trim();
+    if (pwd.length < 8 || pwd.length > 16) {
+        return `รหัสผ่านต้องมีความยาวระหว่าง 8 ถึง 16 ตัวอักษร (ปัจจุบัน ${pwd.length} ตัวอักษร)`;
+    }
+    if (!/[A-Z]/.test(pwd)) {
+        return 'รหัสผ่านต้องมีตัวอักษรพิมพ์ใหญ่ (A-Z) อย่างน้อย 1 ตัว';
+    }
+    if (!/[a-z]/.test(pwd)) {
+        return 'รหัสผ่านต้องมีตัวอักษรพิมพ์เล็ก (a-z) อย่างน้อย 1 ตัว';
+    }
+    if (!/[0-9]/.test(pwd)) {
+        return 'รหัสผ่านต้องมีตัวเลข (0-9) อย่างน้อย 1 ตัว';
+    }
+    if (!/[!@#$%^&*()_+\-=\[\]{}|;:,.<>?/~`]/.test(pwd)) {
+        return 'รหัสผ่านต้องมีอักขระพิเศษ (!@#$%^&*...) อย่างน้อย 1 ตัว';
+    }
+    if (username && username.trim().length >= 3 && pwd.toLowerCase().includes(username.trim().toLowerCase())) {
+        return 'รหัสผ่านต้องไม่มีชื่อผู้ใช้ (Username) ปะปนอยู่';
+    }
+    return null;
+}
+function isPasswordExpired(passwordChangedAt, createdAt) {
+    const now = Date.now();
+    const baseTime = passwordChangedAt
+        ? new Date(passwordChangedAt).getTime()
+        : createdAt
+            ? new Date(createdAt).getTime()
+            : now;
+    const elapsedDays = Math.floor((now - baseTime) / (1000 * 60 * 60 * 24));
+    const daysLeft = Math.max(0, exports.LOCAL_PASSWORD_EXPIRY_DAYS - elapsedDays);
+    return {
+        isExpired: elapsedDays >= exports.LOCAL_PASSWORD_EXPIRY_DAYS,
+        daysLeft,
+    };
+}
 let UsersService = class UsersService {
     userRepository;
     rolePermissionRepository;
@@ -186,13 +228,20 @@ let UsersService = class UsersService {
         if (existing) {
             throw new common_1.BadRequestException('ชื่อผู้ใช้นี้มีอยู่ในระบบแล้ว');
         }
-        if (!passwordPlain || passwordPlain.length < 8) {
+        if (!isAdAuth && passwordPlain) {
+            const complexityError = validatePasswordComplexity(passwordPlain, username);
+            if (complexityError) {
+                throw new common_1.BadRequestException(complexityError);
+            }
+        }
+        else if (!passwordPlain || passwordPlain.length < 8) {
             throw new common_1.BadRequestException('รหัสผ่านต้องมีความยาวไม่น้อยกว่า 8 ตัวอักษร');
         }
         if (pinCode && !/^\d{6}$/.test(pinCode)) {
             throw new common_1.BadRequestException('PIN Code ต้องเป็นตัวเลข 6 หลักเท่านั้น');
         }
         const passwordHash = await bcrypt.hash(passwordPlain, 10);
+        const now = new Date();
         const newUser = this.userRepository.create({
             username: username.trim(),
             passwordHash,
@@ -206,6 +255,8 @@ let UsersService = class UsersService {
             telegramId: telegramId || null,
             pinCode: pinCode || null,
             isAdAuth: isAdAuth || false,
+            passwordChangedAt: now,
+            mustChangePassword: false,
         });
         return this.userRepository.save(newUser);
     }
@@ -239,11 +290,19 @@ let UsersService = class UsersService {
             throw new common_1.NotFoundException('ไม่พบผู้ใช้ที่ระบุ');
         }
         if (passwordPlain) {
-            if (passwordPlain.length < 8) {
+            if (!user.isAdAuth) {
+                const complexityError = validatePasswordComplexity(passwordPlain, user.username);
+                if (complexityError) {
+                    throw new common_1.BadRequestException(complexityError);
+                }
+            }
+            else if (passwordPlain.length < 8) {
                 throw new common_1.BadRequestException('รหัสผ่านต้องมีความยาวไม่น้อยกว่า 8 ตัวอักษร');
             }
             user.passwordHash = await bcrypt.hash(passwordPlain, 10);
             user.isPasswordCachedFromAd = isPasswordCachedFromAd;
+            user.passwordChangedAt = new Date();
+            user.mustChangePassword = false;
         }
         if (pinCode !== undefined) {
             if (pinCode && !/^\d{6}$/.test(pinCode)) {

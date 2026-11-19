@@ -21,12 +21,17 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard, Roles } from '../auth/roles.guard';
 
 function extractClientIp(req: Request): string | null {
-  return (
-    (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() ||
+  const raw =
+    (req.headers['x-ciam-origin-ip'] as string) ||
+    (req.headers['x-origin-ip'] as string) ||
+    (req.headers['x-forwarded-for'] as string) ||
     (req.headers['x-real-ip'] as string) ||
     req.socket?.remoteAddress ||
-    null
-  );
+    null;
+
+  if (!raw) return null;
+  const first = raw.split(',')[0].trim().replace(/^::ffff:/, '');
+  return first || null;
 }
 
 // =============================================================================
@@ -119,7 +124,7 @@ export class CiamSsoAuthController {
 // =============================================================================
 // Group C: Inbound Directory Governance & Remote Provisioning (Mode A M2M)
 // =============================================================================
-@Controller(['v1/directory', 'api/v1/directory'])
+@Controller(['v1/directory', 'api/v1/directory', 'directory', 'api/directory'])
 export class CiamDirectoryController {
   constructor(private readonly ciamService: CiamService) {}
 
@@ -128,11 +133,13 @@ export class CiamDirectoryController {
     @Headers('x-management-api-key') apiKey: string,
     @Headers('x-request-timestamp') timestamp: string,
     @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
     @Query('status') status?: string,
     @Query('department') department?: string,
     @Query('search') search?: string,
   ) {
     await this.ciamService.verifyCiamM2MRequest(apiKey, timestamp, extractClientIp(req) || undefined);
+    res.setHeader('X-CIAM-Framework-Version', '2.13.0');
     return this.ciamService.listAccountsForCiam({ status, department, search });
   }
 
@@ -150,6 +157,8 @@ export class CiamDirectoryController {
       department?: string | null;
       group_name?: string | null;
       use_ad_auth?: boolean;
+      password?: string;
+      must_change_password?: boolean;
       created_by?: string;
     },
   ) {

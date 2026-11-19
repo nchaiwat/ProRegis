@@ -75,6 +75,7 @@ export declare class CiamSsoAuthController {
         break_glass_active: boolean;
         ciam_base_url: string;
         client_id: string;
+        framework_version: string;
         login_button_label: string;
         fallback_ad_available: boolean;
     }>;
@@ -122,8 +123,9 @@ export declare class CiamSsoAuthController {
 export declare class CiamDirectoryController {
     private readonly ciamService;
     constructor(ciamService: CiamService);
-    listAccounts(apiKey: string, timestamp: string, req: Request, status?: string, department?: string, search?: string): Promise<{
+    listAccounts(apiKey: string, timestamp: string, req: Request, res: Response, status?: string, department?: string, search?: string): Promise<{
         application_name: string;
+        framework_version: string;
         total_accounts: number;
         active_accounts: number;
         inactive_accounts: number;
@@ -149,6 +151,8 @@ export declare class CiamDirectoryController {
         department?: string | null;
         group_name?: string | null;
         use_ad_auth?: boolean;
+        password?: string;
+        must_change_password?: boolean;
         created_by?: string;
     }): Promise<{
         success: boolean;
@@ -156,6 +160,7 @@ export declare class CiamDirectoryController {
         username: string;
         message: string;
         group_name: import("../users/user.entity").UserRole;
+        use_ad_auth: boolean;
         is_active: boolean;
         created_at: string;
     }>;

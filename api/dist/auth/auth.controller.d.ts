@@ -13,6 +13,9 @@ export declare class AuthController {
         username: string;
         passwordPlain: string;
         loginMethod?: 'DB' | 'AD';
+        corporate_fax?: string;
+        security_honey?: string;
+        form_render_ts?: number;
     }, req: Request): Promise<{
         success: boolean;
         token: string;
@@ -20,6 +23,17 @@ export declare class AuthController {
             username: string;
             role: import("../users/user.entity").UserRole;
             allowedMenus: string[];
+            mustChangePassword: boolean;
+            daysLeft: number;
+            isAdAuth: boolean;
         };
+    }>;
+    changeLocalPassword(body: {
+        oldPassword?: string;
+        newPassword?: string;
+    }, req: any): Promise<{
+        success: boolean;
+        status: string;
+        message: string;
     }>;
 }

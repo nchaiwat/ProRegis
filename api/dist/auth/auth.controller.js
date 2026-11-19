@@ -54,6 +54,7 @@ const audit_service_1 = require("../audit/audit.service");
 const user_entity_1 = require("../users/user.entity");
 const system_setting_entity_1 = require("../backoffice/system-setting.entity");
 const jwt_auth_guard_1 = require("./jwt-auth.guard");
+const bot_defense_1 = require("./bot-defense");
 const bcrypt = __importStar(require("bcryptjs"));
 const jwt = __importStar(require("jsonwebtoken"));
 let AuthController = class AuthController {
@@ -70,9 +71,8 @@ let AuthController = class AuthController {
         return row && row.value ? row.value : fallback;
     }
     async login(body, req) {
-        const ipAddress = req.headers['x-forwarded-for']?.split(',')[0]?.trim() ||
-            req.socket?.remoteAddress ||
-            null;
+        const { clientIp, durationMs } = (0, bot_defense_1.evaluateBotDefense)(req, body);
+        const ipAddress = clientIp;
         const userAgent = req.headers['user-agent'] || null;
         const usernameNormalized = (body.username || '').trim();
         const user = await this.usersService.findByUsername(usernameNormalized);
@@ -200,6 +200,13 @@ let AuthController = class AuthController {
                 },
             });
         }
+        let mustChangePassword = false;
+        let daysLeft = 90;
+        if (!user.isAdAuth) {
+            const expCheck = (0, users_service_1.isPasswordExpired)(user.passwordChangedAt, user.createdAt);
+            daysLeft = expCheck.daysLeft;
+            mustChangePassword = Boolean(user.mustChangePassword || expCheck.isExpired);
+        }
         const allowedMenus = await this.usersService.findAllowedMenusByRole(user.role);
         return {
             success: true,
@@ -208,7 +215,53 @@ let AuthController = class AuthController {
                 username: user.username,
                 role: user.role,
                 allowedMenus,
+                mustChangePassword,
+                daysLeft,
+                isAdAuth: user.isAdAuth,
             },
+        };
+    }
+    async changeLocalPassword(body, req) {
+        const username = req.user?.username;
+        if (!username) {
+            throw new common_1.UnauthorizedException('ไม่พบข้อมูลผู้ใช้จาก Token');
+        }
+        const user = await this.usersService.findByUsername(username);
+        if (!user) {
+            throw new common_1.UnauthorizedException('ไม่พบบัญชีผู้ใช้ในระบบ');
+        }
+        if (user.isAdAuth) {
+            throw new common_1.BadRequestException('บัญชี Active Directory ต้องเปลี่ยนรหัสผ่านผ่านระบบส่วนกลางหรือ AD Domain');
+        }
+        const oldPassword = body.oldPassword || '';
+        const newPassword = body.newPassword || '';
+        if (!oldPassword) {
+            throw new common_1.BadRequestException('กรุณาระบุรหัสผ่านเดิม');
+        }
+        const isMatch = await bcrypt.compare(oldPassword, user.passwordHash);
+        if (!isMatch) {
+            throw new common_1.BadRequestException('รหัสผ่านเดิมไม่ถูกต้อง');
+        }
+        const complexityError = (0, users_service_1.validatePasswordComplexity)(newPassword, user.username);
+        if (complexityError) {
+            throw new common_1.BadRequestException(complexityError);
+        }
+        await this.usersService.updateUserPasswordAndPin(user.id, newPassword);
+        await this.auditService.recordTransactionLog({
+            category: 'ciam_sso',
+            action: 'local_password_rotated',
+            status: 'success',
+            message: `เปลี่ยนรหัสผ่านบัญชีท้องถิ่นสำเร็จ: ผู้ใช้ '${user.username}' (อายุ 90 วัน)`,
+            triggeredBy: `user:${user.username}`,
+            details: {
+                username: user.username,
+                rotation_cycle_days: 90,
+            },
+        });
+        return {
+            success: true,
+            status: 'SUCCESS',
+            message: 'เปลี่ยนรหัสผ่านเรียบร้อยแล้ว (มีอายุ 90 วัน)',
         };
     }
 };
@@ -221,6 +274,15 @@ __decorate([
     __metadata("design:paramtypes", [Object, Object]),
     __metadata("design:returntype", Promise)
 ], AuthController.prototype, "login", null);
+__decorate([
+    (0, common_1.Post)(['local/change-password', 'change-password']),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    __param(0, (0, common_1.Body)()),
+    __param(1, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", Promise)
+], AuthController.prototype, "changeLocalPassword", null);
 exports.AuthController = AuthController = __decorate([
     (0, common_1.Controller)(['auth', 'api/auth']),
     __param(2, (0, typeorm_1.InjectRepository)(system_setting_entity_1.SystemSetting)),

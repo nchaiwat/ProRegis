@@ -7,6 +7,8 @@ import { ProductionOrder } from '../production-order/production-order.entity';
 import { UsersService } from '../users/users.service';
 import { AuditService } from '../audit/audit.service';
 import { TelegramService } from '../telegram/telegram.service';
+export declare const CIAM_FRAMEWORK_VERSION = "2.13.0";
+export declare const ALLOWED_CIAM_IPS: Set<string>;
 export interface CommandResultItem {
     command_id: string;
     action: string;
@@ -117,6 +119,7 @@ export declare class CiamService implements OnModuleInit, OnModuleDestroy {
         break_glass_active: boolean;
         ciam_base_url: string;
         client_id: string;
+        framework_version: string;
         login_button_label: string;
         fallback_ad_available: boolean;
     }>;
@@ -165,6 +168,7 @@ export declare class CiamService implements OnModuleInit, OnModuleDestroy {
         search?: string;
     }): Promise<{
         application_name: string;
+        framework_version: string;
         total_accounts: number;
         active_accounts: number;
         inactive_accounts: number;
@@ -190,6 +194,8 @@ export declare class CiamService implements OnModuleInit, OnModuleDestroy {
         department?: string | null;
         group_name?: string | null;
         use_ad_auth?: boolean;
+        password?: string | null;
+        must_change_password?: boolean | null;
         created_by?: string;
     }): Promise<{
         success: boolean;
@@ -197,6 +203,7 @@ export declare class CiamService implements OnModuleInit, OnModuleDestroy {
         username: string;
         message: string;
         group_name: UserRole;
+        use_ad_auth: boolean;
         is_active: boolean;
         created_at: string;
     }>;

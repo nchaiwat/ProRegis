@@ -14,6 +14,15 @@ export default function BackofficePage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isSsoLoading, setIsSsoLoading] = useState(false);
 
+  // In-App Bot Defense fields (Layer 2 Honeypot & Layer 3 Timing Velocity Guard)
+  const [corporateFax, setCorporateFax] = useState("");
+  const [securityHoney, setSecurityHoney] = useState("");
+  const [formRenderTs, setFormRenderTs] = useState<number>(0);
+
+  useEffect(() => {
+    setFormRenderTs(Date.now());
+  }, []);
+
   // Central IAM SSO dynamic state
   const [ssoConfig, setSsoConfig] = useState<{
     sso_enabled: boolean;
@@ -146,6 +155,9 @@ export default function BackofficePage() {
           username: username.trim(),
           passwordPlain: password.trim(),
           loginMethod,
+          corporate_fax: corporateFax || undefined,
+          security_honey: securityHoney || undefined,
+          form_render_ts: formRenderTs || undefined,
         }),
       });
 
@@ -162,6 +174,9 @@ export default function BackofficePage() {
             username: data.user.username,
             role: data.user.role,
             allowedMenus: data.user.allowedMenus || [],
+            mustChangePassword: Boolean(data.user.mustChangePassword),
+            daysLeft: data.user.daysLeft,
+            isAdAuth: data.user.isAdAuth,
             at: Date.now(),
           })
         );
@@ -244,7 +259,34 @@ export default function BackofficePage() {
             </div>
           )}
 
-          <form onSubmit={handleLogin} className="space-y-4">
+          <form onSubmit={handleLogin} className="space-y-4 relative">
+            {/* 🛡️ In-App Bot Defense: Decoy Honeypot Trap Fields (Hidden from human users & screen readers) */}
+            <div
+              className="absolute -left-[9999px] top-0 opacity-0 h-0 w-0 overflow-hidden pointer-events-none select-none"
+              aria-hidden="true"
+              tabIndex={-1}
+            >
+              <label htmlFor="corporate_fax">Corporate Fax</label>
+              <input
+                id="corporate_fax"
+                type="text"
+                name="corporate_fax"
+                value={corporateFax}
+                onChange={(e) => setCorporateFax(e.target.value)}
+                tabIndex={-1}
+                autoComplete="off"
+              />
+              <label htmlFor="security_honey">Security Code</label>
+              <input
+                id="security_honey"
+                type="text"
+                name="security_honey"
+                value={securityHoney}
+                onChange={(e) => setSecurityHoney(e.target.value)}
+                tabIndex={-1}
+                autoComplete="off"
+              />
+            </div>
             {/* Login Method Selector */}
             <div className="grid grid-cols-2 p-1 bg-slate-100 rounded-xl border border-outline-variant">
               <button

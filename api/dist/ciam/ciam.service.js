@@ -46,7 +46,7 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 };
 var CiamService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CiamService = void 0;
+exports.CiamService = exports.ALLOWED_CIAM_IPS = exports.CIAM_FRAMEWORK_VERSION = void 0;
 const common_1 = require("@nestjs/common");
 const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
@@ -66,6 +66,16 @@ const PROTECTED_ADMIN_ACCOUNTS = new Set([
     'superadmin',
     'emergency_admin',
     'local_admin',
+]);
+exports.CIAM_FRAMEWORK_VERSION = '2.13.0';
+exports.ALLOWED_CIAM_IPS = new Set([
+    '157.173.219.153',
+    '127.0.0.1',
+    'localhost',
+    '::1',
+    '172.18.0.1',
+    '49.231.185.245',
+    '58.8.190.63',
 ]);
 let CiamService = CiamService_1 = class CiamService {
     systemSettingRepo;
@@ -509,6 +519,7 @@ let CiamService = CiamService_1 = class CiamService {
             break_glass_active: breakGlassActive,
             ciam_base_url: baseUrl,
             client_id: clientId,
+            framework_version: exports.CIAM_FRAMEWORK_VERSION,
             login_button_label: 'เข้าสู่ระบบด้วย Central IAM (SSO)',
             fallback_ad_available: true,
         };
@@ -876,6 +887,13 @@ let CiamService = CiamService_1 = class CiamService {
         if (!apiKeyHeader || (apiKeyHeader !== expectedM2M && apiKeyHeader !== clientSecret)) {
             throw new common_1.UnauthorizedException('Invalid or missing X-Management-API-Key header.');
         }
+        if (clientIp) {
+            const cleanIp = clientIp.split(',')[0].trim().replace(/^::ffff:/, '');
+            if (!exports.ALLOWED_CIAM_IPS.has(cleanIp)) {
+                this.logger.warn(`[CIAM M2M] Rejected unauthorized IP: ${cleanIp}`);
+                throw new common_1.ForbiddenException(`IP ${cleanIp} not allowed by Central IAM Governance policy.`);
+            }
+        }
         if (timestampHeader) {
             const tsNum = Number(timestampHeader);
             if (!isNaN(tsNum)) {
@@ -925,6 +943,7 @@ let CiamService = CiamService_1 = class CiamService {
         }
         return {
             application_name: 'ProRegis (Product Warranty Registration)',
+            framework_version: exports.CIAM_FRAMEWORK_VERSION,
             total_accounts: totalAccounts,
             active_accounts: activeAccounts,
             inactive_accounts: inactiveAccounts,
@@ -945,23 +964,37 @@ let CiamService = CiamService_1 = class CiamService {
         const parts = fullName.split(/\s+/);
         const firstName = parts[0] || payload.username;
         const lastName = parts.slice(1).join(' ') || '';
-        const randomPassHash = await bcrypt.hash(crypto.randomBytes(24).toString('hex'), 10);
+        const useAdAuth = payload.use_ad_auth !== undefined ? Boolean(payload.use_ad_auth) : true;
+        let passwordHash;
+        if (!useAdAuth && payload.password && payload.password.trim()) {
+            passwordHash = await bcrypt.hash(payload.password.trim(), 10);
+        }
+        else {
+            passwordHash = await bcrypt.hash(crypto.randomBytes(24).toString('hex'), 10);
+        }
+        const mustChangePassword = !useAdAuth
+            ? payload.must_change_password !== undefined && payload.must_change_password !== null
+                ? Boolean(payload.must_change_password)
+                : true
+            : false;
         const created = await this.userRepo.save(this.userRepo.create({
             username: payload.username.trim(),
-            passwordHash: randomPassHash,
+            passwordHash,
             role: assignedRole,
             status: user_entity_1.UserStatus.ACTIVE,
             firstName,
             lastName,
             department: payload.department || '',
             email: payload.email || null,
-            isAdAuth: payload.use_ad_auth !== undefined ? payload.use_ad_auth : true,
+            isAdAuth: useAdAuth,
+            mustChangePassword,
+            passwordChangedAt: new Date(),
         }));
         await this.auditService.recordTransactionLog({
             category: 'ciam_sso',
             action: 'auto_provision_user',
             status: 'info',
-            message: `สร้างบัญชีผู้ใช้ใหม่อัตโนมัติจาก Central IAM: '${created.username}'`,
+            message: `สร้างบัญชีผู้ใช้ใหม่อัตโนมัติจาก Central IAM: '${created.username}' (${useAdAuth ? 'AD' : 'Local'})`,
             triggeredBy: payload.created_by || 'system:ciam',
             recordsCount: 1,
             details: {
@@ -969,6 +1002,8 @@ let CiamService = CiamService_1 = class CiamService {
                 username: created.username,
                 email: created.email,
                 group_assigned: created.role,
+                use_ad_auth: useAdAuth,
+                must_change_password: mustChangePassword,
             },
         });
         return {
@@ -977,6 +1012,7 @@ let CiamService = CiamService_1 = class CiamService {
             username: created.username,
             message: `Account '${created.username}' created successfully.`,
             group_name: created.role,
+            use_ad_auth: created.isAdAuth,
             is_active: true,
             created_at: created.createdAt.toISOString(),
         };
@@ -1051,11 +1087,16 @@ let CiamService = CiamService_1 = class CiamService {
             role: u.role,
             use_ad_auth: !!u.isAdAuth,
             is_active: u.status === user_entity_1.UserStatus.ACTIVE,
+            status_origin: 'SPOKE_APP',
+            status_updated_at: u.updatedAt ? u.updatedAt.toISOString() : new Date().toISOString(),
+            spoke_status_updated_at: u.updatedAt ? u.updatedAt.toISOString() : new Date().toISOString(),
+            updated_at: u.updatedAt ? u.updatedAt.toISOString() : new Date().toISOString(),
         }));
         const payload = {
             app_code: 'proregis',
             status: 'HEALTHY',
-            app_version: '2.8.0',
+            app_version: '2.13.0',
+            framework_version: exports.CIAM_FRAMEWORK_VERSION,
             sync_type: isFullSync ? 'FULL_SYNC' : 'HEARTBEAT',
             command_results: this.pendingCommandResults,
         };
@@ -1130,7 +1171,19 @@ let CiamService = CiamService_1 = class CiamService {
                         const role = this.resolveUserRole(assigned.role || defaultGroup);
                         const fullName = String(assigned.full_name || assigned.username).trim();
                         const parts = fullName.split(/\s+/);
-                        const passHash = await bcrypt.hash(crypto.randomBytes(24).toString('hex'), 10);
+                        const isAdAuth = assigned.use_ad_auth !== undefined ? Boolean(assigned.use_ad_auth) : true;
+                        let passHash;
+                        if (!isAdAuth && assigned.password && String(assigned.password).trim()) {
+                            passHash = await bcrypt.hash(String(assigned.password).trim(), 10);
+                        }
+                        else {
+                            passHash = await bcrypt.hash(crypto.randomBytes(24).toString('hex'), 10);
+                        }
+                        const mustChangePassword = !isAdAuth
+                            ? assigned.must_change_password !== undefined && assigned.must_change_password !== null
+                                ? Boolean(assigned.must_change_password)
+                                : true
+                            : false;
                         await this.userRepo.save(this.userRepo.create({
                             username: assigned.username.trim(),
                             passwordHash: passHash,
@@ -1140,14 +1193,20 @@ let CiamService = CiamService_1 = class CiamService {
                             lastName: parts.slice(1).join(' ') || '',
                             department: assigned.department || '',
                             email: assigned.email || null,
-                            isAdAuth: true,
+                            isAdAuth,
+                            mustChangePassword,
+                            passwordChangedAt: new Date(),
                         }));
                         createdCount += 1;
                     }
                     else if (typeof assigned.is_active === 'boolean' &&
                         !PROTECTED_ADMIN_ACCOUNTS.has(existing.username.toLowerCase())) {
+                        const isLocked = Boolean(assigned.is_status_locked);
+                        const ciamUpdatedAt = assigned.status_updated_at ? new Date(assigned.status_updated_at).getTime() : 0;
+                        const spokeUpdatedAt = existing.updatedAt ? new Date(existing.updatedAt).getTime() : 0;
+                        const shouldApplyCiam = isLocked || ciamUpdatedAt >= spokeUpdatedAt || assigned.status_origin === 'CIAM_ADMIN';
                         const currentlyActive = existing.status === user_entity_1.UserStatus.ACTIVE;
-                        if (assigned.is_active !== currentlyActive) {
+                        if (shouldApplyCiam && assigned.is_active !== currentlyActive) {
                             existing.status = assigned.is_active ? user_entity_1.UserStatus.ACTIVE : user_entity_1.UserStatus.SUSPENDED;
                             if (!assigned.is_active) {
                                 (0, jwt_auth_guard_1.revokeUserActiveSessions)(existing.username);
@@ -1208,7 +1267,19 @@ let CiamService = CiamService_1 = class CiamService {
                 const role = this.resolveUserRole(matchedProfile?.role || defaultGroup);
                 const fullName = String(matchedProfile?.full_name || username).trim();
                 const parts = fullName.split(/\s+/);
-                const passHash = await bcrypt.hash(crypto.randomBytes(24).toString('hex'), 10);
+                const isAdAuth = matchedProfile?.use_ad_auth !== undefined ? Boolean(matchedProfile.use_ad_auth) : true;
+                let passHash;
+                if (!isAdAuth && matchedProfile?.password && String(matchedProfile.password).trim()) {
+                    passHash = await bcrypt.hash(String(matchedProfile.password).trim(), 10);
+                }
+                else {
+                    passHash = await bcrypt.hash(crypto.randomBytes(24).toString('hex'), 10);
+                }
+                const mustChangePassword = !isAdAuth
+                    ? matchedProfile?.must_change_password !== undefined && matchedProfile?.must_change_password !== null
+                        ? Boolean(matchedProfile.must_change_password)
+                        : true
+                    : false;
                 await this.userRepo.save(this.userRepo.create({
                     username: username.trim(),
                     passwordHash: passHash,
@@ -1218,7 +1289,9 @@ let CiamService = CiamService_1 = class CiamService {
                     lastName: parts.slice(1).join(' ') || '',
                     department: matchedProfile?.department || '',
                     email: matchedProfile?.email || null,
-                    isAdAuth: true,
+                    isAdAuth,
+                    mustChangePassword,
+                    passwordChangedAt: new Date(),
                 }));
                 await this.auditService.recordTransactionLog({
                     category: 'ciam_sso',

@@ -28,6 +28,8 @@ export declare class User {
     lockedUntil: Date | null;
     isAdAuth: boolean;
     isPasswordCachedFromAd: boolean;
+    passwordChangedAt: Date | null;
+    mustChangePassword: boolean;
     createdAt: Date;
     updatedAt: Date;
 }

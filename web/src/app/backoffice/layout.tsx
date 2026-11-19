@@ -5,11 +5,15 @@ import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { getApiBaseUrl } from "@/lib/api";
 import SpokeCopilotWidget from "./SpokeCopilotWidget";
+import ForcedPasswordChangeModal from "./ForcedPasswordChangeModal";
 
 interface SessionInfo {
   username: string;
   role: string;
   allowedMenus: string[];
+  mustChangePassword?: boolean;
+  daysLeft?: number;
+  isAdAuth?: boolean;
 }
 
 export default function BackofficeLayout({ children }: { children: React.ReactNode }) {
@@ -97,6 +101,9 @@ export default function BackofficeLayout({ children }: { children: React.ReactNo
         username: s.username,
         role: s.role,
         allowedMenus: s.allowedMenus || [],
+        mustChangePassword: Boolean(s.mustChangePassword),
+        daysLeft: s.daysLeft,
+        isAdAuth: s.isAdAuth,
       });
 
       // If logged in and trying to access login page, redirect to correct landing sub-page
@@ -491,6 +498,17 @@ export default function BackofficeLayout({ children }: { children: React.ReactNo
 
       {/* In-App AI Copilot Floating Widget (Backoffice Only, renders only when enabled) */}
       <SpokeCopilotWidget />
+
+      {/* ISO 27001 90-Day Forced Password Rotation Modal for Local DB Accounts */}
+      {!isLoginPage && session && session.mustChangePassword && !session.isAdAuth && (
+        <ForcedPasswordChangeModal
+          username={session.username}
+          isExpired={true}
+          onSuccess={() => {
+            setSession((prev) => (prev ? { ...prev, mustChangePassword: false } : null));
+          }}
+        />
+      )}
     </div>
   );
 }

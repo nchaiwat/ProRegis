@@ -20,6 +20,8 @@ export declare class UsersController {
         failedAttempts: number;
         lockedUntil: Date | null;
         isAdAuth: boolean;
+        passwordChangedAt: Date | null;
+        mustChangePassword: boolean;
         createdAt: Date;
     }[]>;
     createUser(body: {
