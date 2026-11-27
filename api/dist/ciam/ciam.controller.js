@@ -18,9 +18,11 @@ const ciam_service_1 = require("./ciam.service");
 const audit_service_1 = require("../audit/audit.service");
 const jwt_auth_guard_1 = require("../auth/jwt-auth.guard");
 const roles_guard_1 = require("../auth/roles.guard");
+const bot_defense_1 = require("../auth/bot-defense");
 function extractClientIp(req) {
     const raw = req.headers['x-ciam-origin-ip'] ||
         req.headers['x-origin-ip'] ||
+        req.headers['cf-connecting-ip'] ||
         req.headers['x-forwarded-for'] ||
         req.headers['x-real-ip'] ||
         req.socket?.remoteAddress ||
@@ -78,8 +80,10 @@ exports.CiamSettingsController = CiamSettingsController = __decorate([
 ], CiamSettingsController);
 let CiamSsoAuthController = class CiamSsoAuthController {
     ciamService;
-    constructor(ciamService) {
+    auditService;
+    constructor(ciamService, auditService) {
         this.ciamService = ciamService;
+        this.auditService = auditService;
     }
     async ssoLoginRedirect(res) {
         return res.redirect('/auth/start');
@@ -90,9 +94,21 @@ let CiamSsoAuthController = class CiamSsoAuthController {
     async getAuthorizeUrl(body) {
         return this.ciamService.createAuthorizeUrl(body?.redirect_uri);
     }
-    async ssoCallback(body, req) {
-        const ip = extractClientIp(req);
+    async ssoCallback(body, req, res) {
         const userAgent = req.headers['user-agent'] || null;
+        const rateIp = (0, bot_defense_1.evaluateRateLimitOnly)(req, res, async (action, ip, details) => {
+            await this.auditService.logAction('sso_callback', action, 'SecurityBotDefense', null, ip, userAgent, details);
+            await this.auditService.recordTransactionLog({
+                category: 'security_bot_defense',
+                action: action.toLowerCase(),
+                status: 'warning',
+                ipAddress: ip,
+                message: `ระบบป้องกันบอทตรวจพบเหตุการณ์ ${action} ที่ SSO Callback`,
+                triggeredBy: `ip:${ip}`,
+                details: { event_code: action, ...details },
+            });
+        });
+        const ip = extractClientIp(req) || rateIp;
         return this.ciamService.handleSsoCallback(body, ip, userAgent);
     }
     async breakGlassToggle(body, req) {
@@ -128,8 +144,9 @@ __decorate([
     (0, common_1.HttpCode)(common_1.HttpStatus.OK),
     __param(0, (0, common_1.Body)()),
     __param(1, (0, common_1.Req)()),
+    __param(2, (0, common_1.Res)({ passthrough: true })),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:paramtypes", [Object, Object, Object]),
     __metadata("design:returntype", Promise)
 ], CiamSsoAuthController.prototype, "ssoCallback", null);
 __decorate([
@@ -145,7 +162,8 @@ __decorate([
 ], CiamSsoAuthController.prototype, "breakGlassToggle", null);
 exports.CiamSsoAuthController = CiamSsoAuthController = __decorate([
     (0, common_1.Controller)(['auth/sso', 'api/auth/sso']),
-    __metadata("design:paramtypes", [ciam_service_1.CiamService])
+    __metadata("design:paramtypes", [ciam_service_1.CiamService,
+        audit_service_1.AuditService])
 ], CiamSsoAuthController);
 let CiamDirectoryController = class CiamDirectoryController {
     ciamService;
@@ -154,16 +172,18 @@ let CiamDirectoryController = class CiamDirectoryController {
     }
     async listAccounts(apiKey, timestamp, req, res, status, department, search) {
         await this.ciamService.verifyCiamM2MRequest(apiKey, timestamp, extractClientIp(req) || undefined);
-        res.setHeader('X-CIAM-Framework-Version', '2.13.0');
+        res.setHeader('X-CIAM-Framework-Version', ciam_service_1.CIAM_FRAMEWORK_VERSION);
         return this.ciamService.listAccountsForCiam({ status, department, search });
     }
     async provisionAccount(apiKey, timestamp, req, body) {
-        await this.ciamService.verifyCiamM2MRequest(apiKey, timestamp, extractClientIp(req) || undefined);
-        return this.ciamService.provisionAccountFromCiam(body);
+        const ip = extractClientIp(req);
+        await this.ciamService.verifyCiamM2MRequest(apiKey, timestamp, ip || undefined);
+        return this.ciamService.provisionAccountFromCiam(body, ip);
     }
     async updateAccountStatus(apiKey, timestamp, req, username, body) {
-        await this.ciamService.verifyCiamM2MRequest(apiKey, timestamp, extractClientIp(req) || undefined);
-        return this.ciamService.updateAccountStatusFromCiam(username, body);
+        const ip = extractClientIp(req);
+        await this.ciamService.verifyCiamM2MRequest(apiKey, timestamp, ip || undefined);
+        return this.ciamService.updateAccountStatusFromCiam(username, body, ip);
     }
 };
 exports.CiamDirectoryController = CiamDirectoryController;
@@ -240,8 +260,8 @@ let AiCopilotController = class AiCopilotController {
         this.ciamService = ciamService;
         this.auditService = auditService;
     }
-    async getAiSettings() {
-        return this.ciamService.getAiSettings();
+    async getAiSettings(req) {
+        return this.ciamService.getAiSettings(req.user);
     }
     async updateAiSettings(body, req) {
         const actor = req.user?.username || 'admin';
@@ -263,8 +283,10 @@ let AiCopilotController = class AiCopilotController {
 exports.AiCopilotController = AiCopilotController;
 __decorate([
     (0, common_1.Get)(['settings/ai', 'api/settings/ai']),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    __param(0, (0, common_1.Req)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", []),
+    __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", Promise)
 ], AiCopilotController.prototype, "getAiSettings", null);
 __decorate([

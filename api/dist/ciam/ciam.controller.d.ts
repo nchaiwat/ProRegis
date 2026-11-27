@@ -16,6 +16,8 @@ export declare class CiamSettingsController {
             ciam_ad_gateway_url: string;
             ciam_auto_provision_group: string;
             ciam_session_ttl_minutes: number;
+            ciam_idle_timeout_minutes: number;
+            ciam_idle_warning_seconds: number;
             updated_at: string;
             agent_status: {
                 online: boolean;
@@ -37,6 +39,8 @@ export declare class CiamSettingsController {
             ciam_ad_gateway_url: string;
             ciam_auto_provision_group: string;
             ciam_session_ttl_minutes: number;
+            ciam_idle_timeout_minutes: number;
+            ciam_idle_warning_seconds: number;
             updated_at: string;
             agent_status: {
                 online: boolean;
@@ -68,7 +72,8 @@ export declare class CiamSettingsController {
 }
 export declare class CiamSsoAuthController {
     private readonly ciamService;
-    constructor(ciamService: CiamService);
+    private readonly auditService;
+    constructor(ciamService: CiamService, auditService: AuditService);
     ssoLoginRedirect(res: Response): Promise<void>;
     getSsoConfig(): Promise<{
         sso_enabled: boolean;
@@ -76,6 +81,9 @@ export declare class CiamSsoAuthController {
         ciam_base_url: string;
         client_id: string;
         framework_version: string;
+        idle_timeout_minutes: number;
+        idle_warning_seconds: number;
+        session_ttl_minutes: number;
         login_button_label: string;
         fallback_ad_available: boolean;
     }>;
@@ -91,7 +99,7 @@ export declare class CiamSsoAuthController {
         code_verifier?: string | null;
         redirect_uri?: string | null;
         state?: string | null;
-    }, req: Request): Promise<{
+    }, req: Request, res: Response): Promise<{
         success: boolean;
         access_token: string;
         refresh_token: string;
@@ -191,7 +199,16 @@ export declare class AiCopilotController {
     private readonly ciamService;
     private readonly auditService;
     constructor(ciamService: CiamService, auditService: AuditService);
-    getAiSettings(): Promise<{
+    getAiSettings(req: Request): Promise<{
+        enabled: boolean;
+        provider: string;
+        has_api_key: boolean;
+        model?: undefined;
+        api_key_masked?: undefined;
+        base_url?: undefined;
+        system_prompt?: undefined;
+        allow_mcp_tools?: undefined;
+    } | {
         enabled: boolean;
         provider: string;
         model: string;
@@ -202,6 +219,15 @@ export declare class AiCopilotController {
         allow_mcp_tools: boolean;
     }>;
     updateAiSettings(body: any, req: Request): Promise<{
+        enabled: boolean;
+        provider: string;
+        has_api_key: boolean;
+        model?: undefined;
+        api_key_masked?: undefined;
+        base_url?: undefined;
+        system_prompt?: undefined;
+        allow_mcp_tools?: undefined;
+    } | {
         enabled: boolean;
         provider: string;
         model: string;

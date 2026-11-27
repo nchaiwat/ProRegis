@@ -7,7 +7,9 @@ import { ProductionOrder } from '../production-order/production-order.entity';
 import { UsersService } from '../users/users.service';
 import { AuditService } from '../audit/audit.service';
 import { TelegramService } from '../telegram/telegram.service';
-export declare const CIAM_FRAMEWORK_VERSION = "2.13.0";
+export declare const CIAM_FRAMEWORK_VERSION = "2.15.0";
+export declare const ZERO_TRAINING_PRIVACY_HEADERS: Record<string, string>;
+export declare function sanitizeContextForPrivacy(text: string): string;
 export declare const ALLOWED_CIAM_IPS: Set<string>;
 export interface CommandResultItem {
     command_id: string;
@@ -58,6 +60,8 @@ export declare class CiamService implements OnModuleInit, OnModuleDestroy {
             ciam_ad_gateway_url: string;
             ciam_auto_provision_group: string;
             ciam_session_ttl_minutes: number;
+            ciam_idle_timeout_minutes: number;
+            ciam_idle_warning_seconds: number;
             updated_at: string;
             agent_status: {
                 online: boolean;
@@ -76,6 +80,8 @@ export declare class CiamService implements OnModuleInit, OnModuleDestroy {
         ciam_ad_gateway_url?: string;
         ciam_auto_provision_group?: string;
         ciam_session_ttl_minutes?: number | string;
+        ciam_idle_timeout_minutes?: number | string;
+        ciam_idle_warning_seconds?: number | string;
     }, actorUsername: string, ipAddress: string | null): Promise<{
         status: string;
         settings: {
@@ -88,6 +94,8 @@ export declare class CiamService implements OnModuleInit, OnModuleDestroy {
             ciam_ad_gateway_url: string;
             ciam_auto_provision_group: string;
             ciam_session_ttl_minutes: number;
+            ciam_idle_timeout_minutes: number;
+            ciam_idle_warning_seconds: number;
             updated_at: string;
             agent_status: {
                 online: boolean;
@@ -120,6 +128,9 @@ export declare class CiamService implements OnModuleInit, OnModuleDestroy {
         ciam_base_url: string;
         client_id: string;
         framework_version: string;
+        idle_timeout_minutes: number;
+        idle_warning_seconds: number;
+        session_ttl_minutes: number;
         login_button_label: string;
         fallback_ad_available: boolean;
     }>;
@@ -197,7 +208,7 @@ export declare class CiamService implements OnModuleInit, OnModuleDestroy {
         password?: string | null;
         must_change_password?: boolean | null;
         created_by?: string;
-    }): Promise<{
+    }, ipAddress?: string | null): Promise<{
         success: boolean;
         id: string | number;
         username: string;
@@ -211,7 +222,7 @@ export declare class CiamService implements OnModuleInit, OnModuleDestroy {
         is_active: boolean;
         reason?: string;
         updated_by?: string;
-    }): Promise<{
+    }, ipAddress?: string | null): Promise<{
         username: string;
         is_active: boolean;
         message: string;
@@ -226,7 +237,18 @@ export declare class CiamService implements OnModuleInit, OnModuleDestroy {
         message: string;
     }>;
     private executeLocalAgentCommand;
-    getAiSettings(): Promise<{
+    getAiSettings(currentUser?: {
+        role?: string;
+    }): Promise<{
+        enabled: boolean;
+        provider: string;
+        has_api_key: boolean;
+        model?: undefined;
+        api_key_masked?: undefined;
+        base_url?: undefined;
+        system_prompt?: undefined;
+        allow_mcp_tools?: undefined;
+    } | {
         enabled: boolean;
         provider: string;
         model: string;
@@ -245,6 +267,15 @@ export declare class CiamService implements OnModuleInit, OnModuleDestroy {
         ai_system_prompt?: string;
         ai_allow_mcp_tools?: boolean | string;
     }, actorUsername: string, ipAddress: string | null): Promise<{
+        enabled: boolean;
+        provider: string;
+        has_api_key: boolean;
+        model?: undefined;
+        api_key_masked?: undefined;
+        base_url?: undefined;
+        system_prompt?: undefined;
+        allow_mcp_tools?: undefined;
+    } | {
         enabled: boolean;
         provider: string;
         model: string;

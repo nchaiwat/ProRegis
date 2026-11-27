@@ -3,6 +3,7 @@ export declare class TransactionLog {
     category: string;
     action: string;
     status: string;
+    ipAddress: string;
     message: string;
     details: string | null;
     recordsCount: number;

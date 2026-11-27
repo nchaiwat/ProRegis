@@ -13,11 +13,22 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AuditService = void 0;
+exports.normalizeAuditIp = normalizeAuditIp;
 const common_1 = require("@nestjs/common");
 const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
 const audit_log_entity_1 = require("./audit-log.entity");
 const transaction_log_entity_1 = require("./transaction-log.entity");
+function normalizeAuditIp(ip) {
+    if (!ip || !String(ip).trim()) {
+        return '127.0.0.1 (SYSTEM)';
+    }
+    const first = String(ip).split(',')[0].trim().replace(/^::ffff:/, '');
+    if (!first) {
+        return '127.0.0.1 (SYSTEM)';
+    }
+    return first.slice(0, 50);
+}
 let AuditService = class AuditService {
     auditRepository;
     transactionLogRepository;
@@ -48,6 +59,7 @@ let AuditService = class AuditService {
             category: params.category,
             action: params.action,
             status: params.status || 'success',
+            ipAddress: normalizeAuditIp(params.ipAddress),
             message: params.message,
             details: detailsStr,
             recordsCount: params.recordsCount ?? 0,

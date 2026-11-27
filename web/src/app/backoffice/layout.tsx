@@ -1,11 +1,13 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import Link from "next/link";
 import { getApiBaseUrl } from "@/lib/api";
 import SpokeCopilotWidget from "./SpokeCopilotWidget";
 import ForcedPasswordChangeModal from "./ForcedPasswordChangeModal";
+import IdleTimeoutModal from "./IdleTimeoutModal";
+import { useIdleTimeout } from "./useIdleTimeout";
 
 interface SessionInfo {
   username: string;
@@ -23,6 +25,9 @@ export default function BackofficeLayout({ children }: { children: React.ReactNo
   const [mounted, setMounted] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [qrMode, setQrMode] = useState<string>("STATIC");
+  const [idleTimeoutMinutes, setIdleTimeoutMinutes] = useState<number>(30);
+  const [idleWarningSeconds, setIdleWarningSeconds] = useState<number>(60);
+  const [sessionTtlMinutes, setSessionTtlMinutes] = useState<number>(480);
   
   // Mobile sidebar state
   const [isMobileOpen, setIsMobileOpen] = useState(false);
@@ -37,25 +42,48 @@ export default function BackofficeLayout({ children }: { children: React.ReactNo
     pathname === "/backoffice/" ||
     isAuthSubPage;
 
-  const redirectOnLogoutOrExpiry = () => {
-    const authProvider =
-      sessionStorage.getItem("bo_auth_provider") ||
-      localStorage.getItem("app_auth_provider");
-    const ciamPortalUrl =
-      sessionStorage.getItem("bo_ciam_portal_url") ||
-      localStorage.getItem("app_ciam_portal_url") ||
-      "https://ciam.windowasia.com/portal";
+  const redirectOnLogoutOrExpiry = useCallback(
+    (reason: "manual" | "idle_timeout" | "expired" = "manual") => {
+      const token = sessionStorage.getItem("bo_token");
+      const authProvider =
+        sessionStorage.getItem("bo_auth_provider") ||
+        localStorage.getItem("app_auth_provider");
+      const ciamPortalUrl =
+        sessionStorage.getItem("bo_ciam_portal_url") ||
+        localStorage.getItem("app_ciam_portal_url") ||
+        "https://ciam.windowasia.com/portal";
 
-    sessionStorage.clear();
-    localStorage.removeItem("app_auth_provider");
+      if (reason === "idle_timeout" && token) {
+        fetch(`${getApiBaseUrl()}/auth/logout`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ reason: "idle_timeout" }),
+          keepalive: true,
+        }).catch(() => {});
+      }
 
-    if (authProvider === "sso") {
-      window.location.href = ciamPortalUrl;
-    } else {
-      sessionStorage.setItem("bo_manual_login", "1");
-      router.replace("/backoffice?local=1");
-    }
-  };
+      sessionStorage.clear();
+      localStorage.removeItem("app_auth_provider");
+      localStorage.removeItem("bo_last_activity_at");
+
+      if (reason === "idle_timeout") {
+        const redirectTarget = encodeURIComponent(pathname || "/backoffice/dashboard");
+        window.location.href = `/backoffice?reason=idle_timeout&redirect_uri=${redirectTarget}`;
+        return;
+      }
+
+      if (authProvider === "sso") {
+        window.location.href = ciamPortalUrl;
+      } else {
+        sessionStorage.setItem("bo_manual_login", "1");
+        router.replace("/backoffice?local=1");
+      }
+    },
+    [pathname, router],
+  );
 
   useEffect(() => {
     setMounted(true);
@@ -86,10 +114,11 @@ export default function BackofficeLayout({ children }: { children: React.ReactNo
 
     try {
       const s = JSON.parse(storedSession);
-      // Verify session expiry (8 hours matching JWT)
-      if (Date.now() - s.at > 8 * 60 * 60 * 1000) {
+      const effectiveTtlMin = Number(s.ttlMinutes) || sessionTtlMinutes || 480;
+      // Verify session expiry (matching dynamic ciam_session_ttl_minutes)
+      if (Date.now() - s.at > effectiveTtlMin * 60 * 1000) {
         if (!isLoginPage) {
-          redirectOnLogoutOrExpiry();
+          redirectOnLogoutOrExpiry("expired");
         } else {
           sessionStorage.clear();
           setIsLoading(false);
@@ -137,6 +166,18 @@ export default function BackofficeLayout({ children }: { children: React.ReactNo
 
   const fetchSettings = async () => {
     try {
+      // Load dynamic session/idle timeout config for Backoffice
+      fetch(`${getApiBaseUrl()}/auth/sso/config`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((cfg) => {
+          if (cfg) {
+            if (cfg.idle_timeout_minutes) setIdleTimeoutMinutes(Number(cfg.idle_timeout_minutes) || 30);
+            if (cfg.idle_warning_seconds) setIdleWarningSeconds(Number(cfg.idle_warning_seconds) || 60);
+            if (cfg.session_ttl_minutes) setSessionTtlMinutes(Number(cfg.session_ttl_minutes) || 480);
+          }
+        })
+        .catch(() => {});
+
       const token = sessionStorage.getItem("bo_token");
       if (!token) return;
       
@@ -146,7 +187,8 @@ export default function BackofficeLayout({ children }: { children: React.ReactNo
         },
       });
       if (res.status === 401) {
-        redirectOnLogoutOrExpiry();
+        const expiredReason = res.headers.get("X-Session-Expired") === "idle_timeout" ? "idle_timeout" : "expired";
+        redirectOnLogoutOrExpiry(expiredReason);
         return;
       }
       if (res.ok) {
@@ -178,8 +220,30 @@ export default function BackofficeLayout({ children }: { children: React.ReactNo
     };
   }, [pathname]);
 
+  const handleExtendSession = useCallback(async () => {
+    const token = sessionStorage.getItem("bo_token");
+    if (!token) return;
+    try {
+      const res = await fetch(`${getApiBaseUrl()}/auth/session/ping`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.status === 401) {
+        redirectOnLogoutOrExpiry("idle_timeout");
+      }
+    } catch {}
+  }, [redirectOnLogoutOrExpiry]);
+
+  const { isWarning: isIdleWarning, secondsRemaining: idleSecondsRemaining, resetActivity } = useIdleTimeout({
+    enabled: mounted && !isLoading && !isLoginPage && Boolean(session),
+    idleTimeoutMinutes,
+    warningSeconds: idleWarningSeconds,
+    onTimeout: () => redirectOnLogoutOrExpiry("idle_timeout"),
+    onExtend: handleExtendSession,
+  });
+
   const handleLogout = () => {
-    redirectOnLogoutOrExpiry();
+    redirectOnLogoutOrExpiry("manual");
   };
 
   // Render children directly during server side render to avoid hydration mismatch
@@ -498,6 +562,18 @@ export default function BackofficeLayout({ children }: { children: React.ReactNo
 
       {/* In-App AI Copilot Floating Widget (Backoffice Only, renders only when enabled) */}
       <SpokeCopilotWidget />
+
+      {/* Enterprise Idle Session Timeout Warning Modal (Group H - v2.15.0) */}
+      {!isLoginPage && session && isIdleWarning && !session.mustChangePassword && (
+        <IdleTimeoutModal
+          secondsRemaining={idleSecondsRemaining}
+          idleTimeoutMinutes={idleTimeoutMinutes}
+          onExtend={() => {
+            resetActivity();
+          }}
+          onLogoutNow={() => redirectOnLogoutOrExpiry("manual")}
+        />
+      )}
 
       {/* ISO 27001 90-Day Forced Password Rotation Modal for Local DB Accounts */}
       {!isLoginPage && session && session.mustChangePassword && !session.isAdAuth && (

@@ -42,9 +42,20 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.JwtAuthGuard = void 0;
 exports.revokeUserActiveSessions = revokeUserActiveSessions;
 exports.clearUserSessionRevocation = clearUserSessionRevocation;
+exports.setIdleTimeoutMinutes = setIdleTimeoutMinutes;
+exports.getIdleTimeoutMinutes = getIdleTimeoutMinutes;
+exports.setIdleTimeoutAuditHandler = setIdleTimeoutAuditHandler;
+exports.buildSessionKey = buildSessionKey;
+exports.touchUserSessionActivity = touchUserSessionActivity;
+exports.clearUserSessionActivity = clearUserSessionActivity;
+exports.checkSessionIdleStatus = checkSessionIdleStatus;
 const common_1 = require("@nestjs/common");
 const jwt = __importStar(require("jsonwebtoken"));
+const bot_defense_1 = require("./bot-defense");
 const revokedUserTimestamps = new Map();
+const sessionLastActivity = new Map();
+let idleTimeoutMinutesConfig = 30;
+let idleTimeoutAuditHandler = null;
 function revokeUserActiveSessions(username) {
     if (!username)
         return;
@@ -55,9 +66,57 @@ function clearUserSessionRevocation(username) {
         return;
     revokedUserTimestamps.delete(username.trim().toLowerCase());
 }
+function setIdleTimeoutMinutes(minutes) {
+    const parsed = Math.floor(Number(minutes));
+    if (Number.isFinite(parsed) && parsed >= 1 && parsed <= 1440) {
+        idleTimeoutMinutesConfig = parsed;
+    }
+    else {
+        idleTimeoutMinutesConfig = 30;
+    }
+}
+function getIdleTimeoutMinutes() {
+    return idleTimeoutMinutesConfig;
+}
+function setIdleTimeoutAuditHandler(handler) {
+    idleTimeoutAuditHandler = handler;
+}
+function buildSessionKey(username, iat) {
+    return `${String(username || '').trim().toLowerCase()}:${iat || 0}`;
+}
+function touchUserSessionActivity(sessionKey, now = Date.now()) {
+    if (!sessionKey)
+        return;
+    if (sessionLastActivity.size > 1000) {
+        const staleCutoff = now - 24 * 60 * 60 * 1000;
+        for (const [k, ts] of sessionLastActivity.entries()) {
+            if (ts < staleCutoff) {
+                sessionLastActivity.delete(k);
+            }
+        }
+    }
+    sessionLastActivity.set(sessionKey, now);
+}
+function clearUserSessionActivity(sessionKey) {
+    if (!sessionKey)
+        return;
+    sessionLastActivity.delete(sessionKey);
+}
+function checkSessionIdleStatus(sessionKey, now = Date.now()) {
+    const idleMinutes = idleTimeoutMinutesConfig;
+    if (!sessionKey) {
+        return { expired: false, idleMinutes };
+    }
+    const lastSeen = sessionLastActivity.get(sessionKey);
+    if (lastSeen !== undefined && now - lastSeen > idleMinutes * 60 * 1000) {
+        return { expired: true, idleMinutes };
+    }
+    return { expired: false, idleMinutes };
+}
 let JwtAuthGuard = class JwtAuthGuard {
     canActivate(context) {
         const request = context.switchToHttp().getRequest();
+        const response = context.switchToHttp().getResponse();
         const authHeader = request.headers.authorization;
         if (!authHeader || !authHeader.startsWith('Bearer ')) {
             throw new common_1.UnauthorizedException('กรุณาเข้าสู่ระบบก่อนใช้งาน');
@@ -72,6 +131,23 @@ let JwtAuthGuard = class JwtAuthGuard {
                 if (revokedAt && (!issuedAtMs || issuedAtMs <= revokedAt)) {
                     throw new common_1.UnauthorizedException('บัญชีผู้ใช้นี้ถูกระงับสิทธิ์การใช้งาน (Session Revoked)');
                 }
+                const sessionKey = buildSessionKey(decoded.username, decoded.iat);
+                const idleStatus = checkSessionIdleStatus(sessionKey);
+                if (idleStatus.expired) {
+                    clearUserSessionActivity(sessionKey);
+                    response?.setHeader?.('X-Session-Expired', 'idle_timeout');
+                    if (idleTimeoutAuditHandler) {
+                        const clientIp = (0, bot_defense_1.resolveClientIp)(request);
+                        Promise.resolve(idleTimeoutAuditHandler({
+                            username: String(decoded.username),
+                            ipAddress: clientIp,
+                            idleMinutes: idleStatus.idleMinutes,
+                        })).catch(() => { });
+                    }
+                    throw new common_1.UnauthorizedException(`เซสชันหมดอายุเนื่องจากไม่มีการใช้งานเกิน ${idleStatus.idleMinutes} นาที (Idle Timeout กรุณาเข้าสู่ระบบใหม่)`);
+                }
+                touchUserSessionActivity(sessionKey);
+                request.sessionKey = sessionKey;
             }
             request.user = decoded;
             return true;

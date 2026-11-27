@@ -11,6 +11,8 @@ export default function BackofficePage() {
   const [loginMethod, setLoginMethod] = useState<"DB" | "AD">("DB");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
+  const [idleTimeoutNotice, setIdleTimeoutNotice] = useState(false);
+  const [redirectUriParam, setRedirectUriParam] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isSsoLoading, setIsSsoLoading] = useState(false);
 
@@ -69,6 +71,7 @@ export default function BackofficePage() {
   };
 
   useEffect(() => {
+    let suppressAutoSsoForIdle = false;
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
 
@@ -76,6 +79,16 @@ export default function BackofficePage() {
       if (params.get("code")) {
         window.location.replace(`/auth/callback${window.location.search}`);
         return;
+      }
+
+      // 1.5 Check Idle Timeout redirect reason (v2.15.0 Group H)
+      if (params.get("reason") === "idle_timeout") {
+        setIdleTimeoutNotice(true);
+        suppressAutoSsoForIdle = true;
+      }
+      const rawRedirect = params.get("redirect_uri");
+      if (rawRedirect && rawRedirect.startsWith("/backoffice/")) {
+        setRedirectUriParam(rawRedirect);
       }
 
       // 2. Check explicit local login bypass vs explicit portal launch
@@ -126,8 +139,8 @@ export default function BackofficePage() {
           }
 
           // Auto-initiate 1-Click SSO bounce when SSO is enabled and Break-Glass is off
-          // unless the user explicitly chose manual local login (?local=1 or bo_manual_login)
-          if (ssoEnabled && !breakGlassActive && typeof window !== "undefined") {
+          // unless the user explicitly chose manual local login (?local=1) or arrived due to idle_timeout
+          if (ssoEnabled && !breakGlassActive && !suppressAutoSsoForIdle && typeof window !== "undefined") {
             const isManualLogin = sessionStorage.getItem("bo_manual_login") === "1";
             if (!isManualLogin) {
               handleCiamSso();
@@ -181,8 +194,10 @@ export default function BackofficePage() {
           })
         );
 
-        // Redirect based on user role limits
-        if (data.user.role === "CRM_MANAGER") {
+        // Redirect based on redirect_uri or user role limits
+        if (redirectUriParam) {
+          router.push(redirectUriParam);
+        } else if (data.user.role === "CRM_MANAGER") {
           router.push("/backoffice/crm");
         } else if (data.user.role === "IMAGE_EDITOR") {
           router.push("/backoffice/product-images");
@@ -219,6 +234,16 @@ export default function BackofficePage() {
           <p className="text-xs text-on-surface-variant mb-5">
             สำหรับเจ้าหน้าที่โรงงานและ Admin เท่านั้น
           </p>
+
+          {/* Idle Timeout Notice Banner (Group H - v2.15.0) */}
+          {idleTimeoutNotice && (
+            <div className="mb-4 p-3 bg-amber-50 border border-amber-300 rounded-xl flex items-start gap-2">
+              <span className="material-symbols-outlined text-amber-600 !text-[18px] mt-0.5">timer_off</span>
+              <p className="text-[11px] font-bold text-amber-900 leading-relaxed">
+                เซสชันของคุณหมดอายุเนื่องจากไม่มีการใช้งานระบบเกินระยะเวลาที่กำหนด (Idle Timeout) กรุณาเข้าสู่ระบบใหม่อีกครั้ง
+              </p>
+            </div>
+          )}
 
           {/* Break-Glass Emergency Banner (Scenario 3) */}
           {ssoConfig.break_glass_active && (

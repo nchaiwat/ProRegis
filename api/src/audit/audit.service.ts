@@ -4,6 +4,17 @@ import { Repository } from 'typeorm';
 import { AuditLog } from './audit-log.entity';
 import { TransactionLog } from './transaction-log.entity';
 
+export function normalizeAuditIp(ip?: string | null): string {
+  if (!ip || !String(ip).trim()) {
+    return '127.0.0.1 (SYSTEM)';
+  }
+  const first = String(ip).split(',')[0].trim().replace(/^::ffff:/, '');
+  if (!first) {
+    return '127.0.0.1 (SYSTEM)';
+  }
+  return first.slice(0, 50);
+}
+
 @Injectable()
 export class AuditService {
   constructor(
@@ -36,9 +47,10 @@ export class AuditService {
   }
 
   async recordTransactionLog(params: {
-    category: 'ciam_sso' | 'security_break_glass' | 'system_setting' | string;
+    category: 'ciam_sso' | 'security_break_glass' | 'system_setting' | 'security_bot_defense' | string;
     action: string;
     status?: 'success' | 'failed' | 'warning' | 'info' | string;
+    ipAddress?: string | null;
     message: string;
     details?: any;
     recordsCount?: number;
@@ -56,6 +68,7 @@ export class AuditService {
       category: params.category,
       action: params.action,
       status: params.status || 'success',
+      ipAddress: normalizeAuditIp(params.ipAddress),
       message: params.message,
       details: detailsStr,
       recordsCount: params.recordsCount ?? 0,

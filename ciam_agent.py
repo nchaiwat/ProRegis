@@ -20,7 +20,7 @@ APP_CODE = "proregis"
 SPOKE_CLIENT_ID = os.getenv("CIAM_CLIENT_ID", "proregis-spoke-client")
 SPOKE_API_KEY = os.getenv("CIAM_M2M_KEY", "sec_proregis_mgmt_2026")
 PROREGIS_API_URL = os.getenv("PROREGIS_API_URL", "http://localhost:3001")
-CIAM_FRAMEWORK_VERSION = "2.13.0"
+CIAM_FRAMEWORK_VERSION = "2.15.0"
 HEARTBEAT_INTERVAL = 120  # 2 minutes
 
 
@@ -122,7 +122,7 @@ def run_agent_cycle(is_full_sync: bool = False, previous_results: list | None = 
     payload = {
         "app_code": APP_CODE,
         "status": "HEALTHY",
-        "app_version": "2.13.0",
+        "app_version": "2.15.0",
         "framework_version": CIAM_FRAMEWORK_VERSION,
         "sync_type": "FULL_SYNC" if is_full_sync else "HEARTBEAT",
         "command_results": previous_results or [],

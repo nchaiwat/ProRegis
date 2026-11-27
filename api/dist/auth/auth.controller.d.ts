@@ -2,7 +2,7 @@ import { Repository } from 'typeorm';
 import { UsersService } from '../users/users.service';
 import { AuditService } from '../audit/audit.service';
 import { SystemSetting } from '../backoffice/system-setting.entity';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 export declare class AuthController {
     private readonly usersService;
     private readonly auditService;
@@ -16,7 +16,7 @@ export declare class AuthController {
         corporate_fax?: string;
         security_honey?: string;
         form_render_ts?: number;
-    }, req: Request): Promise<{
+    }, req: Request, res: Response): Promise<{
         success: boolean;
         token: string;
         user: {
@@ -33,6 +33,17 @@ export declare class AuthController {
         newPassword?: string;
     }, req: any): Promise<{
         success: boolean;
+        status: string;
+        message: string;
+    }>;
+    pingSession(): Promise<{
+        status: string;
+        idle_timeout_minutes: number;
+        server_time: string;
+    }>;
+    logout(body: {
+        reason?: string;
+    }, req: Request): Promise<{
         status: string;
         message: string;
     }>;

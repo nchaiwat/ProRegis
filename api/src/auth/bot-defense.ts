@@ -1,5 +1,5 @@
 /**
- * Spoke In-App Bot Defense & Anti-Brute-Force Guard (Enterprise Standard v2.10.0 / ISO 27001)
+ * Spoke In-App Bot Defense & Anti-Brute-Force Guard (Enterprise Standard v2.10.0 - v2.15.0 / ISO 27001)
  * Organization: Window Asia Public Company Limited
  *
  * 3-Layer Defense:
@@ -8,7 +8,7 @@
  * - Layer 3: Submission Velocity & Timing Guard (< 400ms rejection)
  */
 
-import { Request } from 'express';
+import type { Request, Response } from 'express';
 import {
   HttpException,
   HttpStatus,
@@ -29,6 +29,17 @@ const WHITELISTED_IPS = new Set([
   '49.231.185.245',   // Window Asia HQ Gateway WAN
   '58.8.190.63',      // Window Asia สำนักงานสำรอง
 ]);
+
+export type BotDefenseViolationAction =
+  | 'IP_RATE_LIMITED'
+  | 'BOT_HONEYPOT_DETECTED'
+  | 'BOT_TIMING_VIOLATION';
+
+export type BotDefenseAuditCallback = (
+  action: BotDefenseViolationAction,
+  clientIp: string,
+  details: Record<string, any>,
+) => void | Promise<void>;
 
 class SpokeRateLimiter {
   private records = new Map<string, number[]>();
@@ -58,16 +69,24 @@ class SpokeRateLimiter {
 
 export const spokeRateLimiter = new SpokeRateLimiter();
 
+function cleanIpValue(raw: string): string {
+  return raw.split(',')[0].trim().replace(/^::ffff:/, '');
+}
+
 export function resolveClientIp(req: Request): string {
+  const cfIp = req.headers['cf-connecting-ip'];
+  if (typeof cfIp === 'string' && cfIp.trim()) {
+    return cleanIpValue(cfIp);
+  }
   const xff = req.headers['x-forwarded-for'];
   if (typeof xff === 'string' && xff.trim()) {
-    return xff.split(',')[0].trim();
+    return cleanIpValue(xff);
   }
   const realIp = req.headers['x-real-ip'];
   if (typeof realIp === 'string' && realIp.trim()) {
-    return realIp.trim();
+    return cleanIpValue(realIp);
   }
-  return req.socket?.remoteAddress || '127.0.0.1';
+  return cleanIpValue(req.socket?.remoteAddress || '127.0.0.1') || '127.0.0.1';
 }
 
 export interface BotDefensePayload {
@@ -77,31 +96,56 @@ export interface BotDefensePayload {
 }
 
 /**
- * Validate 3-Layer In-App Bot Defense
- * Throws corresponding NestJS exceptions if an anomaly is detected.
+ * Layer 1 Only: IP Rate Limiting (for SSO callbacks where honeypot/timing form fields do not exist)
  */
-export function evaluateBotDefense(
+export function evaluateRateLimitOnly(
   req: Request,
-  body: BotDefensePayload,
-): { clientIp: string; durationMs: number } {
+  res?: Response,
+  onViolation?: BotDefenseAuditCallback,
+): string {
   const clientIp = resolveClientIp(req);
-  const now = Date.now();
-
-  // Layer 1: IP Rate Limiting (10 req / 60s)
   const rateCheck = spokeRateLimiter.isAllowed(clientIp);
   if (!rateCheck.allowed) {
+    res?.setHeader?.('Retry-After', String(rateCheck.retryAfter));
+    if (onViolation) {
+      Promise.resolve(
+        onViolation('IP_RATE_LIMITED', clientIp, { retry_after: rateCheck.retryAfter }),
+      ).catch(() => {});
+    }
     throw new HttpException(
       {
         statusCode: HttpStatus.TOO_MANY_REQUESTS,
+        detail: `คำขอเข้าสู่ระบบถี่เกินกำหนด กรุณารอ ${rateCheck.retryAfter} วินาที แล้วลองใหม่อีกครั้ง`,
         message: `คำขอเข้าสู่ระบบถี่เกินกำหนด กรุณารอ ${rateCheck.retryAfter} วินาที แล้วลองใหม่อีกครั้ง`,
         retry_after: rateCheck.retryAfter,
       },
       HttpStatus.TOO_MANY_REQUESTS,
     );
   }
+  return clientIp;
+}
+
+/**
+ * Validate 3-Layer In-App Bot Defense
+ * Throws corresponding NestJS exceptions if an anomaly is detected.
+ */
+export function evaluateBotDefense(
+  req: Request,
+  body: BotDefensePayload,
+  res?: Response,
+  onViolation?: BotDefenseAuditCallback,
+): { clientIp: string; durationMs: number } {
+  // Layer 1: IP Rate Limiting (10 req / 60s)
+  const clientIp = evaluateRateLimitOnly(req, res, onViolation);
+  const now = Date.now();
 
   // Layer 2: Decoy Honeypot Trap Evaluation
   if (body.corporate_fax || body.security_honey) {
+    if (onViolation) {
+      Promise.resolve(
+        onViolation('BOT_HONEYPOT_DETECTED', clientIp, { honeypot_triggered: true }),
+      ).catch(() => {});
+    }
     // Silent rejection: use generic message so attacker cannot inspect honeypot
     throw new UnauthorizedException('ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง');
   }
@@ -112,10 +156,14 @@ export function evaluateBotDefense(
     durationMs = now - Number(body.form_render_ts);
     // If submitted under 400ms or time is in future by > 10s, reject as automated bot
     if (durationMs < 400 || durationMs < -10000) {
+      if (onViolation) {
+        Promise.resolve(
+          onViolation('BOT_TIMING_VIOLATION', clientIp, { duration_ms: durationMs }),
+        ).catch(() => {});
+      }
       throw new BadRequestException('ตรวจพบความเร็วการส่งข้อมูลผิดปกติ กรุณาลองใหม่อีกครั้ง');
     }
   }
 
   return { clientIp, durationMs };
 }
-

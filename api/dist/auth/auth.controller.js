@@ -70,10 +70,21 @@ let AuthController = class AuthController {
         const row = await this.systemSettingRepo.findOne({ where: { key } });
         return row && row.value ? row.value : fallback;
     }
-    async login(body, req) {
-        const { clientIp, durationMs } = (0, bot_defense_1.evaluateBotDefense)(req, body);
-        const ipAddress = clientIp;
+    async login(body, req, res) {
         const userAgent = req.headers['user-agent'] || null;
+        const { clientIp } = (0, bot_defense_1.evaluateBotDefense)(req, body, res, async (action, ip, details) => {
+            await this.auditService.logAction((body?.username || 'anonymous').trim() || 'anonymous', action, 'SecurityBotDefense', null, ip, userAgent, details);
+            await this.auditService.recordTransactionLog({
+                category: 'security_bot_defense',
+                action: action.toLowerCase(),
+                status: 'warning',
+                ipAddress: ip,
+                message: `ระบบป้องกันบอทตรวจพบเหตุการณ์ ${action}`,
+                triggeredBy: `ip:${ip}`,
+                details: { event_code: action, ...details },
+            });
+        });
+        const ipAddress = clientIp;
         const usernameNormalized = (body.username || '').trim();
         const user = await this.usersService.findByUsername(usernameNormalized);
         const loginMethod = body.loginMethod || 'DB';
@@ -183,12 +194,15 @@ let AuthController = class AuthController {
         };
         const secret = process.env.JWT_SECRET || 'WindowAsiaJWTSecretKey2026';
         const token = jwt.sign(payload, secret, { expiresIn: expiresInSeconds });
+        const decodedToken = jwt.decode(token);
+        (0, jwt_auth_guard_1.touchUserSessionActivity)((0, jwt_auth_guard_1.buildSessionKey)(user.username, decodedToken?.iat));
         await this.auditService.logAction(user.username, 'LOGIN_SUCCESS', 'Auth', user.id, ipAddress, userAgent, { loginMethod, breakGlassActive });
         if (breakGlassActive) {
             await this.auditService.recordTransactionLog({
                 category: 'security_break_glass',
                 action: 'fallback_ad_login',
                 status: 'success',
+                ipAddress,
                 message: `เข้าสู่ระบบผ่าน AD Gateway สำรองในช่วง Break-Glass: '${user.username}'`,
                 triggeredBy: `user:${user.username}`,
                 details: {
@@ -247,10 +261,12 @@ let AuthController = class AuthController {
             throw new common_1.BadRequestException(complexityError);
         }
         await this.usersService.updateUserPasswordAndPin(user.id, newPassword);
+        const ipAddress = (0, bot_defense_1.resolveClientIp)(req);
         await this.auditService.recordTransactionLog({
             category: 'ciam_sso',
             action: 'local_password_rotated',
             status: 'success',
+            ipAddress,
             message: `เปลี่ยนรหัสผ่านบัญชีท้องถิ่นสำเร็จ: ผู้ใช้ '${user.username}' (อายุ 90 วัน)`,
             triggeredBy: `user:${user.username}`,
             details: {
@@ -264,14 +280,57 @@ let AuthController = class AuthController {
             message: 'เปลี่ยนรหัสผ่านเรียบร้อยแล้ว (มีอายุ 90 วัน)',
         };
     }
+    async pingSession() {
+        return {
+            status: 'ok',
+            idle_timeout_minutes: (0, jwt_auth_guard_1.getIdleTimeoutMinutes)(),
+            server_time: new Date().toISOString(),
+        };
+    }
+    async logout(body, req) {
+        const ipAddress = (0, bot_defense_1.resolveClientIp)(req);
+        const authHeader = req.headers.authorization;
+        let username = 'unknown';
+        if (authHeader && authHeader.startsWith('Bearer ')) {
+            const token = authHeader.split(' ')[1];
+            try {
+                const secret = process.env.JWT_SECRET || 'WindowAsiaJWTSecretKey2026';
+                const decoded = jwt.verify(token, secret, { ignoreExpiration: true });
+                if (decoded?.username) {
+                    username = String(decoded.username);
+                    (0, jwt_auth_guard_1.clearUserSessionActivity)((0, jwt_auth_guard_1.buildSessionKey)(username, decoded.iat));
+                }
+            }
+            catch {
+            }
+        }
+        if (body?.reason === 'idle_timeout') {
+            const idleMinutes = parseInt(await this.getDynamicSetting('ciam_idle_timeout_minutes', String((0, jwt_auth_guard_1.getIdleTimeoutMinutes)())), 10) || (0, jwt_auth_guard_1.getIdleTimeoutMinutes)();
+            await this.auditService.recordTransactionLog({
+                category: 'ciam_sso',
+                action: 'session_idle_timeout',
+                status: 'info',
+                ipAddress,
+                message: `ระบบตัดเซสชันและออกจากระบบอัตโนมัติเนื่องจากไม่มีการใช้งานเกิน ${idleMinutes} นาที (Idle Timeout)`,
+                triggeredBy: 'system:idle_timeout',
+                details: {
+                    event_code: 'TO-01',
+                    idle_minutes: idleMinutes,
+                    user: username,
+                },
+            });
+        }
+        return { status: 'ok', message: 'Logged out successfully' };
+    }
 };
 exports.AuthController = AuthController;
 __decorate([
     (0, common_1.Post)('login'),
     __param(0, (0, common_1.Body)()),
     __param(1, (0, common_1.Req)()),
+    __param(2, (0, common_1.Res)({ passthrough: true })),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:paramtypes", [Object, Object, Object]),
     __metadata("design:returntype", Promise)
 ], AuthController.prototype, "login", null);
 __decorate([
@@ -283,6 +342,23 @@ __decorate([
     __metadata("design:paramtypes", [Object, Object]),
     __metadata("design:returntype", Promise)
 ], AuthController.prototype, "changeLocalPassword", null);
+__decorate([
+    (0, common_1.Post)('session/ping'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    (0, common_1.UseGuards)(jwt_auth_guard_1.JwtAuthGuard),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", []),
+    __metadata("design:returntype", Promise)
+], AuthController.prototype, "pingSession", null);
+__decorate([
+    (0, common_1.Post)('logout'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    __param(0, (0, common_1.Body)()),
+    __param(1, (0, common_1.Req)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", Promise)
+], AuthController.prototype, "logout", null);
 exports.AuthController = AuthController = __decorate([
     (0, common_1.Controller)(['auth', 'api/auth']),
     __param(2, (0, typeorm_1.InjectRepository)(system_setting_entity_1.SystemSetting)),

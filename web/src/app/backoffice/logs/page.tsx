@@ -31,6 +31,7 @@ interface TransactionLogEntry {
   category: string;
   action: string;
   status: string;
+  ipAddress?: string;
   message: string;
   details: string | null;
   triggeredBy: string;
@@ -314,6 +315,7 @@ export default function LogsPage() {
                   <th className="px-4 py-3 text-left text-xs font-bold text-on-surface-variant uppercase tracking-wider">สถานะ</th>
                   <th className="px-4 py-3 text-left text-xs font-bold text-on-surface-variant uppercase tracking-wider">ข้อความสรุป</th>
                   <th className="px-4 py-3 text-left text-xs font-bold text-on-surface-variant uppercase tracking-wider">Triggered By</th>
+                  <th className="px-4 py-3 text-left text-xs font-bold text-on-surface-variant uppercase tracking-wider">IP Address</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-outline-variant/50">
@@ -348,6 +350,9 @@ export default function LogsPage() {
                     </td>
                     <td className="px-4 py-3 text-xs font-mono text-outline">
                       {log.triggeredBy}
+                    </td>
+                    <td className="px-4 py-3 text-xs font-mono text-outline whitespace-nowrap">
+                      {log.ipAddress || "127.0.0.1 (SYSTEM)"}
                     </td>
                   </tr>
                 ))}

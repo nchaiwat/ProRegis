@@ -15,15 +15,17 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
-import { CiamService } from './ciam.service';
+import { CiamService, CIAM_FRAMEWORK_VERSION } from './ciam.service';
 import { AuditService } from '../audit/audit.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard, Roles } from '../auth/roles.guard';
+import { evaluateRateLimitOnly } from '../auth/bot-defense';
 
 function extractClientIp(req: Request): string | null {
   const raw =
     (req.headers['x-ciam-origin-ip'] as string) ||
     (req.headers['x-origin-ip'] as string) ||
+    (req.headers['cf-connecting-ip'] as string) ||
     (req.headers['x-forwarded-for'] as string) ||
     (req.headers['x-real-ip'] as string) ||
     req.socket?.remoteAddress ||
@@ -67,7 +69,10 @@ export class CiamSettingsController {
 // =============================================================================
 @Controller(['auth/sso', 'api/auth/sso'])
 export class CiamSsoAuthController {
-  constructor(private readonly ciamService: CiamService) {}
+  constructor(
+    private readonly ciamService: CiamService,
+    private readonly auditService: AuditService,
+  ) {}
 
   @Get(['login', 'start'])
   async ssoLoginRedirect(@Res() res: Response) {
@@ -96,9 +101,22 @@ export class CiamSsoAuthController {
       state?: string | null;
     },
     @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
   ) {
-    const ip = extractClientIp(req);
     const userAgent = (req.headers['user-agent'] as string) || null;
+    const rateIp = evaluateRateLimitOnly(req, res, async (action, ip, details) => {
+      await this.auditService.logAction('sso_callback', action, 'SecurityBotDefense', null, ip, userAgent, details);
+      await this.auditService.recordTransactionLog({
+        category: 'security_bot_defense',
+        action: action.toLowerCase(),
+        status: 'warning',
+        ipAddress: ip,
+        message: `ระบบป้องกันบอทตรวจพบเหตุการณ์ ${action} ที่ SSO Callback`,
+        triggeredBy: `ip:${ip}`,
+        details: { event_code: action, ...details },
+      });
+    });
+    const ip = extractClientIp(req) || rateIp;
     return this.ciamService.handleSsoCallback(body, ip, userAgent);
   }
 
@@ -139,7 +157,7 @@ export class CiamDirectoryController {
     @Query('search') search?: string,
   ) {
     await this.ciamService.verifyCiamM2MRequest(apiKey, timestamp, extractClientIp(req) || undefined);
-    res.setHeader('X-CIAM-Framework-Version', '2.13.0');
+    res.setHeader('X-CIAM-Framework-Version', CIAM_FRAMEWORK_VERSION);
     return this.ciamService.listAccountsForCiam({ status, department, search });
   }
 
@@ -162,8 +180,9 @@ export class CiamDirectoryController {
       created_by?: string;
     },
   ) {
-    await this.ciamService.verifyCiamM2MRequest(apiKey, timestamp, extractClientIp(req) || undefined);
-    return this.ciamService.provisionAccountFromCiam(body);
+    const ip = extractClientIp(req);
+    await this.ciamService.verifyCiamM2MRequest(apiKey, timestamp, ip || undefined);
+    return this.ciamService.provisionAccountFromCiam(body, ip);
   }
 
   @Patch('accounts/:username/status')
@@ -174,8 +193,9 @@ export class CiamDirectoryController {
     @Param('username') username: string,
     @Body() body: { is_active: boolean; reason?: string; updated_by?: string },
   ) {
-    await this.ciamService.verifyCiamM2MRequest(apiKey, timestamp, extractClientIp(req) || undefined);
-    return this.ciamService.updateAccountStatusFromCiam(username, body);
+    const ip = extractClientIp(req);
+    await this.ciamService.verifyCiamM2MRequest(apiKey, timestamp, ip || undefined);
+    return this.ciamService.updateAccountStatusFromCiam(username, body, ip);
   }
 }
 
@@ -210,8 +230,9 @@ export class AiCopilotController {
   ) {}
 
   @Get(['settings/ai', 'api/settings/ai'])
-  async getAiSettings() {
-    return this.ciamService.getAiSettings();
+  @UseGuards(JwtAuthGuard)
+  async getAiSettings(@Req() req: Request) {
+    return this.ciamService.getAiSettings((req as any).user);
   }
 
   @Put(['settings/ai', 'api/settings/ai'])

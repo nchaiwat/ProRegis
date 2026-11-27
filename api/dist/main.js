@@ -65,6 +65,7 @@ async function bootstrap() {
     app.enableCors({
         origin: '*',
         methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+        exposedHeaders: ['X-Session-Expired', 'Retry-After', 'X-CIAM-Framework-Version'],
         credentials: true,
     });
     const port = process.env.PORT ?? (useHttps ? 3444 : 3001);

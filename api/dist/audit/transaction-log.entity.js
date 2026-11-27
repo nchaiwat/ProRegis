@@ -16,6 +16,7 @@ let TransactionLog = class TransactionLog {
     category;
     action;
     status;
+    ipAddress;
     message;
     details;
     recordsCount;
@@ -41,6 +42,11 @@ __decorate([
     (0, typeorm_1.Column)({ type: 'varchar', length: 20, default: 'success' }),
     __metadata("design:type", String)
 ], TransactionLog.prototype, "status", void 0);
+__decorate([
+    (0, typeorm_1.Index)('idx_trans_logs_ip'),
+    (0, typeorm_1.Column)({ name: 'ip_address', type: 'varchar', length: 50, nullable: false, default: '127.0.0.1 (SYSTEM)' }),
+    __metadata("design:type", String)
+], TransactionLog.prototype, "ipAddress", void 0);
 __decorate([
     (0, typeorm_1.Column)({ type: 'varchar', length: 500 }),
     __metadata("design:type", String)

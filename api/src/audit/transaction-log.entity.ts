@@ -15,6 +15,10 @@ export class TransactionLog {
   @Column({ type: 'varchar', length: 20, default: 'success' })
   status: string; // 'success', 'failed', 'warning', 'info'
 
+  @Index('idx_trans_logs_ip')
+  @Column({ name: 'ip_address', type: 'varchar', length: 50, nullable: false, default: '127.0.0.1 (SYSTEM)' })
+  ipAddress: string;
+
   @Column({ type: 'varchar', length: 500 })
   message: string;
 

@@ -30,16 +30,19 @@
 
 ---
 
-## 2. สรุปสถาปัตยกรรม Central IAM Integration (v2.13.0 Standard)
+## 2. สรุปสถาปัตยกรรม Central IAM Integration (v2.15.0 Standard)
 
-ระบบหลังบ้าน ProRegis เชื่อมต่อกับ **Window Asia Central IAM (`https://ciam.windowasia.com`)** ตามมาตรฐาน **Enterprise Central IAM Integration for Spoke Applications v2.13.0** ครบถ้วน (Mode A Cloud Two-Way พร้อม Hybrid Mode C Heartbeat Worker):
+ระบบหลังบ้าน ProRegis เชื่อมต่อกับ **Window Asia Central IAM (`https://ciam.windowasia.com`)** ตามมาตรฐาน **Enterprise Central IAM Integration for Spoke Applications v2.15.0** ครบถ้วน (Mode A Cloud Two-Way พร้อม Hybrid Mode C Heartbeat Worker):
 
-### 2.1 มาตรฐาน v2.13.0 ใหม่ล่าสุด
+### 2.1 มาตรฐาน v2.15.0 ล่าสุด (ครอบคลุม v2.13.0 – v2.15.0)
 1. **One-Way Active Directory Governance:** Central IAM ไม่สร้างบัญชีบน AD โดย AD เป็นแหล่งข้อมูลหลักแบบทางเดียว บัญชีพนักงานที่สร้างบน ProRegis พร้อม `isAdAuth: true` จะถูกจับคู่เข้ากับ AD อัตโนมัติในรอบซิงก์
 2. **Local Account Password Provisioning (`password`, `must_change_password`):** เมื่อ CIAM สร้าง Local Account (`use_ad_auth: false`) แล้วจ่ายสิทธิ์มายัง ProRegis ระบบจะรับรหัสผ่านเริ่มต้นนำไป Hash ด้วย `bcrypt` ลง DB ทันที พร้อมตั้ง `mustChangePassword = true` เพื่อรองรับการ Login ตรงด้วยฟอร์ม Local ควบคู่กับ SSO
-3. **Framework Version Compliance Handshake (`framework_version: "2.13.0"`):** ส่งเวอร์ชันกำกับใน `GET /api/v1/directory/accounts` (พร้อม Header `X-CIAM-Framework-Version: 2.13.0`), `GET /api/auth/sso/config`, และ `POST /api/v1/agent/heartbeat`
+3. **Framework Version Compliance Handshake (`framework_version: "2.15.0"`):** ส่งเวอร์ชันกำกับใน `GET /api/v1/directory/accounts` (พร้อม Header `X-CIAM-Framework-Version: 2.15.0`), `GET /api/auth/sso/config`, และ `POST /api/v1/agent/heartbeat`
 4. **Directory Route Aliases & Fallbacks:** รองรับทั้ง `/api/v1/directory/accounts` และ `/api/directory/accounts`
-5. **Corporate IP Whitelist & Header Extraction Guard:** ตรวจสอบ IP Whitelist (`157.173.219.153` CIAM VPS ฯลฯ) โดยอ่าน Header ตามลำดับ: `x-ciam-origin-ip` &rarr; `x-origin-ip` &rarr; `x-forwarded-for`
+5. **Corporate IP Whitelist & Header Extraction Guard:** ตรวจสอบ IP Whitelist (`157.173.219.153` CIAM VPS ฯลฯ) โดยอ่าน Header ตามลำดับ: `x-ciam-origin-ip` &rarr; `x-origin-ip` &rarr; `cf-connecting-ip` &rarr; `x-forwarded-for`
+6. **Configurable Per-App Idle Session Timeout (Group H - v2.15.0):** จัดเก็บ `ciam_idle_timeout_minutes` (default `30` นาที, กำหนดค่าอิสระรายแอปได้ทั้งจาก Settings และ CIAM Heartbeat) และ `ciam_idle_warning_seconds` (default `60` วินาที) พร้อม Frontend Hook/Modal นับถอยหลัง + ซิงก์ข้ามแท็บ และ Backend Sliding Inactivity Guard ใน `JwtAuthGuard` (ส่ง `X-Session-Expired: idle_timeout` + `HTTP 401`)
+7. **Mandatory Audit Trail Transaction IP Logging (v2.15.0):** ตาราง `transaction_logs` บังคับคอลัมน์ `ip_address VARCHAR(50) NOT NULL DEFAULT '127.0.0.1 (SYSTEM)'` พร้อม Index `idx_trans_logs_ip` บันทึก Client IP จริงหรือ `'127.0.0.1 (SYSTEM)'` ในทุก Event (`SSO-01`..`04`, `BG-01`..`02`, `CFG-01`, `TO-01`)
+8. **AI Copilot DLP & Bot Defense Hardening:** แนบ Zero-Training Privacy Headers + `store: false` + `sanitizeContextForPrivacy()` + RBAC Context Filtering ใน AI Copilot และเสริม `Retry-After` Header + Audit Log (`IP_RATE_LIMITED`, `BOT_HONEYPOT_DETECTED`, `BOT_TIMING_VIOLATION`) ใน Bot Defense
 
 ### 2.2 การกำหนดสิทธิ์เริ่มต้น (Principle of Least Privilege)
 - เมื่อพนักงานล็อกอินผ่าน SSO ครั้งแรก (JIT Auto-Provisioning) หรือถูกสร้างผ่าน Directory Sync / Reconcile จาก CIAM:
@@ -94,5 +97,6 @@
    - คอลัมน์: `key` (PK, varchar), `value` (varchar), `description` (varchar), `category` (varchar), `data_type` (varchar), `updated_at` (timestamp)
    - หมวดหมู่ที่รองรับ: `general`, `central_iam`, `ai_copilot`
 2. **`transaction_logs`** (`api/src/audit/transaction-log.entity.ts`):
-   - ตารางบันทึก ISO 27001 Security Audit Trail แยกตาม Event Code (`SSO-01` ถึง `SSO-04`, `BG-01`, `BG-02`, `CFG-01`)
-   - แสดงผลในหน้า `/backoffice/logs` (แท็บ `CIAM & ISO 27001 Transaction Logs`)
+   - ตารางบันทึก ISO 27001 Security Audit Trail แยกตาม Event Code (`SSO-01` ถึง `SSO-04`, `BG-01`, `BG-02`, `CFG-01`, `TO-01`)
+   - มีคอลัมน์ `ip_address VARCHAR(50) NOT NULL DEFAULT '127.0.0.1 (SYSTEM)'` พร้อม Index `idx_trans_logs_ip`
+   - แสดงผลในหน้า `/backoffice/logs` (แท็บ `ธุรกรรม Central IAM`)

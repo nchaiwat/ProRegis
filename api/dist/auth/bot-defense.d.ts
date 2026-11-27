@@ -1,4 +1,6 @@
-import { Request } from 'express';
+import type { Request, Response } from 'express';
+export type BotDefenseViolationAction = 'IP_RATE_LIMITED' | 'BOT_HONEYPOT_DETECTED' | 'BOT_TIMING_VIOLATION';
+export type BotDefenseAuditCallback = (action: BotDefenseViolationAction, clientIp: string, details: Record<string, any>) => void | Promise<void>;
 declare class SpokeRateLimiter {
     private records;
     isAllowed(clientIp: string): {
@@ -13,7 +15,8 @@ export interface BotDefensePayload {
     security_honey?: string;
     form_render_ts?: number;
 }
-export declare function evaluateBotDefense(req: Request, body: BotDefensePayload): {
+export declare function evaluateRateLimitOnly(req: Request, res?: Response, onViolation?: BotDefenseAuditCallback): string;
+export declare function evaluateBotDefense(req: Request, body: BotDefensePayload, res?: Response, onViolation?: BotDefenseAuditCallback): {
     clientIp: string;
     durationMs: number;
 };

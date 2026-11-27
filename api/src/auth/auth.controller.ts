@@ -1,15 +1,22 @@
-import { Controller, Post, Body, Req, UnauthorizedException, BadRequestException, UseGuards } from '@nestjs/common';
+import { Controller, Post, Body, Req, Res, HttpCode, HttpStatus, UnauthorizedException, BadRequestException, UseGuards } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { UsersService, isPasswordExpired, validatePasswordComplexity } from '../users/users.service';
 import { AuditService } from '../audit/audit.service';
 import { UserStatus } from '../users/user.entity';
 import { SystemSetting } from '../backoffice/system-setting.entity';
-import { JwtAuthGuard, clearUserSessionRevocation } from './jwt-auth.guard';
-import { evaluateBotDefense } from './bot-defense';
+import {
+  JwtAuthGuard,
+  clearUserSessionRevocation,
+  buildSessionKey,
+  touchUserSessionActivity,
+  clearUserSessionActivity,
+  getIdleTimeoutMinutes,
+} from './jwt-auth.guard';
+import { evaluateBotDefense, resolveClientIp } from './bot-defense';
 import * as bcrypt from 'bcryptjs';
 import * as jwt from 'jsonwebtoken';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 
 @Controller(['auth', 'api/auth'])
 export class AuthController {
@@ -37,11 +44,31 @@ export class AuthController {
       form_render_ts?: number;
     },
     @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
   ) {
     // 🛡️ Enterprise In-App Bot Defense (Rate Limiter, Honeypot, Timing Guard)
-    const { clientIp, durationMs } = evaluateBotDefense(req, body);
-    const ipAddress = clientIp;
     const userAgent = req.headers['user-agent'] || null;
+    const { clientIp } = evaluateBotDefense(req, body, res, async (action, ip, details) => {
+      await this.auditService.logAction(
+        (body?.username || 'anonymous').trim() || 'anonymous',
+        action,
+        'SecurityBotDefense',
+        null,
+        ip,
+        userAgent,
+        details,
+      );
+      await this.auditService.recordTransactionLog({
+        category: 'security_bot_defense',
+        action: action.toLowerCase(),
+        status: 'warning',
+        ipAddress: ip,
+        message: `ระบบป้องกันบอทตรวจพบเหตุการณ์ ${action}`,
+        triggeredBy: `ip:${ip}`,
+        details: { event_code: action, ...details },
+      });
+    });
+    const ipAddress = clientIp;
 
     const usernameNormalized = (body.username || '').trim();
     const user = await this.usersService.findByUsername(usernameNormalized);
@@ -241,6 +268,8 @@ export class AuthController {
     };
     const secret = process.env.JWT_SECRET || 'WindowAsiaJWTSecretKey2026';
     const token = jwt.sign(payload, secret, { expiresIn: expiresInSeconds });
+    const decodedToken = jwt.decode(token) as any;
+    touchUserSessionActivity(buildSessionKey(user.username, decodedToken?.iat));
 
     // Write audit log
     await this.auditService.logAction(
@@ -259,6 +288,7 @@ export class AuthController {
         category: 'security_break_glass',
         action: 'fallback_ad_login',
         status: 'success',
+        ipAddress,
         message: `เข้าสู่ระบบผ่าน AD Gateway สำรองในช่วง Break-Glass: '${user.username}'`,
         triggeredBy: `user:${user.username}`,
         details: {
@@ -335,11 +365,13 @@ export class AuthController {
     }
 
     await this.usersService.updateUserPasswordAndPin(user.id, newPassword);
+    const ipAddress = resolveClientIp(req);
 
     await this.auditService.recordTransactionLog({
       category: 'ciam_sso',
       action: 'local_password_rotated',
       status: 'success',
+      ipAddress,
       message: `เปลี่ยนรหัสผ่านบัญชีท้องถิ่นสำเร็จ: ผู้ใช้ '${user.username}' (อายุ 90 วัน)`,
       triggeredBy: `user:${user.username}`,
       details: {
@@ -353,5 +385,61 @@ export class AuthController {
       status: 'SUCCESS',
       message: 'เปลี่ยนรหัสผ่านเรียบร้อยแล้ว (มีอายุ 90 วัน)',
     };
+  }
+
+  @Post('session/ping')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  async pingSession() {
+    return {
+      status: 'ok',
+      idle_timeout_minutes: getIdleTimeoutMinutes(),
+      server_time: new Date().toISOString(),
+    };
+  }
+
+  @Post('logout')
+  @HttpCode(HttpStatus.OK)
+  async logout(@Body() body: { reason?: string }, @Req() req: Request) {
+    const ipAddress = resolveClientIp(req);
+    const authHeader = req.headers.authorization;
+    let username = 'unknown';
+
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.split(' ')[1];
+      try {
+        const secret = process.env.JWT_SECRET || 'WindowAsiaJWTSecretKey2026';
+        const decoded = jwt.verify(token, secret, { ignoreExpiration: true }) as any;
+        if (decoded?.username) {
+          username = String(decoded.username);
+          clearUserSessionActivity(buildSessionKey(username, decoded.iat));
+        }
+      } catch {
+        // Ignore malformed token on logout
+      }
+    }
+
+    if (body?.reason === 'idle_timeout') {
+      const idleMinutes = parseInt(
+        await this.getDynamicSetting('ciam_idle_timeout_minutes', String(getIdleTimeoutMinutes())),
+        10,
+      ) || getIdleTimeoutMinutes();
+
+      await this.auditService.recordTransactionLog({
+        category: 'ciam_sso',
+        action: 'session_idle_timeout',
+        status: 'info',
+        ipAddress,
+        message: `ระบบตัดเซสชันและออกจากระบบอัตโนมัติเนื่องจากไม่มีการใช้งานเกิน ${idleMinutes} นาที (Idle Timeout)`,
+        triggeredBy: 'system:idle_timeout',
+        details: {
+          event_code: 'TO-01',
+          idle_minutes: idleMinutes,
+          user: username,
+        },
+      });
+    }
+
+    return { status: 'ok', message: 'Logged out successfully' };
   }
 }

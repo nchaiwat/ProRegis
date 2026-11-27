@@ -91,6 +91,8 @@ export default function SettingsAdminPage() {
   const [ciamAdGatewayUrl, setCiamAdGatewayUrl] = useState("http://172.18.0.1:3100");
   const [ciamAutoProvisionGroup, setCiamAutoProvisionGroup] = useState("IMAGE_EDITOR");
   const [ciamSessionTtlMinutes, setCiamSessionTtlMinutes] = useState(480);
+  const [ciamIdleTimeoutMinutes, setCiamIdleTimeoutMinutes] = useState(30);
+  const [ciamIdleWarningSeconds, setCiamIdleWarningSeconds] = useState(60);
   const [showCiamSecret, setShowCiamSecret] = useState(false);
 
   // CIAM Connection Test & Sync States
@@ -256,6 +258,8 @@ export default function SettingsAdminPage() {
         setCiamAdGatewayUrl(s.ciam_ad_gateway_url || "http://172.18.0.1:3100");
         setCiamAutoProvisionGroup(s.ciam_auto_provision_group || "IMAGE_EDITOR");
         setCiamSessionTtlMinutes(Number(s.ciam_session_ttl_minutes) || 480);
+        setCiamIdleTimeoutMinutes(Number(s.ciam_idle_timeout_minutes) || 30);
+        setCiamIdleWarningSeconds(Number(s.ciam_idle_warning_seconds) || 60);
         if (s.agent_status && typeof s.agent_status.online === "boolean") {
           setCiamOnline(s.agent_status.online);
         }
@@ -470,6 +474,8 @@ export default function SettingsAdminPage() {
           ciam_ad_gateway_url: ciamAdGatewayUrl,
           ciam_auto_provision_group: ciamAutoProvisionGroup,
           ciam_session_ttl_minutes: ciamSessionTtlMinutes,
+          ciam_idle_timeout_minutes: ciamIdleTimeoutMinutes,
+          ciam_idle_warning_seconds: ciamIdleWarningSeconds,
         }),
       });
       if (!ciamRes.ok) allOk = false;
@@ -1622,6 +1628,49 @@ export default function SettingsAdminPage() {
                     max={1440}
                     value={ciamSessionTtlMinutes}
                     onChange={(e) => setCiamSessionTtlMinutes(Number(e.target.value) || 480)}
+                    className="w-full h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Configurable Per-App Idle Timeout & Warning Countdown (v2.15.0 Group H) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
+                <div className="md:w-1/2">
+                  <label className="text-xs font-bold text-primary">
+                    ตัดเซสชันเมื่อไม่ใช้งาน (Idle Timeout นาที)
+                  </label>
+                  <p className="text-[10px] text-outline mt-0.5">
+                    มาตรฐานความปลอดภัย: 30 นาที, ตั้งค่าได้อิสระ เช่น 30, 60, 120 นาที
+                  </p>
+                </div>
+                <div className="flex-1">
+                  <input
+                    type="number"
+                    min={1}
+                    max={1440}
+                    value={ciamIdleTimeoutMinutes}
+                    onChange={(e) => setCiamIdleTimeoutMinutes(Number(e.target.value) || 30)}
+                    className="w-full h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary"
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4">
+                <div className="md:w-1/2">
+                  <label className="text-xs font-bold text-primary">
+                    แจ้งเตือนก่อนตัดเซสชัน (วินาที)
+                  </label>
+                  <p className="text-[10px] text-outline mt-0.5">ค่าแนะนำ: 60 วินาที</p>
+                </div>
+                <div className="flex-1">
+                  <input
+                    type="number"
+                    min={10}
+                    max={300}
+                    value={ciamIdleWarningSeconds}
+                    onChange={(e) => setCiamIdleWarningSeconds(Number(e.target.value) || 60)}
                     className="w-full h-11 px-4 border border-outline-variant/60 rounded-xl outline-none text-xs font-medium bg-surface-container-low focus:border-secondary"
                   />
                 </div>

@@ -39,6 +39,7 @@ async function bootstrap() {
   app.enableCors({
     origin: '*', // In production, replace with specific frontend domains
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    exposedHeaders: ['X-Session-Expired', 'Retry-After', 'X-CIAM-Framework-Version'],
     credentials: true,
   });
 

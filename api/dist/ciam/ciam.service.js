@@ -46,7 +46,8 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 };
 var CiamService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CiamService = exports.ALLOWED_CIAM_IPS = exports.CIAM_FRAMEWORK_VERSION = void 0;
+exports.CiamService = exports.ALLOWED_CIAM_IPS = exports.ZERO_TRAINING_PRIVACY_HEADERS = exports.CIAM_FRAMEWORK_VERSION = void 0;
+exports.sanitizeContextForPrivacy = sanitizeContextForPrivacy;
 const common_1 = require("@nestjs/common");
 const typeorm_1 = require("@nestjs/typeorm");
 const typeorm_2 = require("typeorm");
@@ -67,7 +68,25 @@ const PROTECTED_ADMIN_ACCOUNTS = new Set([
     'emergency_admin',
     'local_admin',
 ]);
-exports.CIAM_FRAMEWORK_VERSION = '2.13.0';
+exports.CIAM_FRAMEWORK_VERSION = '2.15.0';
+exports.ZERO_TRAINING_PRIVACY_HEADERS = {
+    'Cache-Control': 'no-store, no-cache, must-revalidate, private',
+    Pragma: 'no-cache',
+    'X-Data-Retention': 'none',
+    'X-No-Model-Training': 'true',
+    'X-OpenAI-Data-Usage-Opt-Out': 'true',
+    'X-Enterprise-Data-Sovereignty': 'Window-Asia-Internal-Only-No-Training',
+};
+function sanitizeContextForPrivacy(text) {
+    if (!text)
+        return '';
+    let sanitized = String(text);
+    sanitized = sanitized.replace(/sec_[A-Za-z0-9_]{6,}/g, '[REDACTED_SECRET_KEY]');
+    sanitized = sanitized.replace(/AIza[0-9A-Za-z\-_]{20,}/g, '[REDACTED_GOOGLE_API_KEY]');
+    sanitized = sanitized.replace(/sk-[A-Za-z0-9\-_]{16,}/g, '[REDACTED_OPENAI_API_KEY]');
+    sanitized = sanitized.replace(/("(?:hashed_password|password|passwordHash|client_secret|api_key|private_key|m2m_key)"\s*:\s*)"[^"]*"/gi, '$1"[REDACTED_BY_DLP]"');
+    return sanitized;
+}
 exports.ALLOWED_CIAM_IPS = new Set([
     '157.173.219.153',
     '127.0.0.1',
@@ -108,6 +127,21 @@ let CiamService = CiamService_1 = class CiamService {
         this.telegramService = telegramService;
     }
     async onModuleInit() {
+        (0, jwt_auth_guard_1.setIdleTimeoutAuditHandler)(async ({ username, ipAddress, idleMinutes }) => {
+            await this.auditService.recordTransactionLog({
+                category: 'ciam_sso',
+                action: 'session_idle_timeout',
+                status: 'info',
+                ipAddress,
+                message: `ระบบตัดเซสชันและออกจากระบบอัตโนมัติเนื่องจากไม่มีการใช้งานเกิน ${idleMinutes} นาที (Idle Timeout)`,
+                triggeredBy: 'system:idle_timeout',
+                details: {
+                    event_code: 'TO-01',
+                    idle_minutes: idleMinutes,
+                    user: username,
+                },
+            });
+        });
         await this.seedCiamAndAiSettings();
         await this.refreshCache();
         this.startHeartbeatWorker();
@@ -181,6 +215,20 @@ let CiamService = CiamService_1 = class CiamService {
                 key: 'ciam_session_ttl_minutes',
                 value: '480',
                 description: 'อายุ Access Token ของระบบลูก (นาที)',
+                category: 'central_iam',
+                dataType: 'integer',
+            },
+            {
+                key: 'ciam_idle_timeout_minutes',
+                value: '30',
+                description: 'ระยะเวลาที่อนุญาตให้ผู้ใช้ไม่มีการใช้งานก่อนตัดเซสชันอัตโนมัติ (นาที)',
+                category: 'central_iam',
+                dataType: 'integer',
+            },
+            {
+                key: 'ciam_idle_warning_seconds',
+                value: '60',
+                description: 'ระยะเวลานับถอยหลังแจ้งเตือนก่อนตัดเซสชันอัตโนมัติ (วินาที)',
                 category: 'central_iam',
                 dataType: 'integer',
             },
@@ -262,6 +310,9 @@ let CiamService = CiamService_1 = class CiamService {
                 updatedAt: item.updatedAt,
             });
         }
+        const idleRaw = this.settingsCache.get('ciam_idle_timeout_minutes')?.value;
+        const idleParsed = parseInt(idleRaw || '30', 10);
+        (0, jwt_auth_guard_1.setIdleTimeoutMinutes)(Number.isFinite(idleParsed) ? idleParsed : 30);
     }
     async getSetting(key, fallback = '') {
         if (!this.settingsCache.has(key)) {
@@ -340,6 +391,8 @@ let CiamService = CiamService_1 = class CiamService {
         const adGatewayUrl = await this.getSetting('ciam_ad_gateway_url', 'http://172.18.0.1:3100');
         const autoProvisionGroup = await this.getSetting('ciam_auto_provision_group', user_entity_1.UserRole.IMAGE_EDITOR);
         const sessionTtlMinutes = parseInt(await this.getSetting('ciam_session_ttl_minutes', '480'), 10) || 480;
+        const idleTimeoutMinutes = parseInt(await this.getSetting('ciam_idle_timeout_minutes', '30'), 10) || 30;
+        const idleWarningSeconds = parseInt(await this.getSetting('ciam_idle_warning_seconds', '60'), 10) || 60;
         const updatedAt = this.settingsCache.get('ciam_base_url')?.updatedAt?.toISOString() || new Date().toISOString();
         return {
             status: 'success',
@@ -353,6 +406,8 @@ let CiamService = CiamService_1 = class CiamService {
                 ciam_ad_gateway_url: adGatewayUrl,
                 ciam_auto_provision_group: autoProvisionGroup,
                 ciam_session_ttl_minutes: sessionTtlMinutes,
+                ciam_idle_timeout_minutes: idleTimeoutMinutes,
+                ciam_idle_warning_seconds: idleWarningSeconds,
                 updated_at: updatedAt,
                 agent_status: this.lastHeartbeatStatus,
             },
@@ -426,11 +481,39 @@ let CiamService = CiamService_1 = class CiamService {
                 changedFields.push('ciam_session_ttl_minutes');
             }
         }
+        if (body.ciam_idle_timeout_minutes !== undefined) {
+            const rawIdle = parseInt(String(body.ciam_idle_timeout_minutes), 10);
+            const clampedIdle = Number.isFinite(rawIdle) ? Math.min(1440, Math.max(1, rawIdle)) : 30;
+            const val = String(clampedIdle);
+            const current = await this.getSetting('ciam_idle_timeout_minutes');
+            if (val !== current) {
+                await this.setSetting('ciam_idle_timeout_minutes', val, {
+                    category: 'central_iam',
+                    dataType: 'integer',
+                });
+                changedFields.push('ciam_idle_timeout_minutes');
+            }
+            (0, jwt_auth_guard_1.setIdleTimeoutMinutes)(clampedIdle);
+        }
+        if (body.ciam_idle_warning_seconds !== undefined) {
+            const rawWarn = parseInt(String(body.ciam_idle_warning_seconds), 10);
+            const clampedWarn = Number.isFinite(rawWarn) ? Math.min(300, Math.max(10, rawWarn)) : 60;
+            const val = String(clampedWarn);
+            const current = await this.getSetting('ciam_idle_warning_seconds');
+            if (val !== current) {
+                await this.setSetting('ciam_idle_warning_seconds', val, {
+                    category: 'central_iam',
+                    dataType: 'integer',
+                });
+                changedFields.push('ciam_idle_warning_seconds');
+            }
+        }
         await this.refreshCache();
         await this.auditService.recordTransactionLog({
             category: 'system_setting',
             action: 'update_ciam_settings',
             status: 'success',
+            ipAddress,
             message: 'แก้ไขการตั้งค่าระบบ Central IAM SSO',
             triggeredBy: `user:${actorUsername}`,
             details: {
@@ -514,12 +597,18 @@ let CiamService = CiamService_1 = class CiamService {
         const breakGlassActive = (await this.getSetting('ciam_break_glass_active', 'false')).toLowerCase() === 'true';
         const baseUrl = (await this.getSetting('ciam_base_url', 'https://ciam.windowasia.com')).replace(/\/+$/, '');
         const clientId = await this.getSetting('ciam_client_id', 'proregis-spoke-client');
+        const idleTimeoutMinutes = parseInt(await this.getSetting('ciam_idle_timeout_minutes', '30'), 10) || 30;
+        const idleWarningSeconds = parseInt(await this.getSetting('ciam_idle_warning_seconds', '60'), 10) || 60;
+        const sessionTtlMinutes = parseInt(await this.getSetting('ciam_session_ttl_minutes', '480'), 10) || 480;
         return {
             sso_enabled: ssoEnabled,
             break_glass_active: breakGlassActive,
             ciam_base_url: baseUrl,
             client_id: clientId,
             framework_version: exports.CIAM_FRAMEWORK_VERSION,
+            idle_timeout_minutes: idleTimeoutMinutes,
+            idle_warning_seconds: idleWarningSeconds,
+            session_ttl_minutes: sessionTtlMinutes,
             login_button_label: 'เข้าสู่ระบบด้วย Central IAM (SSO)',
             fallback_ad_available: true,
         };
@@ -581,6 +670,7 @@ let CiamService = CiamService_1 = class CiamService {
                 category: 'ciam_sso',
                 action: 'login_failed',
                 status: 'failed',
+                ipAddress,
                 message: 'การยืนยันตัวตน SSO ล้มเหลว: ระบบปิดรับ SSO หรืออยู่ในโหมดฉุกเฉิน Break-Glass',
                 triggeredBy: 'user:unknown',
                 durationMs: Date.now() - startTime,
@@ -616,6 +706,7 @@ let CiamService = CiamService_1 = class CiamService {
             tokenParams.code_verifier = verifier;
         }
         let tokenData;
+        let ciamOriginIp = null;
         try {
             let tokenRes = await fetch(tokenEndpoint, {
                 method: 'POST',
@@ -641,6 +732,7 @@ let CiamService = CiamService_1 = class CiamService {
                 const errBody = await tokenRes.text().catch(() => '');
                 throw new Error(`Token exchange HTTP ${tokenRes.status}: ${errBody}`);
             }
+            ciamOriginIp = tokenRes.headers.get('x-ciam-origin-ip') || null;
             tokenData = await tokenRes.json();
         }
         catch (err) {
@@ -648,6 +740,7 @@ let CiamService = CiamService_1 = class CiamService {
                 category: 'ciam_sso',
                 action: 'login_failed',
                 status: 'failed',
+                ipAddress,
                 message: `การยืนยันตัวตน SSO ล้มเหลว: แลกเปลี่ยน Authorization Code ไม่สำเร็จ`,
                 triggeredBy: 'user:unknown',
                 durationMs: Date.now() - startTime,
@@ -673,6 +766,7 @@ let CiamService = CiamService_1 = class CiamService {
                 category: 'ciam_sso',
                 action: 'login_failed',
                 status: 'failed',
+                ipAddress,
                 message: `การยืนยันตัวตน SSO ล้มเหลว: ${err.message}`,
                 triggeredBy: 'user:unknown',
                 durationMs: Date.now() - startTime,
@@ -685,6 +779,7 @@ let CiamService = CiamService_1 = class CiamService {
             });
             throw new common_1.UnauthorizedException(`การตรวจสอบลายเซ็นดิจิทัล (RS256 JWKS) ล้มเหลว: ${err.message}`);
         }
+        ciamOriginIp = ciamOriginIp || (claims?.ciam_origin_ip ? String(claims.ciam_origin_ip) : null);
         const rawUsername = claims.preferred_username ||
             claims.username ||
             claims.sub ||
@@ -720,6 +815,7 @@ let CiamService = CiamService_1 = class CiamService {
                 category: 'ciam_sso',
                 action: 'auto_provision_user',
                 status: 'info',
+                ipAddress: ipAddress || '127.0.0.1 (SYSTEM)',
                 message: `สร้างบัญชีผู้ใช้ใหม่อัตโนมัติจาก Central IAM: '${user.username}'`,
                 triggeredBy: 'system:ciam',
                 recordsCount: 1,
@@ -742,6 +838,7 @@ let CiamService = CiamService_1 = class CiamService {
                 category: 'ciam_sso',
                 action: 'account_deactivated',
                 status: 'warning',
+                ipAddress,
                 message: `ปฏิเสธการเข้าสู่ระบบ: บัญชีพนักงาน '${user.username}' ถูกระงับสิทธิ์ในระบบนี้`,
                 triggeredBy: `user:${user.username}`,
                 durationMs: Date.now() - startTime,
@@ -764,18 +861,24 @@ let CiamService = CiamService_1 = class CiamService {
             role: user.role,
             authMethod: 'CIAM_SSO',
         }, jwtSecret, { expiresIn: expiresInSeconds });
+        const decodedSpoke = jwt.decode(spokeToken);
+        (0, jwt_auth_guard_1.touchUserSessionActivity)((0, jwt_auth_guard_1.buildSessionKey)(user.username, decodedSpoke?.iat));
         const allowedMenus = await this.usersService.findAllowedMenusByRole(user.role);
         await this.auditService.recordTransactionLog({
             category: 'ciam_sso',
             action: 'login_success',
             status: 'success',
+            ipAddress: ciamOriginIp || ipAddress,
             message: `เข้าสู่ระบบผ่าน Central IAM SSO สำเร็จ: ผู้ใช้ '${user.username}'`,
             triggeredBy: `user:${user.username}`,
             durationMs: Date.now() - startTime,
             details: {
                 event_code: 'SSO-01',
                 username: user.username,
-                ip: ipAddress,
+                ip: ciamOriginIp || ipAddress,
+                ciam_origin_ip: ciamOriginIp,
+                browser_ip: ipAddress,
+                client_ip: ipAddress,
                 ciam_issuer: claims.iss || baseUrl,
                 auth_method: verifier ? 'OIDC_PKCE_S256' : 'OIDC_PORTAL_LAUNCH',
                 roles: [user.role],
@@ -851,6 +954,7 @@ let CiamService = CiamService_1 = class CiamService {
             category: 'security_break_glass',
             action: 'toggle_break_glass',
             status: breakGlassActive ? 'warning' : 'success',
+            ipAddress,
             message: `สลับสถานะระบบ Break-Glass: ${stateLabel}`,
             triggeredBy: `user:${actorUsername}`,
             details: {
@@ -950,7 +1054,7 @@ let CiamService = CiamService_1 = class CiamService {
             accounts: filtered,
         };
     }
-    async provisionAccountFromCiam(payload) {
+    async provisionAccountFromCiam(payload, ipAddress) {
         if (!payload.username || !payload.username.trim()) {
             throw new common_1.BadRequestException('username is required');
         }
@@ -994,6 +1098,7 @@ let CiamService = CiamService_1 = class CiamService {
             category: 'ciam_sso',
             action: 'auto_provision_user',
             status: 'info',
+            ipAddress: ipAddress || '127.0.0.1 (SYSTEM)',
             message: `สร้างบัญชีผู้ใช้ใหม่อัตโนมัติจาก Central IAM: '${created.username}' (${useAdAuth ? 'AD' : 'Local'})`,
             triggeredBy: payload.created_by || 'system:ciam',
             recordsCount: 1,
@@ -1017,13 +1122,21 @@ let CiamService = CiamService_1 = class CiamService {
             created_at: created.createdAt.toISOString(),
         };
     }
-    async updateAccountStatusFromCiam(username, payload) {
+    async updateAccountStatusFromCiam(username, payload, ipAddress) {
         const user = await this.usersService.findByUsername(username);
         if (!user) {
             throw new common_1.NotFoundException(`Account '${username}' not found.`);
         }
         if (!payload.is_active && PROTECTED_ADMIN_ACCOUNTS.has(user.username.toLowerCase())) {
             throw new common_1.ForbiddenException(`Protected account: Cannot disable emergency local administrator '${user.username}'`);
+        }
+        if (!payload.is_active && user.role === user_entity_1.UserRole.SYSTEM_ADMIN && user.status === user_entity_1.UserStatus.ACTIVE) {
+            const activeAdmins = await this.userRepo.count({
+                where: { role: user_entity_1.UserRole.SYSTEM_ADMIN, status: user_entity_1.UserStatus.ACTIVE },
+            });
+            if (activeAdmins <= 1) {
+                throw new common_1.ForbiddenException(`Protected account: Cannot disable the last active SYSTEM_ADMIN '${user.username}'`);
+            }
         }
         user.status = payload.is_active ? user_entity_1.UserStatus.ACTIVE : user_entity_1.UserStatus.SUSPENDED;
         if (payload.is_active) {
@@ -1039,6 +1152,7 @@ let CiamService = CiamService_1 = class CiamService {
             category: 'ciam_sso',
             action: payload.is_active ? 'account_reactivated' : 'account_deactivated',
             status: payload.is_active ? 'info' : 'warning',
+            ipAddress: ipAddress || '127.0.0.1 (SYSTEM)',
             message: payload.is_active
                 ? `เปิดคืนสิทธิ์การใช้งานบัญชี '${user.username}' จาก Central IAM`
                 : `ระงับสิทธิ์บัญชี '${user.username}' ทันที (1-Click Offboarding)`,
@@ -1095,7 +1209,7 @@ let CiamService = CiamService_1 = class CiamService {
         const payload = {
             app_code: 'proregis',
             status: 'HEALTHY',
-            app_version: '2.13.0',
+            app_version: '2.15.0',
             framework_version: exports.CIAM_FRAMEWORK_VERSION,
             sync_type: isFullSync ? 'FULL_SYNC' : 'HEARTBEAT',
             command_results: this.pendingCommandResults,
@@ -1135,6 +1249,20 @@ let CiamService = CiamService_1 = class CiamService {
             }
             const data = await res.json();
             const newCommandResults = [];
+            const remoteIdle = data.idle_timeout_minutes ?? data.app_config?.idle_timeout_minutes;
+            if (remoteIdle !== undefined && remoteIdle !== null) {
+                const parsedRemoteIdle = Math.floor(Number(remoteIdle));
+                if (Number.isFinite(parsedRemoteIdle) && parsedRemoteIdle >= 1 && parsedRemoteIdle <= 1440) {
+                    const currentIdle = await this.getSetting('ciam_idle_timeout_minutes', '30');
+                    if (String(parsedRemoteIdle) !== currentIdle) {
+                        await this.setSetting('ciam_idle_timeout_minutes', String(parsedRemoteIdle), {
+                            category: 'central_iam',
+                            dataType: 'integer',
+                        });
+                        (0, jwt_auth_guard_1.setIdleTimeoutMinutes)(parsedRemoteIdle);
+                    }
+                }
+            }
             const pendingCommands = Array.isArray(data.pending_commands) ? data.pending_commands : [];
             for (const cmd of pendingCommands) {
                 if (cmd.action === 'REQUEST_FULL_SYNC') {
@@ -1297,6 +1425,7 @@ let CiamService = CiamService_1 = class CiamService {
                     category: 'ciam_sso',
                     action: 'auto_provision_user',
                     status: 'info',
+                    ipAddress: '127.0.0.1 (SYSTEM)',
                     message: `สร้างบัญชีผู้ใช้ใหม่อัตโนมัติจาก Central IAM: '${username}'`,
                     triggeredBy: 'system:ciam',
                     recordsCount: 1,
@@ -1319,9 +1448,29 @@ let CiamService = CiamService_1 = class CiamService {
                 if (!user) {
                     return { success: false, message: `User '${username}' not found in local database.` };
                 }
+                if (user.role === user_entity_1.UserRole.SYSTEM_ADMIN && user.status === user_entity_1.UserStatus.ACTIVE) {
+                    const activeAdmins = await this.userRepo.count({
+                        where: { role: user_entity_1.UserRole.SYSTEM_ADMIN, status: user_entity_1.UserStatus.ACTIVE },
+                    });
+                    if (activeAdmins <= 1) {
+                        return {
+                            success: false,
+                            message: `Protected account: Cannot disable the last active SYSTEM_ADMIN '${username}'`,
+                        };
+                    }
+                }
                 user.status = user_entity_1.UserStatus.SUSPENDED;
                 (0, jwt_auth_guard_1.revokeUserActiveSessions)(user.username);
                 await this.userRepo.save(user);
+                await this.auditService.recordTransactionLog({
+                    category: 'ciam_sso',
+                    action: 'account_deactivated',
+                    status: 'warning',
+                    ipAddress: '127.0.0.1 (SYSTEM)',
+                    message: `ระงับสิทธิ์บัญชี '${user.username}' ผ่าน Central IAM Agent`,
+                    triggeredBy: 'system:ciam',
+                    details: { username: user.username, is_active: false },
+                });
                 return {
                     success: true,
                     updated: true,
@@ -1338,6 +1487,15 @@ let CiamService = CiamService_1 = class CiamService {
                 user.lockedUntil = null;
                 (0, jwt_auth_guard_1.clearUserSessionRevocation)(user.username);
                 await this.userRepo.save(user);
+                await this.auditService.recordTransactionLog({
+                    category: 'ciam_sso',
+                    action: 'account_reactivated',
+                    status: 'info',
+                    ipAddress: '127.0.0.1 (SYSTEM)',
+                    message: `เปิดคืนสิทธิ์บัญชี '${user.username}' ผ่าน Central IAM Agent`,
+                    triggeredBy: 'system:ciam',
+                    details: { username: user.username, is_active: true },
+                });
                 return {
                     success: true,
                     updated: true,
@@ -1350,7 +1508,7 @@ let CiamService = CiamService_1 = class CiamService {
             return { success: false, message: err.message || 'Command execution error' };
         }
     }
-    async getAiSettings() {
+    async getAiSettings(currentUser) {
         await this.refreshCache();
         const enabled = (await this.getSetting('ai_copilot_enabled', 'false')).toLowerCase() === 'true';
         const provider = await this.getSetting('ai_provider', 'google');
@@ -1359,11 +1517,19 @@ let CiamService = CiamService_1 = class CiamService {
         const baseUrl = await this.getSetting('ai_base_url', '');
         const systemPrompt = await this.getSetting('ai_system_prompt', 'คุณคือผู้ช่วย AI ประจำระบบหลังบ้าน ProRegis (ระบบจัดการรับประกันสินค้า Window Asia)');
         const allowMcpTools = (await this.getSetting('ai_allow_mcp_tools', 'true')).toLowerCase() === 'true';
+        const hasApiKey = Boolean(rawKey && rawKey.trim().length > 0);
+        if (currentUser && currentUser.role !== user_entity_1.UserRole.SYSTEM_ADMIN) {
+            return {
+                enabled,
+                provider,
+                has_api_key: hasApiKey,
+            };
+        }
         return {
             enabled,
             provider,
             model,
-            has_api_key: Boolean(rawKey && rawKey.trim().length > 0),
+            has_api_key: hasApiKey,
             api_key_masked: rawKey ? this.maskAiKey(rawKey) : null,
             base_url: baseUrl,
             system_prompt: systemPrompt,
@@ -1425,6 +1591,7 @@ let CiamService = CiamService_1 = class CiamService {
             category: 'system_setting',
             action: 'update_ai_settings',
             status: 'success',
+            ipAddress,
             message: 'แก้ไขการตั้งค่าระบบ In-App AI Copilot',
             triggeredBy: `user:${actorUsername}`,
             details: { changed_fields: changed, ip: ipAddress },
@@ -1454,7 +1621,7 @@ let CiamService = CiamService_1 = class CiamService {
                 const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
                 const res = await fetch(url, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', ...exports.ZERO_TRAINING_PRIVACY_HEADERS },
                     body: JSON.stringify({
                         contents: [{ parts: [{ text: 'ตอบคำว่า OK สั้นๆ' }] }],
                     }),
@@ -1483,7 +1650,10 @@ let CiamService = CiamService_1 = class CiamService {
                 const endpoint = baseUrl && baseUrl.trim()
                     ? `${baseUrl.trim().replace(/\/+$/, '')}/chat/completions`
                     : 'https://api.openai.com/v1/chat/completions';
-                const headers = { 'Content-Type': 'application/json' };
+                const headers = {
+                    'Content-Type': 'application/json',
+                    ...exports.ZERO_TRAINING_PRIVACY_HEADERS,
+                };
                 if (apiKey)
                     headers.Authorization = `Bearer ${apiKey}`;
                 const res = await fetch(endpoint, {
@@ -1491,6 +1661,7 @@ let CiamService = CiamService_1 = class CiamService {
                     headers,
                     body: JSON.stringify({
                         model,
+                        store: false,
                         messages: [{ role: 'user', content: 'Say OK' }],
                         max_tokens: 10,
                     }),
@@ -1521,6 +1692,7 @@ let CiamService = CiamService_1 = class CiamService {
                         'Content-Type': 'application/json',
                         'x-api-key': apiKey,
                         'anthropic-version': '2023-06-01',
+                        ...exports.ZERO_TRAINING_PRIVACY_HEADERS,
                     },
                     body: JSON.stringify({
                         model,
@@ -1565,24 +1737,37 @@ let CiamService = CiamService_1 = class CiamService {
             };
         }
     }
-    async buildSpokeLiveContext() {
-        const [totalRegistrations, totalProductionOrders, allUsers, qrMode, ssoStr, bgStr] = await Promise.all([
-            this.registrationRepo.count(),
-            this.productionOrderRepo.count(),
-            this.usersService.findAll(),
-            this.getSetting('QR_CODE_MODE', 'STATIC'),
-            this.getSetting('ciam_sso_enabled', 'true'),
-            this.getSetting('ciam_break_glass_active', 'false'),
-        ]);
-        return {
-            totalRegistrations,
-            totalProductionOrders,
-            totalUsers: allUsers.length,
-            activeUsers: allUsers.filter((u) => u.status === user_entity_1.UserStatus.ACTIVE).length,
-            qrMode,
-            ssoEnabled: ssoStr.toLowerCase() === 'true',
-            breakGlassActive: bgStr.toLowerCase() === 'true',
-        };
+    async buildSpokeLiveContext(currentUser) {
+        const role = currentUser?.role || user_entity_1.UserRole.IMAGE_EDITOR;
+        const qrMode = await this.getSetting('QR_CODE_MODE', 'STATIC');
+        if (role === user_entity_1.UserRole.SYSTEM_ADMIN) {
+            const [totalRegistrations, totalProductionOrders, allUsers, ssoStr, bgStr] = await Promise.all([
+                this.registrationRepo.count(),
+                this.productionOrderRepo.count(),
+                this.usersService.findAll(),
+                this.getSetting('ciam_sso_enabled', 'true'),
+                this.getSetting('ciam_break_glass_active', 'false'),
+            ]);
+            return {
+                role,
+                totalRegistrations,
+                totalProductionOrders,
+                totalUsers: allUsers.length,
+                activeUsers: allUsers.filter((u) => u.status === user_entity_1.UserStatus.ACTIVE).length,
+                qrMode,
+                ssoEnabled: ssoStr.toLowerCase() === 'true',
+                breakGlassActive: bgStr.toLowerCase() === 'true',
+            };
+        }
+        if (role === user_entity_1.UserRole.CRM_MANAGER) {
+            const totalRegistrations = await this.registrationRepo.count();
+            return { role, totalRegistrations, qrMode };
+        }
+        if (role === user_entity_1.UserRole.QR_GENERATOR) {
+            const totalProductionOrders = await this.productionOrderRepo.count();
+            return { role, totalProductionOrders, qrMode };
+        }
+        return { role, qrMode };
     }
     async chatWithCopilot(messages, currentUser) {
         const enabled = (await this.getSetting('ai_copilot_enabled', 'false')).toLowerCase() === 'true';
@@ -1600,23 +1785,45 @@ let CiamService = CiamService_1 = class CiamService {
         const baseUrl = await this.getSetting('ai_base_url', '');
         const systemPrompt = await this.getSetting('ai_system_prompt', 'คุณคือผู้ช่วย AI ประจำระบบหลังบ้าน ProRegis');
         const allowMcp = (await this.getSetting('ai_allow_mcp_tools', 'true')).toLowerCase() === 'true';
-        const userQuery = messages?.[messages.length - 1]?.content || '';
-        const ctx = allowMcp ? await this.buildSpokeLiveContext() : null;
-        const contextBlock = ctx
-            ? `\n\n[ข้อมูลสถานะปัจจุบันของระบบ ProRegis (Spoke MCP Context)]\n- โหมด QR Code ปัจจุบัน: ${ctx.qrMode}\n- จำนวนการลงทะเบียนรับประกันทั้งหมด: ${ctx.totalRegistrations} รายการ\n- จำนวนใบสั่งผลิต (Production Orders) ในฐานข้อมูล: ${ctx.totalProductionOrders} รายการ\n- จำนวนบัญชีผู้ดูแลระบบหลังบ้าน: ${ctx.totalUsers} บัญชี (Active ${ctx.activeUsers} บัญชี)\n- สถานะ Central IAM SSO: ${ctx.ssoEnabled ? 'เปิดใช้งาน' : 'ปิดใช้งาน'} (Break-Glass: ${ctx.breakGlassActive ? 'เปิด' : 'ปิด'})`
-            : '';
+        const sanitizedMessages = (messages || []).map((m) => ({
+            role: m.role === 'assistant' ? 'assistant' : 'user',
+            content: sanitizeContextForPrivacy(m.content || ''),
+        }));
+        const userQuery = sanitizedMessages[sanitizedMessages.length - 1]?.content || '';
+        const ctx = allowMcp ? await this.buildSpokeLiveContext(currentUser) : null;
+        const contextLines = [];
+        if (ctx) {
+            contextLines.push(`- บทบาทผู้ใช้ปัจจุบัน (RBAC): ${ctx.role}`);
+            contextLines.push(`- โหมด QR Code ปัจจุบัน: ${ctx.qrMode}`);
+            if (ctx.totalRegistrations !== undefined) {
+                contextLines.push(`- จำนวนการลงทะเบียนรับประกันทั้งหมด: ${ctx.totalRegistrations} รายการ`);
+            }
+            if (ctx.totalProductionOrders !== undefined) {
+                contextLines.push(`- จำนวนใบสั่งผลิต (Production Orders) ในฐานข้อมูล: ${ctx.totalProductionOrders} รายการ`);
+            }
+            if (ctx.totalUsers !== undefined && ctx.activeUsers !== undefined) {
+                contextLines.push(`- จำนวนบัญชีผู้ดูแลระบบหลังบ้าน: ${ctx.totalUsers} บัญชี (Active ${ctx.activeUsers} บัญชี)`);
+            }
+            if (ctx.ssoEnabled !== undefined && ctx.breakGlassActive !== undefined) {
+                contextLines.push(`- สถานะ Central IAM SSO: ${ctx.ssoEnabled ? 'เปิดใช้งาน' : 'ปิดใช้งาน'} (Break-Glass: ${ctx.breakGlassActive ? 'เปิด' : 'ปิด'})`);
+            }
+        }
+        const readOnlyGuardInstruction = '\n\n[นโยบายความปลอดภัย: Strict Read-Only / Zero-Mutation]\nคุณทำได้เฉพาะการอ่าน วิเคราะห์ และตอบคำถามตามสิทธิ์ RBAC ของผู้ใช้เท่านั้น ห้ามแก้ไข เพิ่ม ลบ อนุมัติ หรือเปลี่ยนสถานะข้อมูลใดๆ หากผู้ใช้สั่งให้แก้ไขข้อมูล ให้ปฏิเสธอย่างสุภาพและแนะนำให้ดำเนินการผ่านเมนูบนหน้าเว็บด้วยตนเอง';
+        const contextBlock = sanitizeContextForPrivacy((ctx ? `\n\n[ข้อมูลสถานะปัจจุบันของระบบ ProRegis (Spoke MCP Context)]\n${contextLines.join('\n')}` : '') +
+            readOnlyGuardInstruction);
+        const safeSystemPrompt = sanitizeContextForPrivacy(systemPrompt);
         if (apiKey || provider === 'ollama') {
             try {
                 if (provider === 'google') {
                     const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(apiKey)}`;
                     const res = await fetch(url, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: { 'Content-Type': 'application/json', ...exports.ZERO_TRAINING_PRIVACY_HEADERS },
                         body: JSON.stringify({
                             systemInstruction: {
-                                parts: [{ text: `${systemPrompt}${contextBlock}` }],
+                                parts: [{ text: `${safeSystemPrompt}${contextBlock}` }],
                             },
-                            contents: messages.map((m) => ({
+                            contents: sanitizedMessages.map((m) => ({
                                 role: m.role === 'assistant' ? 'model' : 'user',
                                 parts: [{ text: m.content }],
                             })),
@@ -1634,7 +1841,10 @@ let CiamService = CiamService_1 = class CiamService {
                     const endpoint = baseUrl && baseUrl.trim()
                         ? `${baseUrl.trim().replace(/\/+$/, '')}/chat/completions`
                         : 'https://api.openai.com/v1/chat/completions';
-                    const headers = { 'Content-Type': 'application/json' };
+                    const headers = {
+                        'Content-Type': 'application/json',
+                        ...exports.ZERO_TRAINING_PRIVACY_HEADERS,
+                    };
                     if (apiKey)
                         headers.Authorization = `Bearer ${apiKey}`;
                     const res = await fetch(endpoint, {
@@ -1642,9 +1852,10 @@ let CiamService = CiamService_1 = class CiamService {
                         headers,
                         body: JSON.stringify({
                             model,
+                            store: false,
                             messages: [
-                                { role: 'system', content: `${systemPrompt}${contextBlock}` },
-                                ...messages.map((m) => ({
+                                { role: 'system', content: `${safeSystemPrompt}${contextBlock}` },
+                                ...sanitizedMessages.map((m) => ({
                                     role: m.role === 'assistant' ? 'assistant' : 'user',
                                     content: m.content,
                                 })),
@@ -1665,12 +1876,13 @@ let CiamService = CiamService_1 = class CiamService {
                             'Content-Type': 'application/json',
                             'x-api-key': apiKey,
                             'anthropic-version': '2023-06-01',
+                            ...exports.ZERO_TRAINING_PRIVACY_HEADERS,
                         },
                         body: JSON.stringify({
                             model,
                             max_tokens: 1024,
-                            system: `${systemPrompt}${contextBlock}`,
-                            messages: messages.map((m) => ({
+                            system: `${safeSystemPrompt}${contextBlock}`,
+                            messages: sanitizedMessages.map((m) => ({
                                 role: m.role === 'assistant' ? 'assistant' : 'user',
                                 content: m.content,
                             })),
@@ -1688,17 +1900,24 @@ let CiamService = CiamService_1 = class CiamService {
                 this.logger.warn(`[AI COPILOT] External LLM call failed, using internal fallback: ${err.message}`);
             }
         }
-        const live = ctx || (await this.buildSpokeLiveContext());
+        const live = ctx || (await this.buildSpokeLiveContext(currentUser));
         const q = userQuery.toLowerCase();
         if (q.includes('ลงทะเบียน') || q.includes('รับประกัน') || q.includes('สถิติ') || q.includes('กี่ชิ้น') || q.includes('ยอด')) {
+            const regLine = live.totalRegistrations !== undefined
+                ? `\n• รายการลงทะเบียนรับประกันสะสม: **${live.totalRegistrations} รายการ**`
+                : '';
+            const poLine = live.totalProductionOrders !== undefined
+                ? `\n• จำนวนใบสั่งผลิต (Production Orders): **${live.totalProductionOrders} รายการ**`
+                : '';
             return {
                 message: {
                     role: 'assistant',
-                    content: `📊 **สรุปข้อมูลการลงทะเบียนรับประกัน (ProRegis Local Assistant)**\n• รายการลงทะเบียนรับประกันสะสม: **${live.totalRegistrations} รายการ**\n• จำนวนใบสั่งผลิต (Production Orders): **${live.totalProductionOrders} รายการ**\n• โหมด QR Code ปัจจุบัน: **${live.qrMode}**`,
+                    content: `📊 **สรุปข้อมูลตามสิทธิ์ (${live.role}) — ProRegis Local Assistant**${regLine}${poLine}\n• โหมด QR Code ปัจจุบัน: **${live.qrMode}**`,
                 },
             };
         }
-        if (q.includes('ผู้ใช้') || q.includes('admin') || q.includes('บัญชี') || q.includes('sso') || q.includes('ciam')) {
+        if ((q.includes('ผู้ใช้') || q.includes('admin') || q.includes('บัญชี') || q.includes('sso') || q.includes('ciam')) &&
+            live.role === user_entity_1.UserRole.SYSTEM_ADMIN) {
             return {
                 message: {
                     role: 'assistant',
@@ -1706,10 +1925,20 @@ let CiamService = CiamService_1 = class CiamService {
                 },
             };
         }
+        const overviewLines = [`• โหมด QR Code: **${live.qrMode}**`];
+        if (live.totalRegistrations !== undefined) {
+            overviewLines.push(`• ยอดลงทะเบียนรับประกัน: **${live.totalRegistrations} รายการ**`);
+        }
+        if (live.totalProductionOrders !== undefined) {
+            overviewLines.push(`• ใบสั่งผลิต SAP ในระบบ: **${live.totalProductionOrders} รายการ**`);
+        }
+        if (live.activeUsers !== undefined && live.totalUsers !== undefined) {
+            overviewLines.push(`• ผู้ใช้งานหลังบ้านที่ Active: **${live.activeUsers}/${live.totalUsers} บัญชี**`);
+        }
         return {
             message: {
                 role: 'assistant',
-                content: `🤖 **(ProRegis Local Assistant)**: ได้รับข้อความ *"${userQuery}"* เรียบร้อยแล้ว\n\n**ข้อมูลภาพรวมระบบปัจจุบัน:**\n• ยอดลงทะเบียนรับประกัน: **${live.totalRegistrations} รายการ**\n• ใบสั่งผลิต SAP ในระบบ: **${live.totalProductionOrders} รายการ**\n• โหมด QR Code: **${live.qrMode}**\n• ผู้ใช้งานหลังบ้านที่ Active: **${live.activeUsers}/${live.totalUsers} บัญชี**\n\n*(หมายเหตุ: กรุณาตั้งค่า AI API Key ในหน้า System Settings หากต้องการวิเคราะห์ภาษาธรรมชาติแบบเต็มรูปแบบ)*`,
+                content: `🤖 **(ProRegis Local Assistant)**: ได้รับข้อความ *"${userQuery}"* เรียบร้อยแล้ว\n\n**ข้อมูลภาพรวมระบบตามสิทธิ์ (${live.role}):**\n${overviewLines.join('\n')}\n\n*(หมายเหตุ: กรุณาตั้งค่า AI API Key ในหน้า System Settings หากต้องการวิเคราะห์ภาษาธรรมชาติแบบเต็มรูปแบบ)*`,
             },
         };
     }
